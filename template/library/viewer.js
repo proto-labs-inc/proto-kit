@@ -87,11 +87,6 @@ function renderStatus(m, progress) {
   const complete = Boolean(m.completedAt) || progress?.status === "complete";
   if (complete) {
     $("import-strip").setAttribute("data-done", "");
-    $("done-banner").hidden = false;
-    $("done-summary").textContent =
-      ` ${(m.tokens ?? []).length} colors, ${(m.type ?? []).length} type styles, ` +
-      `${doneC} components extracted from ${m.source ?? "your product"}` +
-      `${skipped ? ` (${skipped} skipped)` : ""}.`;
   } else {
     $("import-strip").removeAttribute("data-done");
     $("activity-text").textContent = progress?.activity ?? "Working…";
@@ -121,10 +116,6 @@ async function tick() {
     $("activity-text").textContent = "Waiting for import…";
   }
 }
-
-$("done-prompt").addEventListener("click", () => {
-  navigator.clipboard?.writeText($("done-prompt").textContent ?? "");
-});
 
 tick();
 setInterval(tick, POLL_MS);
