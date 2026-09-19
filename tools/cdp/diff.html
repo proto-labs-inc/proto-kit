@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>pixel diff</title>
+<body style="margin:0; background:#222; color:#eee; font-family:monospace;">
+<div style="display:flex; gap:16px; flex-wrap:wrap; padding:12px; zoom:0.75;">
+  <figure><img id="a"><figcaption>real</figcaption></figure>
+  <figure><img id="b"><figcaption>mine</figcaption></figure>
+  <figure><canvas id="d"></canvas><figcaption>diff (red = disagree)</figcaption></figure>
+</div>
+<pre id="out" style="padding:12px;">loading</pre>
+<script>
+// Open as: diff.html?a=<real.png>&b=<mine.png>&t=<threshold, default 8>
+// Serve this directory with tools/serve.mjs. file:// taints the canvas.
+const q = new URLSearchParams(location.search);
+const a = document.getElementById("a"), b = document.getElementById("b");
+const threshold = Number(q.get("t") || 8);
+a.src = q.get("a"); b.src = q.get("b");
+// Load events, not img.decode(): decode() never resolves in a
+// background or occluded tab, and this page usually runs in one.
+// drawImage decodes synchronously when the canvas needs the pixels.
+const ready = (img) => new Promise((r) => {
+  if (img.complete && img.naturalWidth) r();
+  else img.onload = () => r();
+});
+Promise.all([ready(a), ready(b)]).then(() => {
+  const w = Math.min(a.naturalWidth, b.naturalWidth);
+  const h = Math.min(a.naturalHeight, b.naturalHeight);
+  const c = document.getElementById("d");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(a, 0, 0); const pa = ctx.getImageData(0, 0, w, h);
+  ctx.drawImage(b, 0, 0); const pb = ctx.getImageData(0, 0, w, h);
+  const outImg = ctx.createImageData(w, h);
+  let diff = 0, maxDelta = 0;
+  for (let i = 0; i < pa.data.length; i += 4) {
+    const d = Math.max(
+      Math.abs(pa.data[i] - pb.data[i]),
+      Math.abs(pa.data[i+1] - pb.data[i+1]),
+      Math.abs(pa.data[i+2] - pb.data[i+2]),
+    );
+    maxDelta = Math.max(maxDelta, d);
+    const bad = d > threshold;
+    if (bad) diff++;
+    outImg.data[i] = bad ? 255 : pa.data[i];
+    outImg.data[i+1] = bad ? 0 : pa.data[i+1];
+    outImg.data[i+2] = bad ? 0 : pa.data[i+2];
+    outImg.data[i+3] = 255;
+  }
+  ctx.putImageData(outImg, 0, 0);
+  document.getElementById("out").textContent = JSON.stringify({
+    w, h, sizeA: [a.naturalWidth, a.naturalHeight], sizeB: [b.naturalWidth, b.naturalHeight],
+    threshold, diffPixels: diff, pct: (100 * diff / (w * h)).toFixed(2) + "%", maxDelta,
+  });
+});
+</script>

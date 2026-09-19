@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>unit history</title>
+<body style="margin:0; background:#222; color:#eee; font-family:monospace;">
+<div id="root" style="padding:16px;">loading</div>
+<script>
+// Open as: history.html?unit=/runs/<slug>/units/<name>
+// Shows the unit's verify loop: the real capture, then every stage's
+// replica capture and diff, in order. Reads the stage list from the
+// server's ?ls directory listing.
+const unit = new URLSearchParams(location.search).get("unit");
+const root = document.getElementById("root");
+
+function row(title, imgs) {
+  const fig = (src, cap) => `<figure style="margin:0;"><img src="${src}" style="max-width:46vw; display:block; border:1px solid #444;"><figcaption style="font-size:11px; padding:2px 0; color:#9a9;">${cap}</figcaption></figure>`;
+  return `<h3 style="margin:18px 0 6px; font-size:13px; color:#fff;">${title}</h3><div style="display:flex; gap:12px; flex-wrap:wrap;">${imgs.map(i => fig(i.src, i.cap)).join("")}</div>`;
+}
+
+(async () => {
+  const stages = await (await fetch(unit + "/stages/?ls")).json();
+  const mines = stages.filter(f => f.includes("mine")).sort();
+  let html = `<h2 style="margin:0 0 4px; font-size:15px;">${unit}</h2>`;
+  html += `<p style="margin:0 0 8px; font-size:11px; color:#888;">notes: <a style="color:#8ac;" href="${unit}/notes.md">notes.md</a> · replica: <a style="color:#8ac;" href="${unit}/replica.html">replica.html</a></p>`;
+  html += row("target (real capture)", [{ src: unit + "/real.png", cap: "real.png" }]);
+  for (const mine of mines) {
+    const diff = mine.replace("mine", "diff").replace(/mine[^.]*/, (s) => s); // pair by stage number
+    const stageNum = (mine.match(/stage(\d+)/) || [])[1];
+    const diffs = stages.filter(f => f.includes("diff") && f.includes("stage" + stageNum));
+    const imgs = [{ src: `${unit}/stages/${mine}`, cap: mine }];
+    for (const d of diffs) imgs.push({ src: `${unit}/stages/${d}`, cap: d + " (red = disagree)" });
+    html += row("stage " + stageNum, imgs);
+  }
+  root.innerHTML = html;
+})().catch((e) => { root.textContent = "failed: " + e.message; });
+</script>
