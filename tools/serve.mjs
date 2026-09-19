@@ -3,7 +3,7 @@
  *  prototypes). CORS on (the Proto app probes manifests cross-origin) and
  *  no-store (live population must never fight a cache). */
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
 const [dirArg, portArg] = process.argv.slice(2);
@@ -21,22 +21,42 @@ const TYPES = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".mjs": "text/javascript; charset=utf-8",
   ".woff2": "font/woff2",
 };
 
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   let path = normalize(decodeURIComponent(url.pathname));
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "no-store",
+  };
+  // ?ls on a directory returns its entries as JSON — used by tool pages
+  // (e.g. tools/cdp/history.html) to walk a run's stage files.
+  if (url.searchParams.has("ls")) {
+    const dir = join(root, path);
+    if (!dir.startsWith(root)) {
+      res.writeHead(403).end();
+      return;
+    }
+    try {
+      const entries = await readdir(dir);
+      res.writeHead(200, { ...headers, "Content-Type": TYPES[".json"] });
+      res.end(JSON.stringify(entries));
+    } catch {
+      res.writeHead(404, headers);
+      res.end("[]");
+    }
+    return;
+  }
   if (path.endsWith("/")) path += "index.html";
   const file = join(root, path);
   if (!file.startsWith(root)) {
     res.writeHead(403).end();
     return;
   }
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Cache-Control": "no-store",
-  };
   try {
     const info = await stat(file);
     const target = info.isDirectory() ? join(file, "index.html") : file;
