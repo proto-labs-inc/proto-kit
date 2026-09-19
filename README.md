@@ -9,8 +9,9 @@ agent installs and drives.
 | Path | What it is |
 | --- | --- |
 | `template/library/` | The design-system library viewer: a raw-HTML app the import fills with extracted tokens, type styles, and components. Scaffolded to `~/.proto/<project>/library/`, served locally, framed by the Proto app. |
-| `tools/` | Deterministic helpers. `serve.mjs` (static server with CORS + no-store, for anything the laptop serves), `fake-import/` (plays a recorded design-system import against a library folder, for demos and UI work before the real import skill lands). |
-| `skills/` | (soon) The agent protocols: setup, design-system import (the replicate protocol folds in here), create-prototype, serve. |
+| `tools/` | Deterministic helpers. `serve.mjs` (static server with CORS + no-store + `?ls` listing, for anything the laptop serves), `cdp/` (the CDP reading/verification toolkit absorbed from replicate: attach, wireframe, capture, pixel diff), `fake-import/` (plays a recorded design-system import against a library folder, for demos and UI work). |
+| `skills/` | The agent protocols. `import-design-system/` (source repo + live page over CDP → the library contract). Soon: setup, create-prototype, serve. |
+| `docs/` | `library-contract.md` — the frozen manifest/progress/components contract both the fake driver and the real import write. |
 | `cli/` | (soon) The `proto` CLI. |
 
 A plugin manifest will wrap `skills/` + `tools/` for Claude Code's
