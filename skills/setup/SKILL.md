@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up Proto on this machine and link a product — account credentials into ~/.proto/config.json, find the product's source repo from whatever scraps the user gives, scaffold the product's ~/.proto/<product>/ home. Use when installing Proto, connecting a new product, or when other Proto skills find no config.json or product.json.
+description: Set up Proto on this machine and link a product — the pasted Proto setup snippet is the entry point (account + prototype brief), credentials into ~/.proto/config.json, find the product's source repo from whatever scraps the user gives, scaffold the product's ~/.proto/<product>/ home. Use when a message starts "Set up Proto for account …", when installing Proto or connecting a new product, or when other Proto skills find no config.json or product.json.
 ---
 
 # Setup
@@ -8,7 +8,39 @@ description: Set up Proto on this machine and link a product — account credent
 Two scopes, both idempotent: the **machine** (once — config.json,
 prerequisites) and a **product** (once per product being prototyped —
 source link, library scaffold). Re-running setup repairs; it never
-clobbers working state.
+clobbers working state. **Setup is resumable**: every step below
+leaves its result in a file, so if it parks mid-way (waiting on an
+engineer, a login, anything), a later "continue setting up Proto"
+picks up right where it stopped — say so when you park.
+
+The user is often not an engineer. Two standing rules for the whole
+flow: **failures are plain sentences** — never surface raw command
+output, stack traces, or anything that reads as an error wall; and
+**never send the user to tokens, SSH keys, or GitHub developer
+settings** — if access is missing, produce the forwardable message
+(below) and park instead.
+
+## The snippet
+
+The normal entry is a pasted snippet from the Proto site, shaped:
+
+```
+Set up Proto for account <name> (<id>). Get proto-kit from
+<the kit repo> and follow skills/setup/SKILL.md. Then create a
+prototype with this brief:
+Title: …
+Description: …
+Reference page: <url>
+Reference HTML: (included below if any)
+```
+
+Recognize that shape and: take `<id>`/`<name>` as the account for
+config.json below, hold the brief (title, description, reference
+page, reference HTML) for the handoff at the end, and run the whole
+flow without re-asking for anything the snippet already says. A
+snippet with no brief just means setup, no prototype yet. (Account
+linking will later swap the plain-text account for a token the same
+entry point redeems — the flow's shape does not change.)
 
 ## Machine
 
@@ -29,23 +61,25 @@ for "who am I and where is the app":
   "app": "https://…",              // the Proto app's origin — from the user
                                    //  or a proto checkout's .env (PROTO_APP_DOMAIN).
                                    //  Domains live here and in .env only, never in code or docs.
-  "account": { "user": "ooj", "org": "proto-labs" },
+  "account": { "user": "ooj", "name": "Ooj Srivastava" },  // from the snippet; org comes from whoami
   "auth": { "kind": "shared-secret", "secret": "…" },
   "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
 }
 ```
 
-**The auth step is a swappable slot.** Today there is no device-link
-flow, so `auth` records the shared provisioning secret
-(`PROTO_PROVISION_SECRET`, from a proto checkout's `.env` via
-`pnpm env:pull`, or handed over by Proto). When device auth ships,
-this step — and only this step — is replaced; it will write a
-different `auth.kind`. Everything downstream reads `auth` opaquely
-and sends `Authorization: Bearer <auth.secret>`; nothing else may
-depend on the auth kind.
+**The auth step is a swappable slot.** Today the snippet names the
+account in plain text and the credential is the shared provisioning
+secret already on this laptop (an existing config.json, or a proto
+checkout's `.env` — `PROTO_PROVISION_SECRET`). Record both, then
+**tell the user which account they're set up as**, by name. When
+account linking ships, this same step redeems a token from the
+snippet instead and writes a different `auth.kind` — nothing
+downstream may depend on the auth kind; everything reads `auth`
+opaquely and sends `Authorization: Bearer <auth.secret>`.
 
-`chmod 600` the file — it holds a credential.
+`chmod 600` the file — it holds a credential. Registration and every
+cloud call use `account.user` as the owner.
 
 ### Connect the proto MCP server
 
@@ -66,32 +100,47 @@ credential is stale — redo the auth step above.
 ## Product
 
 A product is one product being prototyped: `~/.proto/<product>/`,
-slug-named after the product (lowercase, digits, hyphens).
+slug-named after the product. **Default the name to the repo's name**
+once the repo is found — most users never touch it; only ask if
+something already occupies that name.
 
-### Find the source from scraps
+### Find their code
 
-You need the product's repo checked out locally. The user rarely hands
-you an absolute path — they give you scraps: a repo or org name, a PR
-link, a live URL, "the acme frontend". Work with whatever arrived:
+You need the product's repo on this machine. Before anything else,
+give the one reassurance that matters, in exactly this plain shape:
+**"Your code stays on your laptop; Proto receives only the design
+system it extracts."**
 
-1. **Search before asking.** Look for checkouts in the obvious places
-   (`~/Projects`, `~/code`, `~/src`, `~/dev`, `~/work`, one or two
-   levels deep for `.git`), matching directory names, `package.json`
-   names, and git remotes against the scraps. A PR/issue link names
-   its repo (`gh pr view <url>` does too); a live URL's domain often
-   names the org.
-2. **Confirm with evidence, don't interrogate.** When you find a
-   candidate, present it with why you believe it ("`~/work/acme-web`,
-   remote `github.com/acme/acme-web` — this one?"). One yes/no beats
-   three open questions.
-3. **Never ask two unanswerable questions in a row.** Every question
+1. **Silent scan first — the engineer fast path.** Quietly look for
+   checkouts in the obvious places (`~/Projects`, `~/code`, `~/src`,
+   `~/dev`, `~/work`, one or two levels deep for `.git`), matching
+   directory names, `package.json` names, and git remotes against
+   anything the snippet or conversation names. On a hit, ask ONE
+   confirmation question with the evidence in it ("Is it
+   `~/Projects/cobble-web`?"). **Fail soft**: if the scan finds
+   nothing, just move to the ask — never announce "no repositories
+   found".
+2. **Ask without jargon, either/or.** "Is your product's code on this
+   laptop, or on GitHub?" No "checked out", no "clone", no assuming
+   one repo.
+3. **Scraps are a full answer.** A PR link, a repo link, "we're
+   acme, it's on GitHub" — derive the repo yourself (a PR/issue URL
+   names its repo; `gh pr view <url>` does too; a live URL's domain
+   often names the org). Don't ask for a path when a scrap will do.
+4. **Never ask two unanswerable questions in a row.** Every question
    must be answerable from what the user obviously knows, and must
-   carry your best guess so a "yes" is enough. If you struck out
-   locally, offer the concrete next move: "I can clone
-   `acme/acme-web` — where do you keep code?"
-4. **Clone if it isn't local** (`gh repo clone`), where they keep
-   code.
-5. **Record it in the cloud** once confirmed: the
+   carry your best guess so a "yes" is enough.
+5. **Get it locally with the auth that already exists** (`gh repo
+   clone`, or plain `git clone` of a URL that works). **Never** route
+   the user to tokens, SSH keys, or GitHub developer settings. If
+   cloning fails for access reasons, say so in one plain sentence,
+   hand them this to forward — "Could you run: `git clone
+   <repo url>` into a folder on my laptop, or send me an invite so
+   `git clone` works? It's for Proto, which reads the design system
+   locally." — and **park**: tell them setup will pick up right here
+   once the repo exists, and mean it (re-running setup resumes from
+   files, not memory).
+6. **Record it in the cloud** once confirmed: the
    `set_product_source` MCP tool with
    `{ product, sourcePath, repoRemote }` — the site's product pages
    read this registry. The local `product.json` below stays the
@@ -118,6 +167,22 @@ Copy `template/library/` → `~/.proto/<product>/library/` (skip if it
 already has a manifest with content). The import-design-system skill
 fills it; the serve skill serves it.
 
+### The reference page (the Proto window)
+
+Prototypes and imports read the user's live product through their own
+browser. Set that up once per machine, here:
+
+1. Start the dedicated Proto Chrome window: `node
+   tools/cdp/chrome.mjs` — its profile lives at `~/.proto/chrome`, so
+   logins persist across sessions and reboots; the login is
+   one-time.
+2. Ask the user to open their product in that window and log in —
+   including the snippet's reference page when there is one.
+3. From then on, skills find the page by looking at the open tabs
+   over CDP (prefer the active tab; offer a pick when several
+   match). Pasting a URL into the chat is always an accepted
+   fallback — never a required step.
+
 ### Migration: pre-rename homes (before 2026-09-20 "product")
 
 This concept was briefly called "project". If a home has
@@ -137,5 +202,18 @@ without stopping anything.
 - The `whoami` MCP tool answers with the expected org and grants.
 - `cloudflared --version` runs.
 
-Report what you set up, what you found vs. were told, and anything you
-skipped because it already existed.
+Report what you set up — leading with which account they're set up
+as — what you found vs. were told, and anything you skipped because
+it already existed.
+
+## Handoff
+
+Setup ends by continuing, not by stopping:
+
+1. Run **import-design-system** against the found source + the Proto
+   window's live page — the library filling in is the first thing the
+   user watches.
+2. If the snippet carried a brief, hand it to **create-prototype**
+   verbatim: title, description, reference page URL, and the
+   reference HTML (structure hints only — the live page wins).
+   Registration there uses `account.user` as owner.

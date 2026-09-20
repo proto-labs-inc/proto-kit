@@ -24,6 +24,11 @@ You need three things before scaffolding; ask only for what's missing:
 - **A live source URL** when the prototype replicates an existing page
   — the page in the user's product it must look like.
 
+A brief may also carry **reference HTML** (a snapshot the site's
+dialog captured): use it to map structure and copy, but the live page
+wins on any disagreement, and never paste it into the prototype at
+runtime.
+
 ## Where it lives
 
 Scaffold `~/.proto/<product>/prototypes/<slug>/` by copying the
