@@ -1,0 +1,113 @@
+# Claude Code mechanics the kit relies on
+
+Verified facts about the harness, so skills stand on stated ground
+instead of re-deriving it. One heading per mechanism; each carries how
+and when it was verified. Re-verify against the installed binary when a
+skill starts behaving oddly after a CLI update — these are empirical
+facts about a moving target, not API contracts.
+
+## Background Bash wakes the agent on EXIT only
+
+A `run_in_background` Bash task re-invokes the agent when the command
+exits — not on interim output. In `-p` runs, background Bash tasks are
+terminated ~5s after the final result; they do not hold the session
+open.
+
+Verified: official docs (code.claude.com/docs/en/tools-reference.md,
+…/headless.md) + this harness's own tool contract, 2026-09-20.
+
+## The Monitor tool wakes the agent per OUTPUT LINE
+
+`Monitor` streams a command's stdout: each line arrives as an
+in-session notification that wakes the agent between turns — no
+polling. Lines within ~200ms batch into one notification.
+`persistent: true` gives session-length watches (interactive).
+
+Verified empirically, 2026-09-20: a headless agent monitored an
+emitter that logged its own emission epochs and appended a timestamp on
+each notification — emissions 666/670/674 → reactions 670/674/677
+(reaction N landed seconds after emission N and before the emitter
+exited). Batch-at-exit would have clustered all reactions after 678.
+
+## A headless (-p) session stays alive while a watch is armed
+
+While a Monitor watch is active, a `claude -p` run keeps waiting and
+keeps responding to what the watch reports, instead of ending at the
+first final message.
+
+Verified: the experiment above ran to completion inside one `claude -p`
+invocation; docs confirm (…/headless.md), 2026-09-20.
+
+## Watch timeouts in -p, and re-arming across them
+
+Monitor timeout is 5 min by default, 30 min max interactive, **10 min
+max in `-p` runs**. Plugin `monitors.json` monitors are
+interactive-only. An always-on headless agent therefore lives by
+RE-ARMING: watch ends → end notification wakes the agent → it arms a
+fresh watch.
+
+Verified empirically, 2026-09-20: three consecutive 18s watches in one
+`claude -p` session; events emitted at 788/808/828 were reacted to at
+811/832 — the 828 event was caught by a re-armed watch after the first
+had expired (~813), and the session outlived every individual watch,
+finishing its protocol. Caps: official docs (…/tools-reference.md,
+…/headless.md).
+
+## Lines emitted while no watch is armed are LOST to the watch
+
+`tail -n0 -f` (and any monitor command) only sees output produced
+after it starts. In the re-arm experiment, the event emitted ~6s in —
+before the agent finished arming the first watch — was never
+delivered.
+
+Consequence: a durable command feed must be an append-only file with
+the consumer replaying from a stored offset on each (re-)arm; the file
+is the buffer across watch gaps, agent restarts, and reboots.
+
+Verified empirically (the missed first event above), 2026-09-20.
+
+## The monitored command is KILLED when its watch ends
+
+Monitor kills its command at timeout. A process that must outlive
+watches (anything holding a port) must not be the monitored command —
+run it under `tools/supervise.mjs` and monitor a file it writes.
+
+Verified: documented Monitor semantics ("Timeout → killed"),
+2026-09-20; motivates the courier's listener-writes-file shape.
+
+## Session identity in headless runs
+
+- `claude -p --output-format json` returns one result object carrying
+  `session_id` (observed live: a trivial prompt returned
+  `"session_id":"2f2fe70b-…"`).
+- `--output-format stream-json` events carry `session_id` too — the
+  very first stream event of a run already has it.
+- `-r/--resume <session-id>` continues that conversation, headless or
+  interactive.
+
+Verified empirically, 2026-09-20, capped by the cross-run memory pair:
+run A (`claude -p`) was told "Remember the word pineapple"; run B
+(`claude -p --resume <captured id>`) asked what the word was and
+answered `"result":"pineapple"` — content that only exists if run B
+truly continued run A's conversation.
+
+## Broken-session heuristic for resumed runs
+
+A resumed run that dies with a non-zero exit and ZERO parsed stream
+events did not run — treat the session as corrupt/gone: record the
+break, retry once on a fresh session, keep the queue moving. A run
+that produced events and then failed is an ordinary failure, not a
+session break.
+
+Verified with a stub agent emulating both behaviors, 2026-09-20.
+
+## CLI gotchas
+
+- `--allowed-tools` is VARIADIC: `--allowed-tools "Bash,Monitor"
+  "<prompt>"` swallows the prompt as a tool name and then errors
+  "Input must be provided…". Bind with `=`
+  (`--allowed-tools=Bash,Monitor`) or put the prompt first. (Hit live,
+  2026-09-20.)
+- `-p` with `--output-format stream-json` was run with `--verbose` in
+  every verification here; several stream flags are documented as
+  stream-json-only.

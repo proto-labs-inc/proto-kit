@@ -97,6 +97,10 @@ half is down. Then the log for that process in the run dir:
 
 ## The courier (the website→laptop command channel)
 
+Harness facts this design stands on — per-line Monitor wake-ups,
+`-p` watch caps and re-arming, session resume — are recorded with
+their verification evidence in `docs/claude-code-mechanics.md`.
+
 Once per **project** (not per prototype), the site can start agent work
 on this laptop through the courier daemon (`tools/courier.mjs`). Set it
 up like one more supervised run:
