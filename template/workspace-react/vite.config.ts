@@ -15,6 +15,7 @@ export default defineConfig({
     resolve: {
       alias: {
         "@proto/rig": `${packages}/rig/src/index.tsx`,
+        "@proto/rig-core": `${packages}/rig-core/src/index.ts`,
         "@proto/wire": `${packages}/wire/src/index.ts`,
         // The rig lazy-imports this from the prototype's own deps; with the
         // rig aliased from outside the root, vite needs the resolution pinned.

@@ -26,8 +26,12 @@ You need three things before scaffolding; ask only for what's missing:
 
 ## Where it lives
 
-Scaffold `~/.proto/<project>/prototypes/<slug>/` by copying
-`template/workspace/`, then make it this prototype's own:
+Scaffold `~/.proto/<project>/prototypes/<slug>/` by copying the
+workspace template **matching the source repo's framework** — read the
+product's `package.json`: `vue` → `template/workspace-vue/`, otherwise
+(react, or no source repo) → `template/workspace-react/`. The
+prototype is a framework-native slice; a React mock of a Vue product
+isn't one. Then make it this prototype's own:
 
 1. `package.json` `name`, `index.html` `<title>`, and
    `public/prototype.json` `name` → the slug.
@@ -37,11 +41,14 @@ Scaffold `~/.proto/<project>/prototypes/<slug>/` by copying
 3. Pre-npm: the rig resolves via the `PROTO_PACKAGES` env var (path to
    a proto checkout's `packages/` dir, recorded in
    `~/.proto/config.json`) — vite reads it in the template's config,
-   and `tsc` needs the same two entries written into `tsconfig.json`
-   `paths` (`@proto/rig` → `<packages>/rig/src/index.tsx`,
-   `@proto/wire` → `<packages>/wire/src/index.ts`). Don't vendor the
-   rig, don't add it to package.json — once it publishes to npm it
-   becomes a plain dependency and both the alias block and the paths
+   and `tsc` needs the same entries written into `tsconfig.json`
+   `paths`: the adapter (`@proto/rig` → `<packages>/rig/src/index.tsx`
+   for React, `@proto/rig-vue` → `<packages>/rig-vue/src/index.ts` for
+   Vue), plus `@proto/rig-core` → `<packages>/rig-core/src/index.ts`
+   (the adapters bare-import it) and `@proto/wire` →
+   `<packages>/wire/src/index.ts`. Don't vendor the rig, don't add it
+   to package.json — once the packages publish to npm they become
+   plain dependencies and both the alias block and the paths
    disappear.
 4. `pnpm install` (standalone — never inside a git checkout, never a
    workspace package of one).

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Checks a workspace's component markers: every .tsx file that renders
+ * Checks a workspace's component markers: every .tsx/.vue file that renders
  * components must carry data-proto-id markers, and ids must be kebab-case
  * (dot-separated kebab segments allowed — ids ported from a scope.component
  * convention stay verbatim, since ids are comment anchor keys).
@@ -24,7 +24,7 @@ const files = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
-    else if (entry.name.endsWith(".tsx")) files.push(full);
+    else if (entry.name.endsWith(".tsx") || entry.name.endsWith(".vue")) files.push(full);
   }
 })(src);
 
@@ -36,11 +36,13 @@ for (const file of files) {
   const source = readFileSync(file, "utf8");
   const rel = relative(target, file);
 
-  // Renderable component = an exported capitalized function. main.tsx only
-  // mounts, it renders nothing of its own.
-  const rendersComponents =
-    !file.endsWith("main.tsx") &&
-    /export\s+(?:default\s+)?function\s+[A-Z]/.test(source);
+  // Renderable component: a .vue SFC with a template block, or a .tsx file
+  // exporting a capitalized function. main.tsx only mounts, it renders
+  // nothing of its own.
+  const rendersComponents = file.endsWith(".vue")
+    ? /<template[\s>]/.test(source)
+    : !file.endsWith("main.tsx") &&
+      /export\s+(?:default\s+)?function\s+[A-Z]/.test(source);
 
   const markers = [...source.matchAll(/data-proto-id="([^"]*)"/g)].map((m) => m[1]);
   for (const id of markers) {
