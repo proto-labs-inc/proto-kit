@@ -61,7 +61,7 @@ for "who am I and where is the app":
   "app": "https://…",              // the Proto app's origin — from the user
                                    //  or a proto checkout's .env (PROTO_APP_DOMAIN).
                                    //  Domains live here and in .env only, never in code or docs.
-  "account": { "user": "ooj", "name": "Ooj Srivastava" },  // from the snippet; org comes from whoami
+  "account": { "user": "<id>", "name": "<name>" },   // both from the snippet; org comes from whoami
   "auth": { "kind": "shared-secret", "secret": "…" },
   "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
@@ -142,9 +142,11 @@ system it extracts."**
    files, not memory).
 6. **Record it in the cloud** once confirmed: the
    `set_product_source` MCP tool with
-   `{ product, sourcePath, repoRemote }` — the site's product pages
-   read this registry. The local `product.json` below stays the
-   laptop's copy of the same pointers.
+   `{ product, sourcePath, repoRemote, account }` — `account` is
+   config.json's `account.user`, and it's required (the cloud stamps
+   who created the product and which org it belongs to). The site's
+   product pages read this registry. The local `product.json` below
+   stays the laptop's copy of the same pointers.
 
 ### `~/.proto/<product>/product.json`
 

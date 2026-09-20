@@ -4,6 +4,10 @@
  * realistic pace, writing the same contract the real import skill will
  * write: manifest.json, progress.json, components/*.html.
  *
+ * The recording is of "Meridian", a fictional expense product — every
+ * name below (product, tokens, components, copy) is that fixture's
+ * data, not a default anything inherits.
+ *
  * Usage: node run.mjs <library-dir> [--fast]
  */
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
