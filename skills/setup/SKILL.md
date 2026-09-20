@@ -22,25 +22,30 @@ settings** — if access is missing, produce the forwardable message
 
 ## The snippet
 
-The normal entry is a pasted snippet from the Proto site, shaped:
+The normal entry is a pasted snippet from the Proto site, in one of
+two shapes — with a prototype brief:
 
 ```
-Set up Proto for account <name> (<id>). Get proto-kit from
-<the kit repo> and follow skills/setup/SKILL.md. Then create a
-prototype with this brief:
+Set up Proto for account <name> (<id>)[, product <name>]. Get
+proto-kit from <the kit repo> and follow skills/setup/SKILL.md.
+Then create a prototype with this brief:
 Title: …
 Description: …
 Reference page: <url>
 Reference HTML: (included below if any)
 ```
 
-Recognize that shape and: take `<id>`/`<name>` as the account for
-config.json below, hold the brief (title, description, reference
-page, reference HTML) for the handoff at the end, and run the whole
-flow without re-asking for anything the snippet already says. A
-snippet with no brief just means setup, no prototype yet. (Account
-linking will later swap the plain-text account for a token the same
-entry point redeems — the flow's shape does not change.)
+— or setup-only: the same first two sentences and nothing after
+them.
+
+Recognize both and: take `<id>`/`<name>` as the account for
+config.json below; when the first sentence names a product, that IS
+the product's name (it beats the repo-name default); hold the brief
+(title, description, reference page, reference HTML) for the handoff
+at the end when there is one. Run the whole flow without re-asking
+for anything the snippet already says. (Account linking will later
+swap the plain-text account for a token the same entry point
+redeems — the flow's shape does not change.)
 
 ## Machine
 
@@ -100,9 +105,11 @@ credential is stale — redo the auth step above.
 ## Product
 
 A product is one product being prototyped: `~/.proto/<product>/`,
-slug-named after the product. **Default the name to the repo's name**
-once the repo is found — most users never touch it; only ask if
-something already occupies that name.
+slug-named after the product. The product is decided here, before
+any prototype exists. Its name: the snippet's `, product <name>`
+when present, else **default to the repo's name** once the repo is
+found — most users never touch it; only ask if something already
+occupies that name.
 
 ### Find their code
 
@@ -184,6 +191,23 @@ browser. Set that up once per machine, here:
    over CDP (prefer the active tab; offer a pick when several
    match). Pasting a URL into the chat is always an accepted
    fallback — never a required step.
+
+### The product's icon
+
+Products carry a favicon the agent sets itself — right after the
+Proto window step, while the product's live page is open there:
+
+1. Prefer the live page's own icon: read its `<link rel="icon">`
+   candidates over CDP and take the largest png/svg.
+2. Else scan the repo: `public/favicon.*`, `app/icon.*`,
+   `src/app/icon.*`.
+3. Convert to a data URL (png/svg/ico, ≤ 256 KB — pick a size that
+   fits) and call the `set_product_icon` MCP tool with
+   `{ account, product, image }` (`account` = config.json's
+   `account.user`).
+4. **Fail soft.** Nothing usable found → skip silently and move on;
+   the site shows a letter fallback. No icon is ever worth a
+   question or an error sentence.
 
 ### Migration: pre-rename homes (before 2026-09-20 "product")
 

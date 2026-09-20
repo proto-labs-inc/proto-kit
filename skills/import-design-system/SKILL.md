@@ -99,6 +99,12 @@ data; never commit or share them without a check.
 
 ## Order of operations
 
+(One side errand while the live page is attached: if the product has
+no icon yet — setup skipped it — grab the page's `<link rel="icon">`,
+largest png/svg, and call `set_product_icon {account, product,
+image}` with a ≤256KB data URL. Fail soft; never let it interrupt
+the import.)
+
 Write `progress.json` **before** doing anything slow — the first
 heartbeat ("Reading the source…") is what tells the user the import is
 alive. Then, flushing manifest + progress after every item per the
