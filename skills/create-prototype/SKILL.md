@@ -36,9 +36,13 @@ Scaffold `~/.proto/<project>/prototypes/<slug>/` by copying
    `prototype.json` — they must agree, the Frame reads the manifest.
 3. Pre-npm: the rig resolves via the `PROTO_PACKAGES` env var (path to
    a proto checkout's `packages/` dir, recorded in
-   `~/.proto/config.json`). Don't vendor the rig, don't add it to
-   package.json — once it publishes to npm it becomes a plain
-   dependency and the alias block in `vite.config.ts` disappears.
+   `~/.proto/config.json`) — vite reads it in the template's config,
+   and `tsc` needs the same two entries written into `tsconfig.json`
+   `paths` (`@proto/rig` → `<packages>/rig/src/index.tsx`,
+   `@proto/wire` → `<packages>/wire/src/index.ts`). Don't vendor the
+   rig, don't add it to package.json — once it publishes to npm it
+   becomes a plain dependency and both the alias block and the paths
+   disappear.
 4. `pnpm install` (standalone — never inside a git checkout, never a
    workspace package of one).
 
