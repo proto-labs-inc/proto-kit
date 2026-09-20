@@ -1,0 +1,63 @@
+#!/usr/bin/env node
+/**
+ * Checks a workspace's component markers: every .tsx file that renders
+ * components must carry data-proto-id markers, and ids must be kebab-case.
+ * The markers are what the Frame's comment mode hit-tests, so a missing
+ * marker means a component nobody can comment on.
+ *
+ * Usage: node verify-markers.mjs <workspace-dir>
+ */
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
+
+const [target] = process.argv.slice(2);
+if (!target) {
+  console.error("usage: node verify-markers.mjs <workspace-dir>");
+  process.exit(1);
+}
+const src = join(target, "src");
+
+const files = [];
+(function walk(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) walk(full);
+    else if (entry.name.endsWith(".tsx")) files.push(full);
+  }
+})(src);
+
+const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ids = new Map(); // id -> files using it
+let failed = false;
+
+for (const file of files) {
+  const source = readFileSync(file, "utf8");
+  const rel = relative(target, file);
+
+  // Renderable component = an exported capitalized function. main.tsx only
+  // mounts, it renders nothing of its own.
+  const rendersComponents =
+    !file.endsWith("main.tsx") &&
+    /export\s+(?:default\s+)?function\s+[A-Z]/.test(source);
+
+  const markers = [...source.matchAll(/data-proto-id="([^"]*)"/g)].map((m) => m[1]);
+  for (const id of markers) {
+    if (!KEBAB.test(id)) {
+      console.error(`${rel}: data-proto-id "${id}" is not kebab-case`);
+      failed = true;
+    }
+    if (!ids.has(id)) ids.set(id, []);
+    ids.get(id).push(rel);
+  }
+
+  if (rendersComponents && markers.length === 0) {
+    console.error(`${rel}: renders components but has no data-proto-id markers`);
+    failed = true;
+  }
+}
+
+if (failed) process.exit(1);
+console.log(`${ids.size} marker id(s) across ${files.length} file(s):`);
+for (const [id, where] of [...ids.entries()].sort()) {
+  console.log(`  ${id}  (${[...new Set(where)].join(", ")})`);
+}
