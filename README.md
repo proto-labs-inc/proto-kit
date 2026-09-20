@@ -10,8 +10,8 @@ agent installs and drives.
 | --- | --- |
 | `template/library/` | The design-system library viewer: a raw-HTML app the import fills with extracted tokens, type styles, and components. Scaffolded to `~/.proto/<project>/library/`, served locally, framed by the Proto app. |
 | `template/workspace/` | The prototype workspace scaffold: vite + react + the rig (source-aliased via `PROTO_PACKAGES` until `@proto/rig` publishes), `prototype.json`, comment markers, and `modern-screenshot` (the rig lazy-imports it for comment capture). |
-| `tools/` | Deterministic helpers. `serve.mjs` (static server with CORS + no-store + `?ls` listing, for anything the laptop serves), `cdp/` (the CDP reading/verification toolkit absorbed from replicate: attach, wireframe, capture, pixel diff), `verify-markers.mjs` (checks a workspace's `data-proto-id` coverage), `fake-import/` (plays a recorded design-system import against a library folder, for demos and UI work). |
-| `skills/` | The agent protocols. `import-design-system/` (source repo + live page over CDP → the library contract), `create-prototype/` (brief → workspace with states, explorations, markers). Soon: setup, serve. |
+| `tools/` | Deterministic helpers. `serve.mjs` (static server with CORS + no-store + `?ls` listing, for anything the laptop serves), `supervise.mjs` (detached start/stop/status supervisor with crash-restart, for the dev server + tunnel pair), `cdp/` (the CDP reading/verification toolkit absorbed from replicate: attach, wireframe, capture, pixel diff), `verify-markers.mjs` (checks a workspace's `data-proto-id` coverage), `fake-import/` (plays a recorded design-system import against a library folder, for demos and UI work). |
+| `skills/` | The agent protocols. `setup/` (account link + find-the-source-from-scraps → config.json/project.json), `import-design-system/` (source repo + live page over CDP → the library contract), `create-prototype/` (brief → workspace with states, explorations, markers), `serve/` (tunnel provisioning + supervised serving + recovery). |
 | `docs/` | `library-contract.md` — the frozen manifest/progress/components contract both the fake driver and the real import write. |
 | `cli/` | (soon) The `proto` CLI. |
 
@@ -23,11 +23,13 @@ harness-neutral: markdown protocols + plain scripts.
 
 ```
 ~/.proto/
-├─ config.json              account link, global settings
+├─ config.json              account link (app origin, account, auth, rig source) — shape in skills/setup
 └─ <project>/               one per product being prototyped
-   ├─ project.json          source pointers (repo path, live URL)
+   ├─ project.json          source pointers (repo path, remote, live URL)
    ├─ library/              design-system viewer + extracted pieces
-   └─ prototypes/<slug>/    prototype workspaces (vite + rig + prototype.json)
+   ├─ prototypes/<slug>/    prototype workspaces (vite + rig + prototype.json)
+   ├─ imports/<run>/        import working artifacts (wireframes, verify stages)
+   └─ run/<slug>/           serving state per prototype (spec, pids, logs) — owned by supervise.mjs
 ```
 
 ## Demo: watch a design system populate
