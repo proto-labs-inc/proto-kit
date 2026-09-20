@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "name": "starter",
+  "port": 5173,
+  "needsServer": false,
+  "states": [
+    {
+      "id": "default",
+      "title": "Default",
+      "description": "The page as it normally looks"
+    },
+    {
+      "id": "empty",
+      "title": "Empty",
+      "description": "Nothing to show yet",
+      "parent": "default"
+    }
+  ],
+  "explorations": []
+}

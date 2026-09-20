@@ -1,0 +1,7 @@
+* { box-sizing: border-box; margin: 0; }
+body { font: 15px/1.5 -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; background: #fafafa; }
+.app { max-width: 640px; margin: 0 auto; padding: 32px 20px; }
+.app header { margin-bottom: 20px; }
+.app h1 { font-size: 20px; }
+.empty { text-align: center; padding: 56px 20px; color: #666; }
+.empty .art { width: 72px; height: 72px; margin-bottom: 12px; }
