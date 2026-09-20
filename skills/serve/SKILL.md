@@ -127,9 +127,11 @@ Setup:
    `commands.jsonl`; the agent's status report appears in
    `status.json`; the same POST works against the public
    `agent-<product>` hostname once the edge settles.
-6. Give the site the command secret (how it's exchanged is the
-   account-link's concern — today, tell the user to paste it where
-   the site asks).
+6. Hand the site its dispatch address: the `register_courier` MCP
+   tool with `{ product, host, secret }` — `host` is the
+   `agent-<product>` hostname from step 2, `secret` the command
+   secret from step 1. Call it immediately after the tunnel is
+   provisioned; the user never sees or touches a credential.
 
 The proto MCP server carries the agent's cloud actions (registration,
 tunnels, comments); command payloads arrive inline in the feed — MCP

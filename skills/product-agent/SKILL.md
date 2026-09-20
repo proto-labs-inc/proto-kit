@@ -32,12 +32,35 @@ Your run dir is `~/.proto/<product>/run/courier/` — courier.json
    that IS the one-run-at-a-time queue):
    - `{"run": "<name>", "briefId"?}` — handle command `<name>`
      in-session: it names the kit skill to follow (create-prototype,
-     import-design-system, serve), with the command's payload inline
-     as the brief, scoped to this product's workspaces. Cloud actions
-     inside those flows go through the proto MCP tools
-     (`provision_tunnel`, `register_prototype`, `list_comments`, …).
-     MCP-delivered prompts/briefs arrive later with the site's
-     New-prototype dialog; until then the payload is the brief.
+     import-design-system, serve), scoped to this product's
+     workspaces. Cloud actions inside those flows go through the
+     proto MCP tools (`provision_tunnel`, `register_prototype`,
+     `list_comments`, …).
+
+     **With a `briefId`** (the site's Execute path):
+     1. Fetch the work: `get_brief {briefId}` → `{id, product,
+        account, title, description, url, referenceHtml, status}`.
+     2. Report `report_progress {briefId, status: "started"}` before
+        any slow work, then keep the site honest at each phase
+        change: `"building"` when the workspace work begins,
+        `"serving"` when the serve flow starts, `"done"` when it's
+        live and registered. The other statuses: `"failed"` and
+        `"needs-input"`.
+     3. Follow the named skill with the brief's fields (title,
+        description, url, referenceHtml). Register with the brief's
+        `account` as owner (fall back to config.json's
+        `account.user`).
+     4. Any failure → `report_progress` `"failed"` with a **plain
+        one-sentence message a non-engineer can read** — never a
+        stack trace, never raw output. If the flow needs something
+        only the user can give (a login, a decision), report
+        `"needs-input"` with the question as the message, then park
+        that command and move on; it resumes when the answer
+        arrives.
+
+     **Without a `briefId`**: follow the named skill directly and
+     record the outcome in your `status.json` — progress reporting
+     is per-brief.
    - `{"status": true}` — write a status report to
      `<run-dir>/status.json`: what you're working on, serving health
      (read the sibling run dirs' state.json + liveness), feed offset.
