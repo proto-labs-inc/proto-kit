@@ -47,6 +47,22 @@ depend on the auth kind.
 
 `chmod 600` the file — it holds a credential.
 
+### Connect the proto MCP server
+
+The MCP server is how every kit skill talks to the cloud (tunnels,
+registration, source registry, comments). Add it to the user's Claude
+Code as soon as config.json exists — the URL comes from `app`, the
+header from `auth`; never a hardcoded domain:
+
+```
+claude mcp add --transport http proto <app>/api/mcp \
+  --header "Authorization: Bearer <auth.secret>"
+```
+
+Then confirm with the `whoami` MCP tool: it reports the auth mode,
+org, and grants. A connected server whose `whoami` fails means the
+credential is stale — redo the auth step above.
+
 ## Product
 
 A product is one product being prototyped: `~/.proto/<product>/`,
@@ -75,6 +91,11 @@ link, a live URL, "the acme frontend". Work with whatever arrived:
    `acme/acme-web` — where do you keep code?"
 4. **Clone if it isn't local** (`gh repo clone`), where they keep
    code.
+5. **Record it in the cloud** once confirmed: the
+   `set_product_source` MCP tool with
+   `{ product, sourcePath, repoRemote }` — the site's product pages
+   read this registry. The local `product.json` below stays the
+   laptop's copy of the same pointers.
 
 ### `~/.proto/<product>/product.json`
 
@@ -110,9 +131,10 @@ without stopping anything.
 ## Verify
 
 - `config.json` and `product.json` parse; `source.path` exists and its
-  `package.json`/remote match the product.
-- The app is reachable: `GET <app>/api/session` responds (any status —
-  you're checking the origin, not logging in).
+  `package.json`/remote match the product (they can legitimately
+  disagree with each other — a fork or renamed checkout — which is
+  why confirmation beat validation above).
+- The `whoami` MCP tool answers with the expected org and grants.
 - `cloudflared --version` runs.
 
 Report what you set up, what you found vs. were told, and anything you

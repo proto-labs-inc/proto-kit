@@ -177,6 +177,12 @@ a reference is a guess with styling.
    user, not iterated on forever.
 3. Reload the app at `?state=<id>` for each registered state and
    confirm the right mode renders.
+4. **Register it in the user's gallery**: the `register_prototype`
+   MCP tool with `{ product, slug, title, owner }` (owner is
+   config.json's `account.user`). It upserts on (product, slug), so
+   re-registering after a title change is correct and expected; an
+   unknown-owner error means `account.user` is wrong — fix it in
+   setup, not here.
 
 Serving the prototype (dev server + tunnel) is the serve skill's job.
 Don't provision tunnels, don't publish, don't commit anything into the

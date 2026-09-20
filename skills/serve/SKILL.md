@@ -7,23 +7,19 @@ description: Serve a prototype at its public URL — provision its tunnel, start
 
 One verb: after it, the prototype is reachable at its public URL and
 stays reachable — the dev server and the tunnel connector run detached
-under `tools/supervise.mjs`, surviving this session. Everything reads
-`~/.proto/config.json` (the app origin + credential; run setup if it's
-missing) and the workspace's `public/prototype.json` (the port).
+under `tools/supervise.mjs`, surviving this session. Cloud actions go
+through the **proto MCP server** (setup connects it; if its tools are
+missing or `whoami` fails, run setup first). The workspace's
+`public/prototype.json` carries the port.
 
 ## Start
 
 1. **Provision the tunnel** (idempotent; reuses an existing tunnel for
-   the slug):
-
-   ```
-   POST <app>/api/tunnels   Authorization: Bearer <auth.secret>
-   { "slug": "<slug>", "port": <port from prototype.json> }
-   ```
-
-   Returns `hostname` (the public address) and `connectorToken` (runs
-   exactly this one tunnel, nothing else). A 401 means the credential
-   in config.json is stale — back to setup's auth step.
+   the slug): call the `provision_tunnel` MCP tool with
+   `{ slug: "<slug>", port: <port from prototype.json> }`. It returns
+   `hostname` (the public address) and `connectorToken` (runs exactly
+   this one tunnel, nothing else). An auth failure means the MCP
+   connection's credential is stale — back to setup.
 
 2. **Write the run spec** at `~/.proto/<product>/run/<slug>/spec.json`
    (this dir, not the workspace — the workspace stays naked):
@@ -58,21 +54,11 @@ missing) and the workspace's `public/prototype.json` (the port).
      ~30s on a fresh tunnel (DNS + connector registration); retry,
      don't conclude.
 
-5. **Register the prototype** so it appears in the user's gallery:
-
-   ```
-   POST <app>/api/prototypes   Authorization: Bearer <auth.secret>
-   { "product": "<product>", "slug": "<slug>", "title": "<title>",
-     "owner": "<config.json account.user>" }
-   ```
-
-   Upserts on (product, slug) — re-registering after a title change is
-   correct and expected. A 400 means a bad slug or empty title; a 404
-   means the owner isn't a known user (check `account.user` in
-   config.json); a 401 is the same stale-credential case as tunnels.
-
-6. **Report**: the public URL, the Frame URL (`<app>/p/<slug>`), and
-   where the run lives.
+5. **Report**: the public URL, the Frame URL (`<app>/p/<slug>`), and
+   where the run lives. (Gallery registration is create-prototype's
+   job, via the `register_prototype` MCP tool — it upserts, so
+   re-registering there after a title change is the fix if the
+   gallery shows a stale title.)
 
 ## Recovery
 
@@ -125,8 +111,8 @@ Setup:
 
 1. Pick a free local port for the listener; generate a command secret
    (`openssl rand -hex 24`).
-2. Provision its tunnel with the same call as step 1, slug
-   **`agent-<product>`**, the listener's port.
+2. Provision its tunnel with the same `provision_tunnel` tool as
+   step 1, slug **`agent-<product>`**, the listener's port.
 3. Write `~/.proto/<product>/run/courier/courier.json`
    (`chmod 600`) — `{ product, port, secret, agent }`; the `agent`
    block is the launcher's command template (see
@@ -145,15 +131,15 @@ Setup:
    account-link's concern — today, tell the user to paste it where
    the site asks).
 
-The agent's instruction references the totypes MCP server; until that
-server ships, prompt names map to kit skills and the launcher's
-instruction says so. No boot persistence by decision (MAA-130): after
-a reboot, the site's Offline recovery prompt is the answer.
+The proto MCP server carries the agent's cloud actions (registration,
+tunnels, comments); command payloads arrive inline in the feed — MCP
+prompts come later with the site's New-prototype dialog. No boot
+persistence by decision (MAA-130): after a reboot, the site's Offline
+recovery prompt is the answer.
 
 ## Stop / teardown
 
 `node tools/supervise.mjs stop <run-dir>` stops serving; the tunnel
 and DNS record stay provisioned (harmless, instantly reusable). Full
-teardown — only when the user asks to remove the prototype:
-`DELETE <app>/api/tunnels {"slug": …}` with the same auth, then
-delete the run dir.
+teardown — only when the user asks to remove the prototype: the
+`delete_tunnel` MCP tool with the slug, then delete the run dir.

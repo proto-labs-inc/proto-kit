@@ -30,11 +30,14 @@ Your run dir is `~/.proto/<product>/run/courier/` — courier.json
 2. **Act on each event line** `{"offset": N, "command": {…}}`, one at
    a time, in arrival order (your notifications are already serial —
    that IS the one-run-at-a-time queue):
-   - `{"run": "<prompt-name>", "briefId"?}` — do the work in-session:
-     run prompt `<prompt-name>` from the totypes MCP server (until
-     that server ships, the prompt name maps to the kit skill of the
-     same name), scoped to this product's workspaces. Report progress
-     through the totypes MCP tools once available.
+   - `{"run": "<name>", "briefId"?}` — handle command `<name>`
+     in-session: it names the kit skill to follow (create-prototype,
+     import-design-system, serve), with the command's payload inline
+     as the brief, scoped to this product's workspaces. Cloud actions
+     inside those flows go through the proto MCP tools
+     (`provision_tunnel`, `register_prototype`, `list_comments`, …).
+     MCP-delivered prompts/briefs arrive later with the site's
+     New-prototype dialog; until then the payload is the brief.
    - `{"status": true}` — write a status report to
      `<run-dir>/status.json`: what you're working on, serving health
      (read the sibling run dirs' state.json + liveness), feed offset.
