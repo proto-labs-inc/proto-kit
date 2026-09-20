@@ -34,6 +34,8 @@ missing) and the workspace's `public/prototype.json` (the port).
      "processes": [
        { "name": "dev", "cwd": "<workspace>", "command": ["pnpm", "dev"],
          "env": { "PROTO_TUNNEL": "1", "PROTO_PACKAGES": "<config.packages, pre-npm>" } },
+       // dev command = the workspace's own package manager (its lockfile
+       // tells you): ["npm", "run", "dev"], ["pnpm", "dev"], …
        { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "<connectorToken>"] }
      ]
    }

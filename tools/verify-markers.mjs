@@ -44,7 +44,12 @@ for (const file of files) {
     : !file.endsWith("main.tsx") &&
       /export\s+(?:default\s+)?function\s+[A-Z]/.test(source);
 
-  const markers = [...source.matchAll(/data-proto-id="([^"]*)"/g)].map((m) => m[1]);
+  // Coverage counts every marker form — literal, JSX expression
+  // (data-proto-id={…}), or bound (:data-proto-id="…"). Only literals
+  // get their ids validated and inventoried.
+  const markerCount = [...source.matchAll(/data-proto-id=/g)].length;
+  // (?<!:) — a Vue-bound :data-proto-id="expr" is dynamic, not a literal id.
+  const markers = [...source.matchAll(/(?<!:)\bdata-proto-id="([^"]*)"/g)].map((m) => m[1]);
   for (const id of markers) {
     if (!KEBAB.test(id)) {
       console.error(`${rel}: data-proto-id "${id}" is not kebab-case`);
@@ -54,7 +59,7 @@ for (const file of files) {
     ids.get(id).push(rel);
   }
 
-  if (rendersComponents && markers.length === 0) {
+  if (rendersComponents && markerCount === 0) {
     console.error(`${rel}: renders components but has no data-proto-id markers`);
     failed = true;
   }

@@ -90,6 +90,23 @@ a component the page needs is missing from the library, build it
 faithfully from source + live page (and note it as an import gap) —
 don't invent a parallel look.
 
+**Wire the source's CSS system into the workspace** — the template
+ships bare CSS on purpose (it doesn't know your product). Read how the
+source styles itself and reproduce that chain:
+
+- Tailwind source (the common case): add `tailwindcss` +
+  `@tailwindcss/vite` to the workspace, register the plugin in
+  `vite.config.ts`, and import the product's theme/token layer in
+  `styles.css` before your own rules — the goal is that the product's
+  utility classes and tokens resolve identically in the prototype.
+- Plain CSS/custom-property systems: import the token stylesheet(s)
+  (from the library import or copied from source) at the top of
+  `styles.css`.
+
+Either way, verify a chromatic token early: one element using a brand
+color must render the source's hue, not a default — catching a
+dead style chain before building the page is minutes; after, hours.
+
 Mock data by default: typed constants in the prototype, realistic copy
 (real-sounding names, plausible timestamps — the inbox example's
 messages, not "Item 1"). Real backend data only when the user asks.
