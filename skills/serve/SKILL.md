@@ -57,10 +57,17 @@ missing) and the workspace's `public/prototype.json` (the port).
      don't conclude.
 
 5. **Register the prototype** so it appears in the user's gallery:
-   <!-- TODO(cloud): POST /api/prototypes is being built to match.
-        Fields settled with the team lead: { project, slug, title, owner }
-        — owner from config.json account.user, same bearer auth.
-        Until it ships, skip this step and say so in the report. -->
+
+   ```
+   POST <app>/api/prototypes   Authorization: Bearer <auth.secret>
+   { "project": "<project>", "slug": "<slug>", "title": "<title>",
+     "owner": "<config.json account.user>" }
+   ```
+
+   Upserts on (project, slug) — re-registering after a title change is
+   correct and expected. A 400 means a bad slug or empty title; a 404
+   means the owner isn't a known user (check `account.user` in
+   config.json); a 401 is the same stale-credential case as tunnels.
 
 6. **Report**: the public URL, the Frame URL (`<app>/p/<slug>`), and
    where the run lives.
