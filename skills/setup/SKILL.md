@@ -1,12 +1,12 @@
 ---
 name: setup
-description: Set up Proto on this machine and link a project — account credentials into ~/.proto/config.json, find the product's source repo from whatever scraps the user gives, scaffold the project's ~/.proto/<project>/ home. Use when installing Proto, connecting a new product, or when other Proto skills find no config.json or project.json.
+description: Set up Proto on this machine and link a product — account credentials into ~/.proto/config.json, find the product's source repo from whatever scraps the user gives, scaffold the product's ~/.proto/<product>/ home. Use when installing Proto, connecting a new product, or when other Proto skills find no config.json or product.json.
 ---
 
 # Setup
 
 Two scopes, both idempotent: the **machine** (once — config.json,
-prerequisites) and a **project** (once per product being prototyped —
+prerequisites) and a **product** (once per product being prototyped —
 source link, library scaffold). Re-running setup repairs; it never
 clobbers working state.
 
@@ -47,9 +47,9 @@ depend on the auth kind.
 
 `chmod 600` the file — it holds a credential.
 
-## Project
+## Product
 
-A project is one product being prototyped: `~/.proto/<project>/`,
+A product is one product being prototyped: `~/.proto/<product>/`,
 slug-named after the product (lowercase, digits, hyphens).
 
 ### Find the source from scraps
@@ -76,12 +76,12 @@ link, a live URL, "the acme frontend". Work with whatever arrived:
 4. **Clone if it isn't local** (`gh repo clone`), where they keep
    code.
 
-### `~/.proto/<project>/project.json`
+### `~/.proto/<product>/product.json`
 
 ```jsonc
 {
   "schemaVersion": 1,
-  "project": "acme",
+  "product": "acme",
   "source": {
     "path": "/abs/path/to/acme-web",   // the checkout
     "remote": "git@github.com:acme/acme-web.git",
@@ -93,13 +93,23 @@ link, a live URL, "the acme frontend". Work with whatever arrived:
 
 ### Library scaffold
 
-Copy `template/library/` → `~/.proto/<project>/library/` (skip if it
+Copy `template/library/` → `~/.proto/<product>/library/` (skip if it
 already has a manifest with content). The import-design-system skill
 fills it; the serve skill serves it.
 
+### Migration: pre-rename homes (before 2026-09-20 "product")
+
+This concept was briefly called "project". If a home has
+`project.json`, repair it in place: rename the file to `product.json`
+and its `"project"` key to `"product"` (same for a `courier.json`
+carrying a `"project"` key, and a library `manifest.json` with a
+`"project"` field). Nothing running is affected — supervisors and
+run-dir specs never reference these files by that name — so migrate
+without stopping anything.
+
 ## Verify
 
-- `config.json` and `project.json` parse; `source.path` exists and its
+- `config.json` and `product.json` parse; `source.path` exists and its
   `package.json`/remote match the product.
 - The app is reachable: `GET <app>/api/session` responds (any status —
   you're checking the origin, not logging in).

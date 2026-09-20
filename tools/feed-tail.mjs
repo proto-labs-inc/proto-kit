@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Follows the courier's command feed for the project agent's Monitor
+ * Follows the courier's command feed for the product agent's Monitor
  * watch. Prints every complete line of <run-dir>/commands.jsonl from
  * the committed offset onward — replaying anything that arrived while
  * no watch was armed — then keeps following the file. Runs until

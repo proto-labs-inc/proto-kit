@@ -51,7 +51,7 @@ const COMPONENTS = [
 ];
 
 const manifest = {
-  project: "meridian",
+  product: "meridian",
   source: "meridian-web",
   startedAt: new Date().toISOString(),
   completedAt: null,

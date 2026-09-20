@@ -9,7 +9,7 @@
  *   <name>.log   each process's combined output
  *
  * spec.json:
- *   { "name": "<project>/<slug>",
+ *   { "name": "<product>/<slug>",
  *     "processes": [
  *       { "name": "dev", "cwd": "/abs/workspace", "command": ["pnpm", "dev"],
  *         "env": { "PROTO_TUNNEL": "1" } },

@@ -1,6 +1,6 @@
 ---
 name: import-design-system
-description: Import a product's design system into the Proto library — tokens, type styles, and components — by reading the linked source repo and a live page in the user's browser through CDP. Use when setting up a project's library, when the user asks to import/sync their design system, or when the library viewer shows an empty library.
+description: Import a product's design system into the Proto library — tokens, type styles, and components — by reading the linked source repo and a live page in the user's browser through CDP. Use when setting up a product's library, when the user asks to import/sync their design system, or when the library viewer shows an empty library.
 ---
 
 # Import a design system
@@ -8,7 +8,7 @@ description: Import a product's design system into the Proto library — tokens,
 You are turning a real product into a library: color tokens, type
 styles, and standalone component previews that render faithfully. The
 output is the **library contract** — `manifest.json`, `progress.json`,
-and `components/*.html` in `~/.proto/<project>/library/` — specified in
+and `components/*.html` in `~/.proto/<product>/library/` — specified in
 `docs/library-contract.md`. Read that first; the user is watching the
 viewer fill in as you write, so the write choreography there is not
 optional polish, it is the product.
@@ -17,7 +17,7 @@ optional polish, it is the product.
 
 You have both of these. Use both:
 
-- **The source repo** — path in `~/.proto/<project>/project.json`.
+- **The source repo** — path in `~/.proto/<product>/product.json`.
   This is where names live: token definitions (CSS custom properties,
   Tailwind `@theme`/config, design-token files), font faces, the
   component inventory, and the mechanism behind every look.
@@ -65,9 +65,9 @@ them.
 
 ## Where things go
 
-- `~/.proto/<project>/library/` — the contract files only. The viewer
+- `~/.proto/<product>/library/` — the contract files only. The viewer
   serves this folder; nothing else lands here.
-- `~/.proto/<project>/imports/<run>/` — your working artifacts:
+- `~/.proto/<product>/imports/<run>/` — your working artifacts:
   wireframes, per-component notes, replica iterations, captures,
   diffs. Same layout as a replicate run (`units/<name>/` with
   `notes.md`, `stages/`). Keep every iteration; the artifacts are how

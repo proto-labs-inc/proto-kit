@@ -1,6 +1,6 @@
 # The library contract
 
-What an import writes into `~/.proto/<project>/library/`, and what the
+What an import writes into `~/.proto/<product>/library/`, and what the
 viewer (`template/library/`) reads. **This contract is frozen.** The
 fake driver (`tools/fake-import/run.mjs`) is its executable reference —
 the real import skill must be indistinguishable from it at the file
@@ -23,7 +23,7 @@ import — never rewritten from scratch mid-run.
 
 ```jsonc
 {
-  "project": "meridian",          // project slug; null until the import starts
+  "product": "meridian",          // product slug; null until the import starts
   "source": "meridian-web",       // where it came from (repo name / host); null until start
   "startedAt": "…ISO…",           // null until start
   "completedAt": "…ISO…",         // null until the import finishes — this is the done bit

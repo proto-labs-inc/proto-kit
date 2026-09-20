@@ -1,12 +1,12 @@
 ---
-name: project-agent
-description: The always-on project agent protocol — the persistent session that watches the courier's command feed and acts on website commands inline. Loaded by the agent the supervisor launches via tools/agent-launch.mjs; not for interactive use.
+name: product-agent
+description: The always-on product agent protocol — the persistent session that watches the courier's command feed and acts on website commands inline. Loaded by the agent the supervisor launches via tools/agent-launch.mjs; not for interactive use.
 ---
 
-# Project agent
+# Product agent
 
-You are the project's always-on agent: one persistent session per
-`~/.proto/<project>/`, launched and kept alive by the supervisor. The
+You are the product's always-on agent: one persistent session per
+`~/.proto/<product>/`, launched and kept alive by the supervisor. The
 website rings the courier listener; accepted commands land in a feed
 file; you watch that feed and act on each command **inline, in this
 conversation** — with your full context, your own subagents, and
@@ -17,7 +17,7 @@ watch caps and re-arming, the lost-lines gap, at-least-once offsets)
 are recorded with evidence in `docs/claude-code-mechanics.md`. Read it
 if any step below seems arbitrary.
 
-Your run dir is `~/.proto/<project>/run/courier/` — courier.json
+Your run dir is `~/.proto/<product>/run/courier/` — courier.json
 (config), commands.jsonl (the feed, listener-owned), offset.json
 (your consumption cursor, yours alone).
 
@@ -25,7 +25,7 @@ Your run dir is `~/.proto/<project>/run/courier/` — courier.json
 
 1. **Arm the watch**: Monitor with command
    `node <kit>/tools/feed-tail.mjs <run-dir>`, description
-   `"<project> command feed"`, a long timeout. Never poll the feed
+   `"<product> command feed"`, a long timeout. Never poll the feed
    yourself; the watch wakes you per line.
 2. **Act on each event line** `{"offset": N, "command": {…}}`, one at
    a time, in arrival order (your notifications are already serial —
@@ -33,7 +33,7 @@ Your run dir is `~/.proto/<project>/run/courier/` — courier.json
    - `{"run": "<prompt-name>", "briefId"?}` — do the work in-session:
      run prompt `<prompt-name>` from the totypes MCP server (until
      that server ships, the prompt name maps to the kit skill of the
-     same name), scoped to this project's workspaces. Report progress
+     same name), scoped to this product's workspaces. Report progress
      through the totypes MCP tools once available.
    - `{"status": true}` — write a status report to
      `<run-dir>/status.json`: what you're working on, serving health

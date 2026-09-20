@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Launches the always-on project agent for the supervisor. Keeps the
+ * Launches the always-on product agent for the supervisor. Keeps the
  * "resume where possible" knowledge out of the agent and out of
  * supervise.mjs: reads <run-dir>/session.json, starts the agent fresh
  * or with --resume <id>, captures the session id from the agent's own
@@ -16,9 +16,9 @@
  *              "args": ["-p", "--output-format", "stream-json", "--verbose",
  *                        "--allowed-tools=Bash,Monitor,Read,Skill"],
  *              "resumeArgs": ["--resume", "{sessionId}"],
- *              "instruction": "Load and follow the project-agent skill …",
+ *              "instruction": "Load and follow the product-agent skill …",
  *              "resumeInstruction": "You were restarted; follow the
- *                project-agent skill's restart protocol …" }
+ *                product-agent skill's restart protocol …" }
  */
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";

@@ -8,10 +8,10 @@ agent installs and drives.
 
 | Path | What it is |
 | --- | --- |
-| `template/library/` | The design-system library viewer: a raw-HTML app the import fills with extracted tokens, type styles, and components. Scaffolded to `~/.proto/<project>/library/`, served locally, framed by the Proto app. |
+| `template/library/` | The design-system library viewer: a raw-HTML app the import fills with extracted tokens, type styles, and components. Scaffolded to `~/.proto/<product>/library/`, served locally, framed by the Proto app. |
 | `template/workspace-react/`, `template/workspace-vue/` | The prototype workspace scaffolds, one per framework (create-prototype picks by the source repo's framework): vite + the rig adapter (source-aliased via `PROTO_PACKAGES` until the rig packages publish), `prototype.json`, comment markers, `modern-screenshot` (the rig lazy-imports it for comment capture), and license-clean in-component SVG placeholder art. |
-| `tools/` | Deterministic helpers. `serve.mjs` (static server with CORS + no-store + `?ls` listing, for anything the laptop serves), `supervise.mjs` (detached start/stop/status supervisor with crash-restart, for the dev server + tunnel pair), `courier.mjs` + `courier-http.mjs` (the website→laptop doorbell: bearer-authed enumerated commands validated onto a durable feed; the HTTP transport is one swappable file), `feed-tail.mjs` + `agent-launch.mjs` (the always-on project agent's feed watch and resume-aware launcher; protocol in `skills/project-agent/`), `cdp/` (the CDP reading/verification toolkit absorbed from replicate: attach, wireframe, capture, pixel diff), `verify-markers.mjs` (checks a workspace's `data-proto-id` coverage), `fake-import/` (plays a recorded design-system import against a library folder, for demos and UI work). |
-| `skills/` | The agent protocols. `setup/` (account link + find-the-source-from-scraps → config.json/project.json), `import-design-system/` (source repo + live page over CDP → the library contract), `create-prototype/` (brief → workspace with states, explorations, markers), `serve/` (tunnel provisioning + supervised serving + recovery). |
+| `tools/` | Deterministic helpers. `serve.mjs` (static server with CORS + no-store + `?ls` listing, for anything the laptop serves), `supervise.mjs` (detached start/stop/status supervisor with crash-restart, for the dev server + tunnel pair), `courier.mjs` + `courier-http.mjs` (the website→laptop doorbell: bearer-authed enumerated commands validated onto a durable feed; the HTTP transport is one swappable file), `feed-tail.mjs` + `agent-launch.mjs` (the always-on product agent's feed watch and resume-aware launcher; protocol in `skills/product-agent/`), `cdp/` (the CDP reading/verification toolkit absorbed from replicate: attach, wireframe, capture, pixel diff), `verify-markers.mjs` (checks a workspace's `data-proto-id` coverage), `fake-import/` (plays a recorded design-system import against a library folder, for demos and UI work). |
+| `skills/` | The agent protocols. `setup/` (account link + find-the-source-from-scraps → config.json/product.json), `import-design-system/` (source repo + live page over CDP → the library contract), `create-prototype/` (brief → workspace with states, explorations, markers), `serve/` (tunnel provisioning + supervised serving + recovery). |
 | `docs/` | `library-contract.md` — the frozen manifest/progress/components contract both the fake driver and the real import write. |
 | `cli/` | (soon) The `proto` CLI. |
 
@@ -24,8 +24,8 @@ harness-neutral: markdown protocols + plain scripts.
 ```
 ~/.proto/
 ├─ config.json              account link (app origin, account, auth, rig source) — shape in skills/setup
-└─ <project>/               one per product being prototyped
-   ├─ project.json          source pointers (repo path, remote, live URL)
+└─ <product>/               one per product being prototyped
+   ├─ product.json          source pointers (repo path, remote, live URL)
    ├─ library/              design-system viewer + extracted pieces
    ├─ prototypes/<slug>/    prototype workspaces (vite + rig + prototype.json)
    ├─ imports/<run>/        import working artifacts (wireframes, verify stages)

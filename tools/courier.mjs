@@ -2,17 +2,17 @@
 /**
  * The courier listener (MAA-130, amendment 2): the website→laptop
  * doorbell. Receives bearer-authed enumerated JSON commands on a local
- * port (exposed publicly via the project's agent-<project> tunnel),
+ * port (exposed publicly via the product's agent-<product> tunnel),
  * validates them, and appends each ACCEPTED command as one JSON line to
- * <run-dir>/commands.jsonl — the durable feed the always-on project
- * agent consumes (see skills/project-agent/ and
+ * <run-dir>/commands.jsonl — the durable feed the always-on product
+ * agent consumes (see skills/product-agent/ and
  * docs/claude-code-mechanics.md for why a file, not stdout: lines
  * emitted while no watch is armed would be lost, and the monitored
  * command is killed at watch end while this listener must keep its
  * port).
  *
  * That's the whole job: no spawning, no queue, no run tracking — the
- * project agent acts on commands inline, in its own session.
+ * product agent acts on commands inline, in its own session.
  *
  * Command handling is transport-agnostic: handle() takes a parsed JSON
  * command however it arrived. courier-http.mjs is the current
@@ -24,7 +24,7 @@
  *   { "restart-serving": "<slug>" | true }
  *
  * Usage: node courier.mjs <run-dir>     (reads <run-dir>/courier.json:
- *   { "project": "acme", "port": 5300, "secret": "…" })
+ *   { "product": "acme", "port": 5300, "secret": "…" })
  */
 import { appendFileSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -73,5 +73,5 @@ export async function handle(cmd) {
 }
 
 serveHttp({ port: config.port, secret: config.secret, handle }, () =>
-  console.log(`courier listener for ${config.project} on 127.0.0.1:${config.port}`),
+  console.log(`courier listener for ${config.product} on 127.0.0.1:${config.port}`),
 );

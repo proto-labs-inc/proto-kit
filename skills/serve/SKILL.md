@@ -25,12 +25,12 @@ missing) and the workspace's `public/prototype.json` (the port).
    exactly this one tunnel, nothing else). A 401 means the credential
    in config.json is stale — back to setup's auth step.
 
-2. **Write the run spec** at `~/.proto/<project>/run/<slug>/spec.json`
+2. **Write the run spec** at `~/.proto/<product>/run/<slug>/spec.json`
    (this dir, not the workspace — the workspace stays naked):
 
    ```jsonc
    {
-     "name": "<project>/<slug>",
+     "name": "<product>/<slug>",
      "processes": [
        { "name": "dev", "cwd": "<workspace>", "command": ["pnpm", "dev"],
          "env": { "PROTO_TUNNEL": "1", "PROTO_PACKAGES": "<config.packages, pre-npm>" } },
@@ -45,7 +45,7 @@ missing) and the workspace's `public/prototype.json` (the port).
    HMR — without it the tunnel serves a blocked-host error. `chmod
    600 spec.json`; it holds the connector token.
 
-3. **Start**: `node tools/supervise.mjs start ~/.proto/<project>/run/<slug>`.
+3. **Start**: `node tools/supervise.mjs start ~/.proto/<product>/run/<slug>`.
    Children that die are restarted with backoff; `stop` and `status`
    take the same run dir.
 
@@ -62,11 +62,11 @@ missing) and the workspace's `public/prototype.json` (the port).
 
    ```
    POST <app>/api/prototypes   Authorization: Bearer <auth.secret>
-   { "project": "<project>", "slug": "<slug>", "title": "<title>",
+   { "product": "<product>", "slug": "<slug>", "title": "<title>",
      "owner": "<config.json account.user>" }
    ```
 
-   Upserts on (project, slug) — re-registering after a title change is
+   Upserts on (product, slug) — re-registering after a title change is
    correct and expected. A 400 means a bad slug or empty title; a 404
    means the owner isn't a known user (check `account.user` in
    config.json); a 401 is the same stale-credential case as tunnels.
@@ -102,18 +102,18 @@ Harness facts this design stands on — per-line Monitor wake-ups,
 are recorded with their verification evidence in
 `docs/claude-code-mechanics.md`.
 
-Once per **project** (not per prototype), the site can start agent
+Once per **product** (not per prototype), the site can start agent
 work on this laptop. Three pieces, one supervised run dir
-(`~/.proto/<project>/run/courier/`):
+(`~/.proto/<product>/run/courier/`):
 
 - **The listener** (`tools/courier.mjs`) — the doorbell. Receives
   bearer-authed enumerated commands on a local port, validates, and
   appends each accepted command to `commands.jsonl`. It holds the
   port, so it runs under supervise, never under a Monitor watch.
-- **The project agent** — one persistent Claude Code session per
-  project, launched by `tools/agent-launch.mjs` (which captures the
+- **The product agent** — one persistent Claude Code session per
+  product, launched by `tools/agent-launch.mjs` (which captures the
   session id into `session.json` and resumes it on every relaunch).
-  It follows `skills/project-agent/`: watch the feed via Monitor on
+  It follows `skills/product-agent/`: watch the feed via Monitor on
   `tools/feed-tail.mjs`, act on each command inline, commit
   `offset.json` after each. The user can attach to the very same
   conversation: `claude --resume <sessionId>`.
@@ -126,21 +126,21 @@ Setup:
 1. Pick a free local port for the listener; generate a command secret
    (`openssl rand -hex 24`).
 2. Provision its tunnel with the same call as step 1, slug
-   **`agent-<project>`**, the listener's port.
-3. Write `~/.proto/<project>/run/courier/courier.json`
-   (`chmod 600`) — `{ project, port, secret, agent }`; the `agent`
+   **`agent-<product>`**, the listener's port.
+3. Write `~/.proto/<product>/run/courier/courier.json`
+   (`chmod 600`) — `{ product, port, secret, agent }`; the `agent`
    block is the launcher's command template (see
    `tools/agent-launch.mjs`'s header). The spawned command line is
    config, not code.
 4. `spec.json` — three processes: the listener
    (`node <kit>/tools/courier.mjs <run-dir>`), the agent launcher
    (`node <kit>/tools/agent-launch.mjs <run-dir>`), and `cloudflared`
-   with the `agent-<project>` connector token. `supervise.mjs start`.
+   with the `agent-<product>` connector token. `supervise.mjs start`.
 5. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
    `Authorization: Bearer <secret>` acks 202 and the line lands in
    `commands.jsonl`; the agent's status report appears in
    `status.json`; the same POST works against the public
-   `agent-<project>` hostname once the edge settles.
+   `agent-<product>` hostname once the edge settles.
 6. Give the site the command secret (how it's exchanged is the
    account-link's concern — today, tell the user to paste it where
    the site asks).

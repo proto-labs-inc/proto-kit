@@ -26,7 +26,7 @@ You need three things before scaffolding; ask only for what's missing:
 
 ## Where it lives
 
-Scaffold `~/.proto/<project>/prototypes/<slug>/` by copying the
+Scaffold `~/.proto/<product>/prototypes/<slug>/` by copying the
 workspace template **matching the source repo's framework** — read the
 product's `package.json`: `vue` → `template/workspace-vue/`, otherwise
 (react, or no source repo) → `template/workspace-react/`. The
@@ -35,7 +35,7 @@ isn't one. Then make it this prototype's own:
 
 1. `package.json` `name`, `index.html` `<title>`, and
    `public/prototype.json` `name` → the slug.
-2. Pick a free port (one prototype per port; check the project's other
+2. Pick a free port (one prototype per port; check the product's other
    workspaces) and set it in **both** `vite.config.ts` and
    `prototype.json` — they must agree, the Frame reads the manifest.
 3. Pre-npm: the rig resolves via the `PROTO_PACKAGES` env var (path to
@@ -70,7 +70,7 @@ not like the source code's idea of it, not like your memory of it.
 2. Walk the page before building: hover the controls, open the menus,
    dropdowns, sheets. Capture what each interaction reveals. The
    resting screenshot is not the page.
-3. Find the matching page in the project's source repo and read its
+3. Find the matching page in the product's source repo and read its
    layout and components — the source explains mechanisms (why a
    toolbar wraps, what an active state looks like). Copy render
    structure and mechanisms into the prototype; never import the
@@ -83,8 +83,8 @@ alternate layout.
 
 ## Build from their design system
 
-Before writing UI, open the project's library
-(`~/.proto/<project>/library/`) and map each region of the page to
+Before writing UI, open the product's library
+(`~/.proto/<product>/library/`) and map each region of the page to
 extracted components and tokens. Reuse what the import produced; when
 a component the page needs is missing from the library, build it
 faithfully from source + live page (and note it as an import gap) —
