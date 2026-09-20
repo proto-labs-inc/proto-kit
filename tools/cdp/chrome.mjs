@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 
 const port = Number(process.argv[2] || 9333);
-const profile = process.argv[3] || `${process.env.HOME}/.replicate-chrome`;
+const profile = process.argv[3] || `${process.env.HOME}/.proto/chrome`;
 
 async function alive() {
   try {

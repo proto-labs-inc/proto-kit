@@ -95,6 +95,39 @@ half is down. Then the log for that process in the run dir:
 - **Doubt everything**: `stop`, then `start` — the spec is the whole
   truth of the run, and starting is idempotent.
 
+## The courier (the website→laptop command channel)
+
+Once per **project** (not per prototype), the site can start agent work
+on this laptop through the courier daemon (`tools/courier.mjs`). Set it
+up like one more supervised run:
+
+1. Pick a free local port for the daemon; generate a command secret
+   (`openssl rand -hex 24`).
+2. Provision its tunnel with the same call as step 1, slug
+   **`agent-<project>`**, the daemon's port.
+3. Write `~/.proto/<project>/run/courier/`:
+   - `courier.json` — `{ project, projectDir, port, secret, run }`
+     (see the header of `tools/courier.mjs`; the `run` block is the
+     headless-run command template — the spawned command line is
+     config, not code). `chmod 600`.
+   - `spec.json` — two processes: the daemon
+     (`node <kit>/tools/courier.mjs <run-dir>`) and its `cloudflared`
+     with the `agent-<project>` connector token.
+4. `supervise.mjs start` it, then verify: a `{"status": true}` POST to
+   `127.0.0.1:<port>` with `Authorization: Bearer <secret>` answers
+   with runs + serving health; the same POST against the public
+   `agent-<project>` hostname answers once the edge settles.
+5. Give the site the command secret (how it's exchanged is the
+   account-link's concern — today, tell the user to paste it where the
+   site asks).
+
+Commands are enumerated (`run` / `status` / `restart-serving`), acked
+on receipt, one run at a time per project with the rest queued. The
+run instruction currently references the totypes MCP server by
+template; until that server ships, wire a stub instruction in
+`courier.json` for testing. No boot persistence by decision (MAA-130):
+after a reboot, the site's Offline recovery prompt is the answer.
+
 ## Stop / teardown
 
 `node tools/supervise.mjs stop <run-dir>` stops serving; the tunnel
