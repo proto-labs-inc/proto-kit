@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Checks a workspace's component markers: every .tsx file that renders
- * components must carry data-proto-id markers, and ids must be kebab-case.
+ * components must carry data-proto-id markers, and ids must be kebab-case
+ * (dot-separated kebab segments allowed — ids ported from a scope.component
+ * convention stay verbatim, since ids are comment anchor keys).
  * The markers are what the Frame's comment mode hit-tests, so a missing
  * marker means a component nobody can comment on.
  *
@@ -26,7 +28,7 @@ const files = [];
   }
 })(src);
 
-const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 const ids = new Map(); // id -> files using it
 let failed = false;
 

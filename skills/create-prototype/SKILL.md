@@ -98,7 +98,13 @@ the selector and anchors comments to them.
   no. List rows repeat the same id; that's correct.
 - Ids are **anchor keys**: comments people leave are pinned to them.
   Once a prototype has been served, renaming an id orphans its
-  comments — extend, don't rename.
+  comments — extend, don't rename. Ids ported from an existing
+  registry stay verbatim (dot-separated kebab segments like
+  `project-shell.product-sidebar` are valid) for the same reason.
+- Vendored third-party code (a copied design-system package slice,
+  say) lives **outside `src/`** — `vendor/` at the workspace root.
+  Everything under `src/` is prototype-authored and must be fully
+  marker-covered; the checker enforces exactly that line.
 - `node tools/verify-markers.mjs <workspace>` must pass before you're
   done: it fails any component-rendering file with no markers and any
   non-kebab id, and prints the id inventory — read it and check it
