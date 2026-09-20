@@ -98,48 +98,57 @@ half is down. Then the log for that process in the run dir:
 ## The courier (the website→laptop command channel)
 
 Harness facts this design stands on — per-line Monitor wake-ups,
-`-p` watch caps and re-arming, session resume — are recorded with
-their verification evidence in `docs/claude-code-mechanics.md`.
+`-p` watch caps and re-arming, the lost-lines gap, session resume —
+are recorded with their verification evidence in
+`docs/claude-code-mechanics.md`.
 
-Once per **project** (not per prototype), the site can start agent work
-on this laptop through the courier daemon (`tools/courier.mjs`). Set it
-up like one more supervised run:
+Once per **project** (not per prototype), the site can start agent
+work on this laptop. Three pieces, one supervised run dir
+(`~/.proto/<project>/run/courier/`):
 
-1. Pick a free local port for the daemon; generate a command secret
+- **The listener** (`tools/courier.mjs`) — the doorbell. Receives
+  bearer-authed enumerated commands on a local port, validates, and
+  appends each accepted command to `commands.jsonl`. It holds the
+  port, so it runs under supervise, never under a Monitor watch.
+- **The project agent** — one persistent Claude Code session per
+  project, launched by `tools/agent-launch.mjs` (which captures the
+  session id into `session.json` and resumes it on every relaunch).
+  It follows `skills/project-agent/`: watch the feed via Monitor on
+  `tools/feed-tail.mjs`, act on each command inline, commit
+  `offset.json` after each. The user can attach to the very same
+  conversation: `claude --resume <sessionId>`.
+- **The feed** (`commands.jsonl` + `offset.json`) — the durable,
+  at-least-once buffer between them. It's what survives watch
+  timeouts, agent restarts, and reboots.
+
+Setup:
+
+1. Pick a free local port for the listener; generate a command secret
    (`openssl rand -hex 24`).
 2. Provision its tunnel with the same call as step 1, slug
-   **`agent-<project>`**, the daemon's port.
-3. Write `~/.proto/<project>/run/courier/`:
-   - `courier.json` — `{ project, projectDir, port, secret, run }`
-     (see the header of `tools/courier.mjs`; the `run` block is the
-     headless-run command template — the spawned command line is
-     config, not code). `chmod 600`.
-   - `spec.json` — two processes: the daemon
-     (`node <kit>/tools/courier.mjs <run-dir>`) and its `cloudflared`
-     with the `agent-<project>` connector token.
-4. `supervise.mjs start` it, then verify: a `{"status": true}` POST to
-   `127.0.0.1:<port>` with `Authorization: Bearer <secret>` answers
-   with runs + serving health; the same POST against the public
-   `agent-<project>` hostname answers once the edge settles.
-5. Give the site the command secret (how it's exchanged is the
-   account-link's concern — today, tell the user to paste it where the
-   site asks).
+   **`agent-<project>`**, the listener's port.
+3. Write `~/.proto/<project>/run/courier/courier.json`
+   (`chmod 600`) — `{ project, port, secret, agent }`; the `agent`
+   block is the launcher's command template (see
+   `tools/agent-launch.mjs`'s header). The spawned command line is
+   config, not code.
+4. `spec.json` — three processes: the listener
+   (`node <kit>/tools/courier.mjs <run-dir>`), the agent launcher
+   (`node <kit>/tools/agent-launch.mjs <run-dir>`), and `cloudflared`
+   with the `agent-<project>` connector token. `supervise.mjs start`.
+5. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
+   `Authorization: Bearer <secret>` acks 202 and the line lands in
+   `commands.jsonl`; the agent's status report appears in
+   `status.json`; the same POST works against the public
+   `agent-<project>` hostname once the edge settles.
+6. Give the site the command secret (how it's exchanged is the
+   account-link's concern — today, tell the user to paste it where
+   the site asks).
 
-Commands are enumerated (`run` / `status` / `restart-serving`), acked
-on receipt, one at a time per project with the rest queued. Every
-`run` is delivered to **one persistent project agent** — a single
-Claude Code session whose ID the daemon captures on the first run and
-resumes ever after (`session.json` in the run dir). That gives the
-agent continuity across commands, lets it spawn its own subagents, and
-lets the user attach to the same conversation from their terminal:
-`claude --resume <sessionId>`. A resumed run that dies without
-producing events is treated as a broken session: the break is recorded,
-the command retries once on a fresh session, the queue moves on.
-
-The run instruction currently references the totypes MCP server by
-template; until that server ships, wire a stub instruction in
-`courier.json` for testing. No boot persistence by decision (MAA-130):
-after a reboot, the site's Offline recovery prompt is the answer.
+The agent's instruction references the totypes MCP server; until that
+server ships, prompt names map to kit skills and the launcher's
+instruction says so. No boot persistence by decision (MAA-130): after
+a reboot, the site's Offline recovery prompt is the answer.
 
 ## Stop / teardown
 
