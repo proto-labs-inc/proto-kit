@@ -122,8 +122,17 @@ up like one more supervised run:
    site asks).
 
 Commands are enumerated (`run` / `status` / `restart-serving`), acked
-on receipt, one run at a time per project with the rest queued. The
-run instruction currently references the totypes MCP server by
+on receipt, one at a time per project with the rest queued. Every
+`run` is delivered to **one persistent project agent** — a single
+Claude Code session whose ID the daemon captures on the first run and
+resumes ever after (`session.json` in the run dir). That gives the
+agent continuity across commands, lets it spawn its own subagents, and
+lets the user attach to the same conversation from their terminal:
+`claude --resume <sessionId>`. A resumed run that dies without
+producing events is treated as a broken session: the break is recorded,
+the command retries once on a fresh session, the queue moves on.
+
+The run instruction currently references the totypes MCP server by
 template; until that server ships, wire a stub instruction in
 `courier.json` for testing. No boot persistence by decision (MAA-130):
 after a reboot, the site's Offline recovery prompt is the answer.
