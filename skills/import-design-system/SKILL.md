@@ -118,10 +118,12 @@ the import.)
    Scaffold `template/library/` into
    `~/.proto/<product>/library/` if setup hasn't, then serve it
    supervised so it outlives this session: a
-   `~/.proto/<product>/run/library/` spec running
-   `node tools/serve.mjs <library-dir> <port>`, `supervise.mjs
-   start`. Tell the user the URL (and the app's design-system page
-   picks it up). Only then start the import.
+   `~/.proto/<product>/run/library/` spec with two processes —
+   `node tools/serve.mjs <library-dir> <port>` and the liveness beat
+   `node tools/prototype-heartbeat.mjs <run-dir> <product>
+   --library` — then `supervise.mjs start`. Tell the user the URL
+   (and the app's design-system page picks it up). Only then start
+   the import.
 
 Write `progress.json` **before** doing anything slow — the first
 heartbeat ("Reading the source…") is what tells the user the import is
@@ -154,7 +156,11 @@ contract:
    by you, as units land. The queue draining several-at-once IS the
    experience the user should see.
 5. **Finish.** Set `completedAt`, write
-   `{"status": "complete", "activity": "Import complete"}`.
+   `{"status": "complete", "activity": "Import complete"}`. Then
+   publish the finished library so it outlives the laptop:
+   `node tools/publish.mjs --library <product>`, and tell the user
+   in one line: the library is published and stays viewable after
+   this laptop closes.
 
 ## Reading the page
 

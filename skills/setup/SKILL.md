@@ -303,7 +303,9 @@ Setup ends by continuing, not by stopping:
    reference HTML (structure hints only — the live page wins).
    Registration there uses `account.user` as owner.
 3. End by telling the user, plainly: **keep this session open — it's
-   your product's agent.** This very session (in the terminal or the
+   your product's agent.** And one more sentence once the first
+   import has finished: the library is published, so it stays
+   viewable after this laptop closes. This very session (in the terminal or the
    Claude Code desktop app) is what receives the site's commands;
    continue into the listen skill. Closing it doesn't lose
    anything — commands queue in the feed — but nothing runs until a

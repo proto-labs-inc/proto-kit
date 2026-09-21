@@ -14,7 +14,10 @@
  * after ~45s of silence.
  *
  * Usage: node prototype-heartbeat.mjs <run-dir> <product> <slug>
- *   account comes from ~/.proto/config.json.
+ *        node prototype-heartbeat.mjs <run-dir> <product> --library
+ *   account comes from ~/.proto/config.json. --library beats for the
+ *   product's library serving run instead of a prototype (kind
+ *   "library", no slug).
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -22,9 +25,10 @@ import { callTool } from "./mcp-call.mjs";
 
 const [runDirArg, product, slug] = process.argv.slice(2);
 if (!runDirArg || !product || !slug) {
-  console.error("usage: node prototype-heartbeat.mjs <run-dir> <product> <slug>");
+  console.error("usage: node prototype-heartbeat.mjs <run-dir> <product> <slug|--library>");
   process.exit(1);
 }
+const isLibrary = slug === "--library";
 const runDir = resolve(runDirArg);
 const account = (() => {
   try {
@@ -58,7 +62,10 @@ function siblingsUp() {
 async function beat() {
   if (!siblingsUp()) return; // serving is not healthy; stay silent
   try {
-    await callTool("prototype_heartbeat", { product, slug, account });
+    await callTool(
+      "prototype_heartbeat",
+      isLibrary ? { product, kind: "library", account } : { product, slug, account },
+    );
   } catch (e) {
     console.log(`heartbeat not sent (${e.message}); still beating`);
   }
