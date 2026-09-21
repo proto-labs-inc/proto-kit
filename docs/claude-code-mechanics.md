@@ -136,6 +136,17 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   expansion also works, with a denylist of credential vars
   (ANTHROPIC_API_KEY etc.) that read as empty in remote
   urls/headers.
+- Plugin monitors, empirically (2026-09-20): `when: "always"` works
+  end to end — the monitor process auto-started in a fresh
+  interactive session from the installed cache, and an appended feed
+  line arrived as a Monitor event the session acted on.
+  `when: "on-skill-invoke:product-agent"` did NOT start the monitor
+  on this build when the skill was invoked as /proto:product-agent.
+  The kit ships on-skill-invoke (correct semantics; `always` would
+  deliver courier commands to every unrelated session) and the
+  product-agent skill's manual Monitor arming is the load-bearing
+  path in BOTH interactive and headless sessions until upstream
+  honors the trigger.
 - Plugin hooks: use STRING commands
   (`"command": "node \"${CLAUDE_PLUGIN_ROOT}/…\""`). The docs
   recommend exec-form arrays, but on 2026-09-20 an array-form
