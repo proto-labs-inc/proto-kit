@@ -168,7 +168,10 @@ console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload UR
 
 // One presigned PUT URL per file, each bound to its exact object,
 // content type and size; the URLs live ten minutes, so upload in
-// parallel and fail plainly on the first refusal.
+// parallel and fail plainly on the first refusal. Bodies must be
+// Buffers, never streams: Content-Length is one of the signed
+// headers, and a chunked body has no length, so streaming always
+// fails the signature (403 SignatureDoesNotMatch).
 const results = await Promise.all(
   uploads.map(async (upload) => {
     const res = await fetch(upload.url, {
