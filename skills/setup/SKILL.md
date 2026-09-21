@@ -86,13 +86,19 @@ for "who am I and where is the app":
 
 **The auth step is a swappable slot.** Today the snippet names the
 account in plain text and the credential is the shared provisioning
-secret already on this laptop (an existing config.json, or a proto
-checkout's `.env` — `PROTO_PROVISION_SECRET`). Record both, then
-**tell the user which account they're set up as**, by name. When
-account linking ships, this same step redeems a token from the
-snippet instead and writes a different `auth.kind` — nothing
-downstream may depend on the auth kind; everything reads `auth`
-opaquely and sends `Authorization: Bearer <auth.secret>`.
+secret. Where it comes from, in order: an existing
+`~/.proto/config.json` on this laptop (a resume); the plugin's own
+configuration, when the host prompted for the app URL and secret at
+install (Claude Code, Cursor); otherwise **ask the user for the two
+values, the app URL and the provisioning secret, and stop until
+they answer**. Never search the disk for them: a `.env` file
+belonging to some checkout is not this user's credential, even if it
+would work. Record both, then **tell the user which account they're
+set up as**, by name. When account linking ships, this same step
+redeems a token from the snippet instead and writes a different
+`auth.kind` — nothing downstream may depend on the auth kind;
+everything reads `auth` opaquely and sends `Authorization: Bearer
+<auth.secret>`.
 
 `chmod 600` the file — it holds a credential. Registration and every
 cloud call use `account.user` as the owner.
@@ -240,9 +246,15 @@ browser. Set that up once per machine, here:
    `~/.proto/chrome`, so logins persist across sessions and reboots;
    the login is one-time.
 2. The snippet names the product page to parse (or says to ask for
-   one). Before anything reads it, confirm the user is logged in to
-   the product in that window: ask them to open the page there and
-   sign in, and wait until they say they have. Record the page in
+   one). Open it in that window yourself, over CDP:
+   `openBackground(url)` from `tools/cdp/attach.mjs`, then read the
+   page (`evaluate`) for a signed-in marker: the user's name in a
+   greeting or menu, an account control, no sign-in form. **Never
+   drive the browser's interface** (no clicking its address bar, no
+   typing into it, no computer-use automation): the kit reads pages
+   through the debug port only. If the page shows no signed-in
+   marker, tell the user to sign in in the Proto window and wait
+   until they say they have; then read again. Record the page in
    `product.json` as `source.liveUrl` — the import-design-system
    skill takes it from there instead of asking again.
 3. From then on, skills find the page by looking at the open tabs

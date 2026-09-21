@@ -116,16 +116,36 @@ the import.)
 
 0. **Host the library first — before extracting anything.** The
    whole point of the write choreography is that the user WATCHES the
-   library fill in; that needs the viewer serving before item one.
-   Scaffold `template/library/` into
-   `~/.proto/<product>/library/` if setup hasn't, then serve it
-   supervised so it outlives this session: a
-   `~/.proto/<product>/run/library/` spec with two processes —
-   `node tools/serve.mjs <library-dir> <port>` and the liveness beat
-   `node tools/prototype-heartbeat.mjs <run-dir> <product>
-   --library` — then `supervise.mjs start`. Tell the user the URL
-   (and the app's design-system page picks it up). Only then start
-   the import.
+   library fill in; that needs the viewer reachable from the site
+   before item one. Reachable means through its tunnel, not on
+   localhost: the app's Design system page loads
+   `https://<product>-library.<base domain>`, nothing else. If the
+   library is already running under supervision (a `run/library/`
+   with a live daemon), leave it; otherwise, in this order:
+   1. Scaffold `template/library/` into `~/.proto/<product>/library/`
+      if setup hasn't.
+   2. **Provision the tunnel before anything can look the name up**:
+      call the `provision_tunnel` MCP tool with
+      `{ slug: "<product>-library", port: <port> }`. This creates the
+      DNS record. It must happen before the site, a browser, or you
+      ever ask for that hostname: a lookup that finds no record is
+      remembered as "does not exist" by every resolver on the path
+      for thirty minutes, and the library will look dead long after
+      it is up. Never `curl https://<hostname>` before this step.
+   3. Write the `~/.proto/<product>/run/library/` spec with **three**
+      processes, exactly as the serve skill does for a prototype:
+      `node tools/serve.mjs <library-dir> <port>`, the tunnel
+      connector from the provisioning result, and the liveness beat
+      `node tools/prototype-heartbeat.mjs <run-dir> <product>
+      --library`. Then `supervise.mjs start`. A library run without a
+      tunnel process is a bug: the beat stays silent without one, so
+      the site would never call it live anyway.
+   4. Verify through Cloudflare's edge only, once: `curl --resolve
+      <hostname>:443:<edge ip> https://<hostname>/manifest.json`
+      (any IP from `dig @1.1.1.1 <hostname> A`). A plain `curl` or
+      opening the hostname in a browser is a resolver lookup, and if
+      it races the record it poisons this laptop for thirty minutes.
+      Then tell the user the URL. Only then start the import.
 
 Write `progress.json` **before** doing anything slow — the first
 heartbeat ("Reading the source…") is what tells the user the import is
@@ -156,13 +176,31 @@ contract:
    subagents (see **Fan out** below); each component still walks
    `found → extracting → done/skipped` with every transition flushed
    by you, as units land. The queue draining several-at-once IS the
-   experience the user should see.
-5. **Finish.** Set `completedAt`, write
-   `{"status": "complete", "activity": "Import complete"}`. Then
-   publish the finished library so it outlives the laptop:
-   `node tools/publish.mjs --library <product>`, and tell the user
-   in one line: the library is published and stays viewable after
-   this laptop closes.
+   experience the user should see. **The moment a subagent reports
+   back, flush that unit's status before doing anything else.** A
+   report that arrives and is not flushed is a unit the user never
+   sees finish; the manifest, not your memory, is the record of what
+   is done.
+5. **Finish. Every line of this list, in order, before you say the
+   import is done:**
+   - every component in the manifest is `done` or `skipped` (none
+     `found` or `extracting`);
+   - `completedAt` is set and `progress.json` says
+     `{"status": "complete", "activity": "Import complete"}`;
+   - the library is published so it outlives the laptop:
+     `node tools/publish.mjs --library <product>`;
+   - one line to the user: the library is published and stays
+     viewable after this laptop closes;
+   - then continue into the next thing setup asked for (a prototype
+     brief, or the listen skill). The import is not done until the
+     list is.
+
+**If anything interrupts you** (the user asks for something else
+mid-import, a recovery prompt from the site, a crash, a resumed
+session): do that thing, then come back here. Read `manifest.json`,
+treat every component that is not `done` or `skipped` as still
+yours, and carry on from step 4. Never declare the import finished
+from memory; the manifest says what is finished.
 
 ## Reading the page
 

@@ -48,9 +48,15 @@ const alive = (pid) => {
   }
 };
 
+// "Live" means reachable from the site, which means through the tunnel.
+// A run spec without a tunnel process (a library served on localhost
+// only) must never beat: the site would load a hostname that does not
+// exist, and the failed lookup is cached as "does not exist" for the
+// zone's negative TTL.
 function siblingsUp() {
   try {
     const state = JSON.parse(readFileSync(join(runDir, "state.json"), "utf8"));
+    if (!state.processes.tunnel) return false;
     return Object.entries(state.processes)
       .filter(([name]) => name !== "heartbeat")
       .every(([, p]) => alive(p.pid));

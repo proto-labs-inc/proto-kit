@@ -193,14 +193,20 @@ a reference is a guess with styling.
    user, not iterated on forever.
 3. Reload the app at `?state=<id>` for each registered state and
    confirm the right mode renders.
-4. **Register it in the user's gallery**: the `register_prototype`
-   MCP tool with `{ product, slug, title, owner }` (owner is
-   config.json's `account.user`). It upserts on (product, slug), so
-   re-registering after a title change is correct and expected; an
-   unknown-owner error means `account.user` is wrong — fix it in
-   setup, not here.
+4. **Hand off to the serve skill, which registers the prototype.**
+   Registration (`register_prototype` with `{ product, slug, title,
+   owner }`, owner = config.json's `account.user`) happens inside
+   the serve skill, after the tunnel is provisioned and the run is
+   up, never here: a registered prototype is a tile on the site, and
+   opening a tile whose hostname does not exist yet poisons the
+   viewer's resolver for thirty minutes. `register_prototype`
+   upserts on (product, slug), so re-registering after a title
+   change is correct and expected; an unknown-owner error means
+   `account.user` is wrong — fix it in setup, not here.
 
-Serving the prototype (dev server + tunnel) is the serve skill's job.
-Don't provision tunnels, don't publish, don't commit anything into the
-user's repos — the workspace lives outside them on purpose. Stop after
-it works locally and tell the user what to look at.
+Serving the prototype (dev server + tunnel + registration) is the
+serve skill's job. Don't provision tunnels, don't publish, don't
+commit anything into the user's repos — the workspace lives outside
+them on purpose. When it works locally, continue into the serve
+skill; the user should hear about the prototype once it is reachable,
+not before.

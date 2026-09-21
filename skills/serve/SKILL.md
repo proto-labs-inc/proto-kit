@@ -59,9 +59,24 @@ directory, which is also the proto-kit checkout root.
    - `http://localhost:<port>` serves the prototype (dev server up).
    - `http://localhost:<port>/prototype.json` returns the manifest
      (the Frame needs it).
-   - `https://<hostname>` serves it publicly. Give the edge up to
-     ~30s on a fresh tunnel (DNS + connector registration); retry,
-     don't conclude.
+   - `https://<hostname>` serves it publicly. Check this **through
+     Cloudflare's edge only**: `curl --resolve <hostname>:443:<edge
+     ip> https://<hostname>/prototype.json`, with the ip from `dig
+     @1.1.1.1 <hostname> A`. Give the edge up to ~30s on a fresh
+     tunnel (connector registration); retry, don't conclude. Never
+     use a plain `curl https://<hostname>` or open the hostname in a
+     browser to check: that is a lookup through this laptop's
+     resolver, and if it runs before the record has spread it is
+     remembered as "does not exist" for thirty minutes, on this
+     laptop and at the ISP, and the prototype looks dead long after
+     it is up. The record can take a few minutes to be visible to
+     ordinary resolvers; that is normal and not yours to wait for.
+
+   Only now, with the tunnel provisioned and the run up, register the
+   prototype in the gallery (`register_prototype`, as create-prototype
+   describes). Registering earlier puts a tile on the site whose
+   hostname does not exist yet; the first person to open it poisons
+   their resolver the same way.
 
 5. **Publish** a permanent snapshot. Build the workspace with its
    own build script (`pnpm build`; the templates configure relative
@@ -112,11 +127,14 @@ are recorded with their verification evidence in
 Once per **laptop and product** the site can start agent work here.
 The product is the team's — many developers, each with their own
 laptop and courier; **the courier is this laptop's**, identified by a
-cloud-minted opaque `courierId`. No tunnel is ever named after the
-product: tunnel slugs are per-laptop ids (`c-<courierId>`; the
-library's tunnel likewise uses the cloud-minted `libraryId`). Laptop
-paths stay keyed by the product id (`~/.proto/<productId>/`); the
-courier and library ids live in the run dir. Three pieces, one
+cloud-minted opaque `courierId`. The courier's tunnel is never named
+after the product: its slug is the per-laptop id `c-<courierId>`.
+The library's tunnel is the exception: the site's Design system page
+loads `https://<productId>-library.<base domain>`, so the library
+tunnel's slug is `<productId>-library` (one per product; two laptops
+serving the same product's library would contend for it, accepted
+for now). Laptop paths stay keyed by the product id
+(`~/.proto/<productId>/`); the courier id lives in the run dir. Three pieces, one
 supervised run dir (`~/.proto/<productId>/run/courier/`):
 
 - **The listener** (`tools/courier.mjs`) — the doorbell. Receives
