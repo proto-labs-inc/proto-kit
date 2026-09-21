@@ -91,11 +91,15 @@ Harness facts this design stands on — per-line Monitor wake-ups,
 are recorded with their verification evidence in
 `docs/claude-code-mechanics.md`.
 
-Once per **product** (not per prototype), the site can start agent
-work on this laptop. Three pieces, one supervised run dir
-(`~/.proto/<product>/run/courier/`). (`<product>` in every path and
-tunnel slug here is the product's stable id once site-generated ids
-land — never its renamable display name.)
+Once per **laptop and product** the site can start agent work here.
+The product is the team's — many developers, each with their own
+laptop and courier; **the courier is this laptop's**, identified by a
+cloud-minted opaque `courierId`. No tunnel is ever named after the
+product: tunnel slugs are per-laptop ids (`c-<courierId>`; the
+library's tunnel likewise uses the cloud-minted `libraryId`). Laptop
+paths stay keyed by the product id (`~/.proto/<productId>/`); the
+courier and library ids live in the run dir. Three pieces, one
+supervised run dir (`~/.proto/<productId>/run/courier/`):
 
 - **The listener** (`tools/courier.mjs`) — the doorbell. Receives
   bearer-authed enumerated commands on a local port, validates, and
@@ -116,31 +120,42 @@ land — never its renamable display name.)
 
 Setup:
 
-1. Pick a free local port for the listener; generate a command secret
-   (`openssl rand -hex 24`).
-2. Provision its tunnel with the same `provision_tunnel` tool as
-   step 1, slug **`agent-<product>`**, the listener's port.
-3. Write `~/.proto/<product>/run/courier/courier.json`
-   (`chmod 600`) — `{ product, port, secret, agent }`; the `agent`
-   block is the launcher's command template (see
-   `tools/agent-launch.mjs`'s header). The spawned command line is
-   config, not code.
-4. `spec.json` — three processes: the listener
-   (`node <kit>/tools/courier.mjs <run-dir>`), the agent launcher
-   (`node <kit>/tools/agent-launch.mjs <run-dir>`), and `cloudflared`
-   with the `agent-<product>` connector token. `supervise.mjs start`.
-5. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
-   `Authorization: Bearer <secret>` acks 202 and the line lands in
-   `commands.jsonl`; the agent's status report appears in
-   `status.json`; the same POST works against the public
-   `agent-<product>` hostname once the edge settles.
-6. Hand the site its dispatch address: the `register_courier` MCP
-   tool with `{ product, host, secret, account }` — `host` is the
-   `agent-<product>` hostname from step 2, `secret` the command
-   secret from step 1, `account` config.json's `account.user`
-   (required; the cloud stamps ownership and org from it). Call it
-   immediately after the tunnel is provisioned; the user never sees
-   or touches a credential.
+1. **Identity, once per laptop.** If the run dir has no `courierId`:
+   `register_courier { product, account }` → `{ courierId,
+   libraryId }` — both cloud-minted, both stored in `courier.json`.
+   Never call this when a courierId already exists (a reinstall
+   keeps its ids; one account with two laptops gets two couriers).
+2. Pick a free local port for the listener; generate a command
+   secret (`openssl rand -hex 24`).
+3. Provision the tunnel: `provision_tunnel`, slug **`c-<courierId>`**,
+   the listener's port.
+4. **Endpoint**: `register_courier { courierId, host, secret,
+   account }` — `host` the `c-<courierId>` hostname (a full URL is
+   accepted for local dev couriers), `secret` from step 2. This
+   call is repeatable, keyed on courierId: re-provisioned tunnel or
+   rotated secret just overwrites. The user never sees or touches a
+   credential.
+5. Write `~/.proto/<productId>/run/courier/courier.json`
+   (`chmod 600`) — `{ product, port, secret, courierId, libraryId,
+   agent }`; the `agent` block is the fallback launcher's command
+   template (see `tools/agent-launch.mjs`'s header).
+6. `spec.json` — the listener
+   (`node <kit>/tools/courier.mjs <run-dir>`) and `cloudflared` with
+   the `c-<courierId>` connector token (plus the fallback agent
+   launcher when running nobody-at-the-keyboard).
+   `supervise.mjs start`.
+7. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
+   `Authorization: Bearer <secret>` answers with `agentListening`
+   and the line lands in `commands.jsonl`; the same POST works
+   against the public `c-<courierId>` hostname once the edge
+   settles.
+
+**Heartbeat.** The listener beats `courier_heartbeat { courierId,
+agentListening }` every ~30s (fail-soft; `agentListening` from the
+feed watcher's local heartbeat). The site marks a courier offline
+after 90s — three missed beats — and dispatches each brief to the
+account's freshest listening courier; registered-but-not-listening
+falls back to the copyable prompt with "your agent isn't running".
 
 The proto MCP server carries the agent's cloud actions (registration,
 tunnels, comments); command payloads arrive inline in the feed — MCP

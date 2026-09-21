@@ -94,3 +94,22 @@ export async function handle(cmd) {
 serveHttp({ port: config.port, secret: config.secret, handle }, () =>
   console.log(`courier listener for ${config.product} on 127.0.0.1:${config.port}`),
 );
+
+// Heartbeat to the cloud (~30s): how the site knows this laptop's
+// courier is alive and whether an agent is consuming its feed —
+// couriers are per laptop, keyed by the cloud-minted courierId in
+// courier.json. Fail soft always: a beat that can't be sent is a
+// missed beat, never a crash (the site marks us offline after 90s).
+if (config.courierId) {
+  const { callTool } = await import("./mcp-call.mjs");
+  const beat = async () => {
+    try {
+      await callTool("courier_heartbeat", {
+        courierId: config.courierId,
+        agentListening: agentState().agentListening,
+      });
+    } catch {}
+  };
+  beat();
+  setInterval(beat, 30_000);
+}

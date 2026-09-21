@@ -125,13 +125,14 @@ occupies that name.
 **Product identity — incoming contract.** The site is moving to a
 stable random id per product (short lowercase alphanumerics,
 site-generated at creation) with a separate, renamable display name.
-Once snippets carry an id in `product <id>`: key **everything** by
-the id — `~/.proto/<id>/`, tunnel slugs `agent-<id>` and
-`<id>-library` — and record the display name in `product.json` as
-`name`, display-only. Never derive a path or slug from the display
-name; names rename, ids don't, and tunnels + comment anchors must
-survive a rename. Until an id arrives, the slug-named flow above
-stands.
+Once snippets carry an id in `product <id>`: key laptop paths by the
+id (`~/.proto/<id>/`) and record the display name in `product.json`
+as `name`, display-only. Never derive a path or slug from the
+display name; names rename, ids don't. The product is the team's —
+tunnels are never named after it: they use per-LAPTOP ids the cloud
+mints at courier registration (`c-<courierId>`, and the library's
+`libraryId`), stored in the run dir. Until an id arrives, the
+slug-named flow above stands.
 
 ### Find their code
 
