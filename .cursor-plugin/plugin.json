@@ -19,7 +19,7 @@
   "agents": [],
   "hooks": [],
   "mcpServers": {
-    "cloud": {
+    "proto": {
       "url": "${PROTO_APP_URL}/api/mcp",
       "headers": {
         "Authorization": "Bearer ${PROTO_PROVISION_SECRET}"
