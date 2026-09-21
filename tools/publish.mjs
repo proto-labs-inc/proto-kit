@@ -1,23 +1,25 @@
 #!/usr/bin/env node
 /**
- * Publish a prototype workspace as a static build (MAA-132, the
- * publish half of ADR 0001). Runs `vite build --base ./` in the
- * workspace (relative asset paths, so the build works at any URL
- * path), asks the cloud to open a build (`begin_publish` returns a
- * fresh `<product>/<slug>/<buildId>/` prefix and a short-lived client
- * token), uploads every file in dist/ straight to Vercel Blob with
- * that token, then closes the build (`finish_publish`) and prints the
- * published URL. The build never passes through the app's own
- * function.
+ * Publish a prototype's built files (MAA-132, the publish half of
+ * ADR 0001). This tool uploads a folder, nothing more: the session
+ * builds first, with the workspace's own build script, and the
+ * workspace's own config sets relative asset paths (the templates
+ * carry base "./"). publish.mjs then asks the cloud to open a build
+ * (`begin_publish` returns a fresh `<product>/<slug>/<buildId>/`
+ * prefix and a short-lived client token), uploads every file
+ * straight to Vercel Blob with that token, closes the build
+ * (`finish_publish`), and prints the published URL. Nothing passes
+ * through the app's own function, and no published path is ever
+ * overwritten.
  *
- * Usage: node publish.mjs <workspace> [--product <id>] [--slug <slug>] [--dry-run]
- *   product and slug default from the workspace path
+ * Usage: node publish.mjs <workspace> [--dist <folder>] [--product <id>] [--slug <slug>] [--dry-run]
+ *   --dist defaults to dist/. It must contain index.html. product
+ *   and slug default from the workspace path
  *   (~/.proto/<product>/prototypes/<slug>/); account comes from
- *   ~/.proto/config.json. --dry-run builds and prints the upload plan
- *   without touching the cloud.
+ *   ~/.proto/config.json. --dry-run prints the upload plan without
+ *   touching the cloud.
  */
-import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, relative, extname, sep } from "node:path";
 import { callTool } from "./mcp-call.mjs";
 
@@ -38,11 +40,12 @@ const parts = workspace.split(sep);
 const protoIdx = parts.lastIndexOf(".proto");
 const product =
   flag("product") ?? (protoIdx !== -1 && parts[protoIdx + 2] === "prototypes" ? parts[protoIdx + 1] : null);
+const dist = resolve(workspace, flag("dist") ?? "dist");
 const slug =
   flag("slug") ??
   (protoIdx !== -1 && parts[protoIdx + 2] === "prototypes"
     ? parts[protoIdx + 3]
-    : JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8")).name);
+    : JSON.parse(readFileSync(join(dist, "prototype.json"), "utf8")).name);
 if (!product && !dryRun) {
   console.error("cannot derive product from the workspace path; pass --product <id>");
   process.exit(1);
@@ -56,22 +59,20 @@ const config = (() => {
   }
 })();
 
-// Build. The rig resolves from package source through the workspace's
-// own vite config, which reads PROTO_PACKAGES (pre-npm).
-console.log(`building ${slug} (vite build --base ./) …`);
-const build = spawnSync(join(workspace, "node_modules", ".bin", "vite"), ["build", "--base", "./"], {
-  cwd: workspace,
-  encoding: "utf8",
-  env: { ...process.env, ...(config.packages ? { PROTO_PACKAGES: config.packages } : {}) },
-});
-if (build.status !== 0) {
-  console.error("build failed:");
-  console.error((build.stderr || build.stdout || "").trim().split("\n").slice(-15).join("\n"));
+// Upload-only: the session already built with the workspace's own
+// build script. A publishable folder has an index.html, and a build
+// that lives under a path must reference its assets relatively.
+if (!existsSync(join(dist, "index.html"))) {
+  console.error(`${dist} has no index.html; build the workspace first (its own build script), or pass --dist <folder>`);
   process.exit(1);
 }
-console.log((build.stdout ?? "").trim().split("\n").slice(-3).join("\n"));
+const indexHtml = readFileSync(join(dist, "index.html"), "utf8");
+const rootAbsolute = [...indexHtml.matchAll(/(?:src|href)="(\/[^\/"][^"]*)"/g)].map((m) => m[1]);
+if (rootAbsolute.length > 0) {
+  console.error(`warning: index.html references root-absolute asset paths (${rootAbsolute.slice(0, 3).join(", ")}${rootAbsolute.length > 3 ? ", …" : ""}).`);
+  console.error("A published build lives under a path; set relative asset paths in the workspace's build config (the templates use base \"./\").");
+}
 
-const dist = join(workspace, "dist");
 const files = [];
 (function walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

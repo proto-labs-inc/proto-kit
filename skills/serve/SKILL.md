@@ -57,10 +57,13 @@ else the proto-kit checkout.
      ~30s on a fresh tunnel (DNS + connector registration); retry,
      don't conclude.
 
-5. **Publish** a permanent snapshot: `node tools/publish.mjs
-   <workspace>`. It builds the workspace with relative asset paths,
-   uploads the build to a fresh path, and prints the published URL.
-   The Frame falls back to that URL when the laptop is gone, so
+5. **Publish** a permanent snapshot. Build the workspace with its
+   own build script (`pnpm build`; the templates configure relative
+   asset paths, which a published build needs because it lives under
+   a path). Then upload the output folder: `node tools/publish.mjs
+   <workspace>` (`--dist <folder>` when the framework's output is
+   not `dist/`). It uploads to a fresh path and prints the published
+   URL. The Frame falls back to that URL when the laptop is gone, so
    viewers see the last checkpoint instead of nothing.
 
 6. **Report**: the live URL, the published URL, the Frame URL
