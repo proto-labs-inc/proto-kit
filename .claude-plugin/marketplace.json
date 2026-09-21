@@ -1,6 +1,6 @@
 {
   "name": "proto-kit",
-  "description": "Proto's installable surface: the proto plugin — skills, tools, and templates a coding agent drives.",
+  "description": "Proto's installable surface: the Proto plugin, with the skills, tools, and templates a coding agent drives.",
   "owner": {
     "name": "Proto Labs"
   },
@@ -8,7 +8,7 @@
     {
       "name": "proto",
       "source": "./",
-      "description": "Proto on your laptop: account setup, design-system import, prototype building, and public serving — skills plus the supervisor, courier, and CDP tools they drive."
+      "description": "Proto on your laptop: account setup, design-system import, prototype building, and public serving, with the supervisor, courier, and browser-reading tools the skills drive."
     }
   ]
 }
