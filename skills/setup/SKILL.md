@@ -39,7 +39,15 @@ Set up Proto for account <name> (<id>).
 
 A `, product <id>` suffix appears only when resuming an unfinished
 setup; a new setup has none, and creating the product is this
-skill's job (below). The second line always says: identify your
+skill's job (below). For signed-in users the snippet then carries
+the two cloud values, one per line:
+
+```
+Proto app: <url>
+Provisioning secret: <secret>
+```
+
+The next line always says: identify your
 harness, install proto-kit for it, and follow this skill. The same
 line then carries two pointers, each in one of a few shapes:
 
@@ -86,12 +94,12 @@ for "who am I and where is the app":
 
 **The auth step is a swappable slot.** Today the snippet names the
 account in plain text and the credential is the shared provisioning
-secret. Where it comes from, in order: an existing
-`~/.proto/config.json` on this laptop (a resume); the plugin's own
-configuration, when the host prompted for the app URL and secret at
-install (Claude Code, Cursor); otherwise **ask the user for the two
-values, the app URL and the provisioning secret, and stop until
-they answer**. Never search the disk for them: a `.env` file
+secret. Where the app URL and secret come from, in order: the
+snippet itself, when it carries the `Proto app:` and `Provisioning
+secret:` lines; an existing `~/.proto/config.json` on this laptop (a
+resume); the plugin's own configuration, when the host prompted for
+the two values at install (Claude Code, Cursor); otherwise **ask the
+user for the two values and stop until they answer**. Never search the disk for them: a `.env` file
 belonging to some checkout is not this user's credential, even if it
 would work. Record both, then **tell the user which account they're
 set up as**, by name. When account linking ships, this same step
@@ -103,9 +111,9 @@ everything reads `auth` opaquely and sends `Authorization: Bearer
 `chmod 600` the file — it holds a credential. Registration and every
 cloud call use `account.user` as the owner.
 
-### The cloud MCP server
+### The proto MCP server
 
-The `cloud` MCP server is how every kit skill talks to Proto
+The `proto` MCP server is how every kit skill talks to Proto
 (tunnels, registration, source registry, comments). In Claude and Cursor,
 it ships in the plugin: enabling the plugin prompts for the app URL and
 provisioning secret, and the server connects with them — nothing to add by
@@ -125,7 +133,7 @@ from config.json, the header through the kit's helper so the
 credential stays in one file —
 
 ```toml
-[mcp_servers.cloud]
+[mcp_servers.proto]
 url = "<app>/api/mcp"
 http_headers_helper = "node <kit>/tools/mcp-headers.mjs"
 ```

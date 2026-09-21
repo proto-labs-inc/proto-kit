@@ -22,7 +22,7 @@
 - MCP: `[mcp_servers.<name>]` in `~/.codex/config.toml` with `url` +
   `http_headers_helper` (the kit's `tools/mcp-headers.mjs` reads
   `~/.proto/config.json`) — verified: a Codex session called the
-  cloud `whoami` through it. Headless `codex exec` denies MCP calls
+  proto server's `whoami` through it. Headless `codex exec` denies MCP calls
   under its default approval policy; `--sandbox
   danger-full-access` (or interactive approval) permits them.
 - NO push wake exists (nothing like the Monitor tool): an idle Codex
@@ -166,7 +166,7 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
 - A bundled `.mcp.json` substitutes `${user_config.<key>}` in
   url/headers/env from the plugin's `userConfig` (declared in
   plugin.json; the user is prompted at enable time, `sensitive`
-  fields masked) — this is how the kit ships its `cloud` server
+  fields masked) — this is how the kit ships its `proto` server
   without a domain in code. Plugin MCP tools are scoped
   `mcp__plugin_<plugin>_<server>__<tool>`. `${VAR}` shell-env
   expansion also works, with a denylist of credential vars

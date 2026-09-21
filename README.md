@@ -18,38 +18,34 @@ agent installs and drives.
 Plugin manifests wrap `skills/` + `tools/` for Claude Code, Codex, and
 Cursor. The core stays harness-neutral: markdown protocols + plain scripts.
 
-## Install (Claude Code or Codex — the repo is its own marketplace for both)
+## Install
+
+Sign in to Proto and copy the setup prompt from the gallery. Paste it
+into your coding agent, in Claude Code, Codex, or Cursor. It installs
+the Proto plugin for that agent and sets everything up: your account,
+your codebase, your design system.
+
+Manual install, if you prefer the commands yourself:
 
 ```sh
 # Claude Code
 claude plugin marketplace add proto-labs-inc/proto-kit
-claude plugin install proto@proto-kit
+claude plugin install proto@proto-kit \
+  --config app_url=https://<your proto domain> \
+  --config provision_secret=<your provisioning secret>
 # Codex (CLI or the desktop app; trust the hooks when asked)
 codex plugin marketplace add proto-labs-inc/proto-kit
 codex plugin add proto@proto-kit
 ```
 
-Then, in any session — terminal, the Claude Code desktop app, or the
-Codex app: `/proto:setup` (Claude) or `$setup` (Codex) links your
-account, finds your product's code, and flows into the design-system
-import. A session-start hook prints one health line per product
-(serving/courier) once `~/.proto` exists. The skills and tools are
-one shared set; only the packaging differs per harness
-(`.claude-plugin/` + `hooks/` + `agents/` + `monitors/` for Claude;
-`plugin.json` + `codex-hooks/` + `codex-agents/` for Codex, where
-setup also writes the MCP entry and installs the agent roles).
-
-## Install (as a Cursor plugin)
-
-In Cursor, open **Customize**, choose **From GitHub Repository**, and enter:
-
-```text
-https://github.com/proto-labs-inc/proto-kit
-```
-
-Select the `proto` plugin and choose a user or project install. Cursor asks
-for the Proto app URL and provisioning secret during configuration. The
-repository's `.cursor-plugin/marketplace.json` is the catalog Cursor imports.
+Then run `/proto:setup` (Claude Code) or `$setup` (Codex) in any
+session. On Codex, setup writes the MCP server entry and installs the
+agent roles itself. The skills and tools are one shared set; only the
+packaging differs per harness (`.claude-plugin/` + `hooks/` +
+`agents/` + `monitors/` for Claude; `plugin.json` + `codex-hooks/` +
+`codex-agents/` for Codex; `.cursor-plugin/` for Cursor). A
+session-start hook prints one health line per product once `~/.proto`
+exists.
 
 ## The laptop layout this kit produces
 
