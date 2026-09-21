@@ -35,7 +35,12 @@ else the proto-kit checkout.
          "env": { "PROTO_TUNNEL": "1", "PROTO_PACKAGES": "<config.packages, pre-npm>" } },
        // dev command = the workspace's own package manager (its lockfile
        // tells you): ["npm", "run", "dev"], ["pnpm", "dev"], …
-       { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "<connectorToken>"] }
+       { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "<connectorToken>"] },
+       // Liveness: beats prototype_heartbeat (~15s) while dev and tunnel
+       // are up; its lifetime is the serving lifetime, so stopping the
+       // run silences it and staleness tells the Frame to use the
+       // published build. No "is live" flag exists anywhere.
+       { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "<run-dir>", "<product>", "<slug>"] }
      ]
    }
    ```
@@ -67,7 +72,9 @@ else the proto-kit checkout.
    viewers see the last checkpoint instead of nothing.
 
 6. **Report**: the live URL, the published URL, the Frame URL
-   (`<app>/p/<slug>`), and where the run lives. (Gallery
+   (`<app>/p/<slug>`), and where the run lives. Tell the user
+   plainly: the prototype is live while this laptop serves it, and
+   falls back to the last published build when serving stops. (Gallery
    registration is create-prototype's job, via the
    `register_prototype` MCP tool — it upserts, so re-registering
    there after a title change is the fix if the gallery shows a
