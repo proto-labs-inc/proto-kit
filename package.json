@@ -1,0 +1,9 @@
+{
+  "name": "proto-kit",
+  "private": true,
+  "type": "module",
+  "description": "Proto's installable surface. The only runtime dependency is @vercel/blob, used by tools/publish.mjs.",
+  "dependencies": {
+    "@vercel/blob": "^2.0.0"
+  }
+}

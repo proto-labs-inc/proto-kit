@@ -66,6 +66,11 @@ installed proto plugin, else the proto-kit checkout.
         description, url, referenceHtml). Register with the brief's
         `account` as owner (fall back to config.json's
         `account.user`).
+        Publish at the checkpoints: run `node
+        <kit>/tools/publish.mjs <workspace>` when you report
+        `serving`, again before you report `done`, and whenever the
+        current state is worth keeping. The published build is what
+        viewers see when the laptop is gone.
      4. Any failure → `report_progress` `"failed"` with a **plain
         one-sentence message a non-engineer can read** — never a
         stack trace, never raw output. If the flow needs something

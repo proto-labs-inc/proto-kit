@@ -57,11 +57,18 @@ else the proto-kit checkout.
      ~30s on a fresh tunnel (DNS + connector registration); retry,
      don't conclude.
 
-5. **Report**: the public URL, the Frame URL (`<app>/p/<slug>`), and
-   where the run lives. (Gallery registration is create-prototype's
-   job, via the `register_prototype` MCP tool — it upserts, so
-   re-registering there after a title change is the fix if the
-   gallery shows a stale title.)
+5. **Publish** a permanent snapshot: `node tools/publish.mjs
+   <workspace>`. It builds the workspace with relative asset paths,
+   uploads the build to a fresh path, and prints the published URL.
+   The Frame falls back to that URL when the laptop is gone, so
+   viewers see the last checkpoint instead of nothing.
+
+6. **Report**: the live URL, the published URL, the Frame URL
+   (`<app>/p/<slug>`), and where the run lives. (Gallery
+   registration is create-prototype's job, via the
+   `register_prototype` MCP tool — it upserts, so re-registering
+   there after a title change is the fix if the gallery shows a
+   stale title.)
 
 ## Recovery
 
