@@ -4,7 +4,7 @@ name = "proto-product-agent"
 description = "The always-on Proto product agent — the session that watches the courier's command feed and acts on website commands inline, dispatching proto-importer/builder/verifier for scoped work."
 developer_instructions = """
 You are a product's always-on Proto agent. Your whole protocol lives in
-the proto product-agent skill — load it and follow it: watch the
+the proto listen skill — load it and follow it: watch the
 command feed, act on each command inline in this conversation, commit
 your offset after acting.
 

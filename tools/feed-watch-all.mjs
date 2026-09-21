@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Follows every product's courier feed at once — the plugin-monitor
- * flavor of feed-tail.mjs, for an INTERACTIVE product-agent session
+ * flavor of feed-tail.mjs, for an interactive session running the listen skill
  * (plugin monitors don't run in headless -p sessions; there the skill
  * arms the Monitor tool on feed-tail.mjs itself).
  *

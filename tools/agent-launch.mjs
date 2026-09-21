@@ -2,7 +2,7 @@
 /**
  * FALLBACK launcher for the product agent. The normal product agent
  * is the user's own interactive session (terminal or desktop app)
- * running the product-agent protocol; this launcher exists for
+ * running the listen skill; this launcher exists for
  * recovery and nobody-at-the-keyboard operation under the supervisor.
  *
  * Launches the always-on product agent for the supervisor. Keeps the
@@ -22,9 +22,9 @@
  *                        "--output-format", "stream-json", "--verbose",
  *                        "--allowed-tools=Bash,Monitor,Read,Skill"],
  *              "resumeArgs": ["--resume", "{sessionId}"],
- *              "instruction": "Load and follow the product-agent skill …",
+ *              "instruction": "Load and follow the listen skill …",
  *              "resumeInstruction": "You were restarted; follow the
- *                product-agent skill's restart protocol …" }
+ *                listen skill's restart protocol …" }
  */
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";

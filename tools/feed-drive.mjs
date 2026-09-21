@@ -18,7 +18,7 @@
  *                   "args": ["exec", "--json"],
  *                   "resumeArgs": ["resume", "{sessionId}"],
  *                   "sessionIdKeys": ["session_id", "thread_id", "id"],
- *                   "instruction": "Courier command (act per the proto product-agent skill): {command}" }
+ *                   "instruction": "Courier command (act per the proto listen skill): {command}" }
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, statSync, openSync, readSync, closeSync } from "node:fs";

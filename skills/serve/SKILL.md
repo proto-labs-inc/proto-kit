@@ -107,7 +107,7 @@ supervised run dir (`~/.proto/<productId>/run/courier/`):
   port, so it runs under supervise, never under a Monitor watch.
 - **The product agent** — the user's own interactive Claude Code
   session (terminal or the Claude Code desktop app) running the
-  product-agent protocol; setup ends by telling them to keep it
+  listen skill; setup ends by telling them to keep it
   open. It watches the feed, acts on each command inline, commits
   `offset.json` after each, and heartbeats so the courier's status
   can report `agentListening`. Fallback: `tools/agent-launch.mjs`

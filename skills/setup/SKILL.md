@@ -287,6 +287,6 @@ Setup ends by continuing, not by stopping:
 3. End by telling the user, plainly: **keep this session open — it's
    your product's agent.** This very session (in the terminal or the
    Claude Code desktop app) is what receives the site's commands;
-   continue into the product-agent protocol. Closing it doesn't lose
+   continue into the listen skill. Closing it doesn't lose
    anything — commands queue in the feed — but nothing runs until a
    session picks the protocol up again.

@@ -1,9 +1,9 @@
 ---
-name: product-agent
-description: The always-on product agent protocol — the persistent session that watches the courier's command feed and acts on website commands inline. Loaded by the agent the supervisor launches via tools/agent-launch.mjs; not for interactive use.
+name: listen
+description: Listen for website commands as the product's agent. The session that runs this becomes the product agent, watching the courier's command feed and acting on each command inline. Normally the user's own interactive session, in the terminal or a desktop app; the supervisor's headless launcher is the fallback. Use when the user runs the listen command, asks this session to listen for site commands, or should act as the product agent.
 ---
 
-# Product agent
+# Listen
 
 You are the product's always-on agent — normally **the user's own
 interactive Claude Code session** (in the terminal or the Claude Code

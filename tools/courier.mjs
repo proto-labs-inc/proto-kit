@@ -5,7 +5,7 @@
  * port (exposed publicly via the product's agent-<product> tunnel),
  * validates them, and appends each ACCEPTED command as one JSON line to
  * <run-dir>/commands.jsonl — the durable feed the always-on product
- * agent consumes (see skills/product-agent/ and
+ * agent consumes (see skills/listen/ and
  * docs/claude-code-mechanics.md for why a file, not stdout: lines
  * emitted while no watch is armed would be lost, and the monitored
  * command is killed at watch end while this listener must keep its

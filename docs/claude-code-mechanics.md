@@ -175,13 +175,14 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   end to end — the monitor process auto-started in a fresh
   interactive session from the installed cache, and an appended feed
   line arrived as a Monitor event the session acted on.
-  `when: "on-skill-invoke:product-agent"` did NOT start the monitor
-  when the skill was invoked as /proto:product-agent — verified on
+  `when: "on-skill-invoke:<skill>"` did NOT start the monitor
+  when the skill (then named product-agent, now `listen`) was
+  invoked as /proto:product-agent — verified on
   BOTH the CLI build (2.1.267) and the Desktop app's embedded engine
   (2.1.274), with the skill's invocation confirmed in-pane.
   The kit ships on-skill-invoke (correct semantics; `always` would
   deliver courier commands to every unrelated session) and the
-  product-agent skill's manual Monitor arming is the load-bearing
+  listen skill's manual Monitor arming is the load-bearing
   path in BOTH interactive and headless sessions until upstream
   honors the trigger.
 - Plugin hooks: use STRING commands
@@ -195,7 +196,7 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   ~/Library/Application Support/Claude/claude-code/<version>/) and
   shares ~/.claude state — user-scope plugins, hooks, and skills all
   load in it. Verified live against 2.1.274: SessionStart health
-  hook fires; /proto:product-agent invokes. Plugin monitors (`monitors/monitors.json`, `when:
+  hook fires; the listen skill (then /proto:product-agent) invokes. Plugin monitors (`monitors/monitors.json`, `when:
   "always" | "on-skill-invoke:<skill>"`) deliver stdout lines as
   notifications but run in INTERACTIVE sessions only — headless
   flows must arm the Monitor tool themselves.
