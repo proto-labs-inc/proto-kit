@@ -29,14 +29,20 @@ installed proto plugin, else the proto-kit checkout.
 
 ## The loop
 
-1. **Arm the watch.** In an interactive session the plugin's
-   `courier-feed` monitor starts with this skill and delivers every
-   product's feed lines as notifications (envelopes carry `product` —
-   act only on yours). In a headless session plugin monitors don't
-   run: arm the Monitor tool on
-   `node <kit>/tools/feed-tail.mjs <run-dir>`, description
-   `"<product> command feed"`, a long timeout. Either way, never poll
-   the feed yourself; the watch wakes you per line.
+1. **Arm the watch** — how depends on the harness:
+   - **Claude Code**: arm the Monitor tool on
+     `node <kit>/tools/feed-tail.mjs <run-dir>`, description
+     `"<product> command feed"`, a long timeout — it wakes you per
+     line, idle costs nothing; re-arm when it ends. (The plugin also
+     declares a `courier-feed` monitor that delivers the same lines
+     automatically when the harness honors skill-invoke monitors.)
+   - **Codex**: there is no push wake. Run the same feed-tail in a
+     background terminal and check it on a relaxed interval while
+     this session is open; `node <kit>/tools/feed-tail.mjs <run-dir>
+     --once` drains anything pending whenever you (or the user) want
+     a spot check. When nobody keeps a session open, the watch isn't
+     your job at all: `tools/feed-drive.mjs` under the supervisor
+     resumes your saved conversation per command.
 2. **Act on each event line** `{"offset": N, "command": {…}}`, one at
    a time, in arrival order (your notifications are already serial —
    that IS the one-run-at-a-time queue):

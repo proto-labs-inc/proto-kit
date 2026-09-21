@@ -23,10 +23,12 @@ settings** — if access is missing, produce the forwardable message
 ## Two ways in
 
 **As a command** — with the proto plugin installed, the user runs
-`/proto:setup` (or just asks to set up Proto). Nothing was pasted, so
-ask for the one thing setup can't derive: the account, as the Proto
-site shows it (name and id) — one question, then proceed exactly as
-below. If they paste the snippet in reply, even better.
+`/proto:setup` on Claude Code, or `$setup` on Codex (or just asks to
+set up Proto — in the terminal, the Claude Code desktop app, or the
+Codex app). Nothing was pasted, so ask for the one thing setup can't
+derive: the account, as the Proto site shows it (name and id) — one
+question, then proceed exactly as below. If they paste the snippet
+in reply, even better.
 
 **As the snippet** — a pasted snippet from the Proto site, in one of
 two shapes — with a prototype brief:
@@ -108,6 +110,20 @@ supervisor) read config.json, not plugin config.
 Running from a bare checkout instead, add the server manually:
 `claude mcp add --transport http proto <app>/api/mcp --header
 "Authorization: Bearer <auth.secret>"`.
+
+**On Codex** the server is added at setup time (its plugin config
+can't read config.json): write to `~/.codex/config.toml`, values
+from config.json, the header through the kit's helper so the
+credential stays in one file —
+
+```toml
+[mcp_servers.cloud]
+url = "<app>/api/mcp"
+http_headers_helper = "node <kit>/tools/mcp-headers.mjs"
+```
+
+Also install the agent roles (Codex plugins don't ship them): copy
+`<kit>/codex-agents/*.toml` into `~/.codex/agents/`.
 
 Either way, confirm with the `whoami` tool: it reports the auth
 mode, org, and grants. A connected server whose `whoami` fails means

@@ -13,7 +13,11 @@
  * gaps, agent restarts, and reboots (see docs/claude-code-mechanics.md,
  * "Lines emitted while no watch is armed are LOST to the watch").
  *
- * Usage: node feed-tail.mjs <run-dir>
+ * Usage: node feed-tail.mjs <run-dir> [--once]
+ *   --once: print anything pending past the committed offset, then
+ *   exit — the poll-style check for harnesses without a push wake
+ *   (a Codex session runs this whenever it wants to know "anything
+ *   waiting?").
  */
 import { openSync, readSync, readFileSync, statSync, closeSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -73,6 +77,7 @@ function beat() {
 }
 
 drain();
+if (process.argv.includes("--once")) process.exit(0);
 beat();
 setInterval(() => {
   drain();

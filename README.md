@@ -19,19 +19,26 @@ A plugin manifest will wrap `skills/` + `tools/` for Claude Code's
 marketplace; the same content transforms into Cursor rules. The core stays
 harness-neutral: markdown protocols + plain scripts.
 
-## Install (as a Claude Code plugin)
-
-The repo is its own plugin marketplace:
+## Install (Claude Code or Codex — the repo is its own marketplace for both)
 
 ```sh
+# Claude Code
 claude plugin marketplace add proto-labs-inc/proto-kit
 claude plugin install proto@proto-kit
+# Codex (CLI or the desktop app; trust the hooks when asked)
+codex plugin marketplace add proto-labs-inc/proto-kit
+codex plugin add proto@proto-kit
 ```
 
-Then, in any session: `/proto:setup` — it links your account,
-finds your product's code, and flows into the design-system import.
-A session-start hook prints one health line per product
-(serving/courier) once `~/.proto` exists.
+Then, in any session — terminal, the Claude Code desktop app, or the
+Codex app: `/proto:setup` (Claude) or `$setup` (Codex) links your
+account, finds your product's code, and flows into the design-system
+import. A session-start hook prints one health line per product
+(serving/courier) once `~/.proto` exists. The skills and tools are
+one shared set; only the packaging differs per harness
+(`.claude-plugin/` + `hooks/` + `agents/` + `monitors/` for Claude;
+`plugin.json` + `codex-hooks/` + `codex-agents/` for Codex, where
+setup also writes the MCP entry and installs the agent roles).
 
 ## The laptop layout this kit produces
 

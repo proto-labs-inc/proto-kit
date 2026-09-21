@@ -1,4 +1,39 @@
-# Claude Code mechanics the kit relies on
+# Harness mechanics the kit relies on
+
+## Codex facts (verified live, 2026-09-20)
+
+- Codex reads the SAME `skills/<name>/SKILL.md` folders (the open
+  agentskills spec) — all five kit skills were auto-discovered from
+  the installed plugin unchanged, namespaced `proto:*` there too.
+- Plugin + marketplace: root `plugin.json` (agent-plugins.org
+  schema, hooks path under `extensions."com.openai"`) +
+  `.agents/plugins/marketplace.json`; `codex plugin marketplace add
+  <path|repo>` then `codex plugin add proto@proto-kit` — verified
+  from the local path; cache at `~/.codex/plugins/cache/`.
+- Hooks: same JSON shape as Claude's, `$PLUGIN_ROOT` env — but they
+  run ONLY after the user passes the one-time "Hooks need review"
+  trust prompt (interactive; untrusted hooks are silently skipped,
+  headless included), and the `[features] hooks = true` gate must be
+  on. Verified: the SessionStart health line printed in an
+  interactive session after trusting.
+- Agent roles are TOML in `~/.codex/agents/` (plugins don't ship
+  them; setup installs `codex-agents/*.toml`) — all four proto roles
+  listed by the session for `spawn_agent` after install.
+- MCP: `[mcp_servers.<name>]` in `~/.codex/config.toml` with `url` +
+  `http_headers_helper` (the kit's `tools/mcp-headers.mjs` reads
+  `~/.proto/config.json`) — verified: a Codex session called the
+  cloud `whoami` through it. Headless `codex exec` denies MCP calls
+  under its default approval policy; `--sandbox
+  danger-full-access` (or interactive approval) permits them.
+- NO push wake exists (nothing like the Monitor tool): an idle Codex
+  session cannot be woken by process output. Interactive product
+  agents poll `feed-tail` in a background terminal (`--once` for
+  spot checks); unattended operation uses `tools/feed-drive.mjs`,
+  which resumes the saved conversation per command
+  (`codex exec resume <session-id>` — verified fresh→resume with
+  offset commits against a stub).
+
+# Claude Code mechanics
 
 Verified facts about the harness, so skills stand on stated ground
 instead of re-deriving it. One heading per mechanism; each carries how
