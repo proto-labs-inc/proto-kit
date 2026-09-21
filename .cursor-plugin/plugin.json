@@ -1,0 +1,44 @@
+{
+  "name": "proto",
+  "version": "0.1.0",
+  "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs.",
+  "author": {
+    "name": "Proto Labs"
+  },
+  "repository": "https://github.com/proto-labs-inc/proto-kit",
+  "keywords": [
+    "prototyping",
+    "design-systems",
+    "frontend"
+  ],
+  "skills": "./skills/",
+  "agents": [],
+  "hooks": [],
+  "mcpServers": {
+    "cloud": {
+      "url": "${PROTO_APP_URL}/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${PROTO_PROVISION_SECRET}"
+      }
+    }
+  },
+  "variables": {
+    "type": "object",
+    "properties": {
+      "PROTO_APP_URL": {
+        "type": "string",
+        "title": "Proto app URL",
+        "description": "Your Proto app origin, for example https://proto.example.com"
+      },
+      "PROTO_PROVISION_SECRET": {
+        "type": "string",
+        "title": "Provisioning secret",
+        "description": "The shared provisioning secret from your Proto operator"
+      }
+    },
+    "required": [
+      "PROTO_APP_URL",
+      "PROTO_PROVISION_SECRET"
+    ]
+  }
+}

@@ -24,8 +24,10 @@ if any step below seems arbitrary.
 Your run dir is `~/.proto/<product>/run/courier/` — courier.json
 (config), commands.jsonl (the feed, listener-owned), offset.json
 (your consumption cursor, yours alone). `<kit>/tools/…` paths resolve
-from the kit root: `${CLAUDE_PLUGIN_ROOT}` when running as the
-installed proto plugin, else the proto-kit checkout.
+from the kit root. Prefer the installed host's `PLUGIN_ROOT`,
+`CLAUDE_PLUGIN_ROOT`, or `CURSOR_PLUGIN_ROOT`; otherwise use the root
+above this skill's `skills/` directory, which is also the proto-kit
+checkout root.
 
 ## The loop
 

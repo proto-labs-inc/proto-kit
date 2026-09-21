@@ -11,9 +11,10 @@ under `tools/supervise.mjs`, surviving this session. Cloud actions go
 through the **proto MCP server** (setup connects it; if its tools are
 missing or `whoami` fails, run setup first). The workspace's
 `public/prototype.json` carries the port. All `tools/…` and
-`<kit>/tools/…` paths resolve from the kit root:
-`${CLAUDE_PLUGIN_ROOT}` when running as the installed proto plugin,
-else the proto-kit checkout.
+`<kit>/tools/…` paths resolve from the kit root. Prefer the installed
+plugin root exposed by the host (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, or
+`CURSOR_PLUGIN_ROOT`); otherwise use the root above this skill's `skills/`
+directory, which is also the proto-kit checkout root.
 
 ## Start
 
