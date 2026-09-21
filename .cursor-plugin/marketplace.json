@@ -1,0 +1,27 @@
+{
+  "name": "proto-kit",
+  "owner": {
+    "name": "Proto Labs"
+  },
+  "metadata": {
+    "description": "Proto's installable skills and tools for product prototyping."
+  },
+  "plugins": [
+    {
+      "name": "proto",
+      "source": ".",
+      "description": "Connect a product, import its design system, build prototypes, and serve them for review.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Proto Labs"
+      },
+      "repository": "https://github.com/proto-labs-inc/proto-kit",
+      "category": "Productivity",
+      "tags": [
+        "prototyping",
+        "design-systems",
+        "frontend"
+      ]
+    }
+  ]
+}

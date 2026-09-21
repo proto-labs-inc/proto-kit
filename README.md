@@ -15,9 +15,8 @@ agent installs and drives.
 | `docs/` | `library-contract.md` — the frozen manifest/progress/components contract both the fake driver and the real import write. |
 | `cli/` | (soon) The `proto` CLI. |
 
-A plugin manifest will wrap `skills/` + `tools/` for Claude Code's
-marketplace; the same content transforms into Cursor rules. The core stays
-harness-neutral: markdown protocols + plain scripts.
+Plugin manifests wrap `skills/` + `tools/` for Claude Code, Codex, and
+Cursor. The core stays harness-neutral: markdown protocols + plain scripts.
 
 ## Install (Claude Code or Codex — the repo is its own marketplace for both)
 
@@ -39,6 +38,18 @@ one shared set; only the packaging differs per harness
 (`.claude-plugin/` + `hooks/` + `agents/` + `monitors/` for Claude;
 `plugin.json` + `codex-hooks/` + `codex-agents/` for Codex, where
 setup also writes the MCP entry and installs the agent roles).
+
+## Install (as a Cursor plugin)
+
+In Cursor, open **Customize**, choose **From GitHub Repository**, and enter:
+
+```text
+https://github.com/proto-labs-inc/proto-kit
+```
+
+Select the `proto` plugin and choose a user or project install. Cursor asks
+for the Proto app URL and provisioning secret during configuration. The
+repository's `.cursor-plugin/marketplace.json` is the catalog Cursor imports.
 
 ## The laptop layout this kit produces
 

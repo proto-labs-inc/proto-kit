@@ -100,17 +100,16 @@ cloud call use `account.user` as the owner.
 ### The cloud MCP server
 
 The `cloud` MCP server is how every kit skill talks to Proto
-(tunnels, registration, source registry, comments). Installed as the
-proto plugin, it ships in the plugin: enabling the plugin prompts for
-the app URL and provisioning secret (the plugin's user config), and
-the server connects with them — nothing to add by hand. Its tools
-appear under the plugin's scoped names
-(`mcp__plugin_proto_cloud__<tool>`); this and the other skills refer
-to them by bare tool name. Write the same two values into
-config.json (`app`, `auth.secret`) — the kit's plain tools (courier,
+(tunnels, registration, source registry, comments). In Claude and Cursor,
+it ships in the plugin: enabling the plugin prompts for the app URL and
+provisioning secret, and the server connects with them — nothing to add by
+hand. Its tools may appear under a host-specific scoped name; this and the
+other skills refer to them by bare tool name. Write the same two values
+into config.json (`app`, `auth.secret`) — the kit's plain tools (courier,
 supervisor) read config.json, not plugin config.
 
-Running from a bare checkout instead, add the server manually:
+Running from a bare checkout instead, add the server manually in Claude
+Code:
 `claude mcp add --transport http proto <app>/api/mcp --header
 "Authorization: Bearer <auth.secret>"`.
 
@@ -235,9 +234,9 @@ Prototypes and imports read the user's live product through their own
 browser. Set that up once per machine, here:
 
 1. Start the dedicated Proto Chrome window: `node
-   tools/cdp/chrome.mjs` (kit tools resolve from
-   `${CLAUDE_PLUGIN_ROOT}` when running as the installed proto
-   plugin, else the proto-kit checkout) — its profile lives at
+   tools/cdp/chrome.mjs` (resolve kit tools from the installed host's
+   `PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, or `CURSOR_PLUGIN_ROOT`;
+   otherwise use the root above this skill's `skills/` directory) — its profile lives at
    `~/.proto/chrome`, so logins persist across sessions and reboots;
    the login is one-time.
 2. The snippet names the product page to parse (or says to ask for
