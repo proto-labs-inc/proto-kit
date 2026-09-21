@@ -15,7 +15,7 @@
  *
  * Usage: node feed-tail.mjs <run-dir>
  */
-import { openSync, readSync, readFileSync, statSync, closeSync } from "node:fs";
+import { openSync, readSync, readFileSync, statSync, closeSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const runDir = resolve(process.argv[2] ?? "");
@@ -61,5 +61,20 @@ function drain() {
   offset = consumed;
 }
 
+// Heartbeat: the courier's status reports agentListening from this
+// file's freshness — a live watch means a live consumer.
+let lastBeat = 0;
+function beat() {
+  if (Date.now() - lastBeat < 5000) return;
+  lastBeat = Date.now();
+  try {
+    writeFileSync(join(runDir, "watch-heartbeat.json"), JSON.stringify({ at: new Date().toISOString() }));
+  } catch {}
+}
+
 drain();
-setInterval(drain, 500);
+beat();
+setInterval(() => {
+  drain();
+  beat();
+}, 500);

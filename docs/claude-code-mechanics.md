@@ -141,7 +141,9 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   interactive session from the installed cache, and an appended feed
   line arrived as a Monitor event the session acted on.
   `when: "on-skill-invoke:product-agent"` did NOT start the monitor
-  on this build when the skill was invoked as /proto:product-agent.
+  when the skill was invoked as /proto:product-agent — verified on
+  BOTH the CLI build (2.1.267) and the Desktop app's embedded engine
+  (2.1.274), with the skill's invocation confirmed in-pane.
   The kit ships on-skill-invoke (correct semantics; `always` would
   deliver courier commands to every unrelated session) and the
   product-agent skill's manual Monitor arming is the load-bearing
@@ -150,9 +152,15 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
 - Plugin hooks: use STRING commands
   (`"command": "node \"${CLAUDE_PLUGIN_ROOT}/…\""`). The docs
   recommend exec-form arrays, but on 2026-09-20 an array-form
-  SessionStart hook silently did not fire on the installed CLI while
-  the identical string form did — verified by flipping only that
-  field between installs. Plugin monitors (`monitors/monitors.json`, `when:
+  SessionStart hook silently did not fire on CLI 2.1.267 while the
+  identical string form did (A/B, one field flipped). On the Desktop
+  app's embedded engine (2.1.274) BOTH forms fire — the array bug is
+  fixed upstream; string works everywhere, so string ships.
+- The Desktop app embeds its own Claude Code build (found under
+  ~/Library/Application Support/Claude/claude-code/<version>/) and
+  shares ~/.claude state — user-scope plugins, hooks, and skills all
+  load in it. Verified live against 2.1.274: SessionStart health
+  hook fires; /proto:product-agent invokes. Plugin monitors (`monitors/monitors.json`, `when:
   "always" | "on-skill-invoke:<skill>"`) deliver stdout lines as
   notifications but run in INTERACTIVE sessions only — headless
   flows must arm the Monitor tool themselves.

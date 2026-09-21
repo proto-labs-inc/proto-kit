@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 /**
+ * FALLBACK launcher for the product agent. The normal product agent
+ * is the user's own interactive session (terminal or desktop app)
+ * running the product-agent protocol; this launcher exists for
+ * recovery and nobody-at-the-keyboard operation under the supervisor.
+ *
  * Launches the always-on product agent for the supervisor. Keeps the
  * "resume where possible" knowledge out of the agent and out of
  * supervise.mjs: reads <run-dir>/session.json, starts the agent fresh

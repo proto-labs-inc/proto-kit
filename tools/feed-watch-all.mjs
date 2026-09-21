@@ -11,7 +11,7 @@
  * as feed-tail. Picks up products created while running. Runs until
  * killed.
  */
-import { openSync, readSync, readFileSync, statSync, closeSync, readdirSync } from "node:fs";
+import { openSync, readSync, readFileSync, statSync, closeSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(process.env.HOME ?? "", ".proto");
@@ -58,6 +58,21 @@ function drainProduct(product) {
   state.offset = consumed;
 }
 
+// Heartbeat per product: the courier's status reports agentListening
+// from this file's freshness — a live watch means a live consumer.
+let lastBeat = 0;
+function beat(products) {
+  if (Date.now() - lastBeat < 5000) return;
+  lastBeat = Date.now();
+  const stamp = JSON.stringify({ at: new Date().toISOString() });
+  for (const p of products) {
+    try {
+      statSync(join(root, p, "run", "courier"));
+      writeFileSync(join(root, p, "run", "courier", "watch-heartbeat.json"), stamp);
+    } catch {}
+  }
+}
+
 function tick() {
   let products = [];
   try {
@@ -68,6 +83,7 @@ function tick() {
     return; // no ~/.proto yet; keep waiting
   }
   for (const p of products) drainProduct(p);
+  beat(products);
 }
 
 tick();

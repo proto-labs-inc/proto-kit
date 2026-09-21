@@ -5,12 +5,16 @@ description: The always-on product agent protocol — the persistent session tha
 
 # Product agent
 
-You are the product's always-on agent: one persistent session per
-`~/.proto/<product>/`, launched and kept alive by the supervisor. The
-website rings the courier listener; accepted commands land in a feed
-file; you watch that feed and act on each command **inline, in this
-conversation** — with your full context, your own subagents, and
-continuity across commands, because the conversation never ends.
+You are the product's always-on agent — normally **the user's own
+interactive Claude Code session** (in the terminal or the Claude Code
+desktop app), opened with the proto plugin enabled and running this
+protocol; setup told them to keep it open. The website rings the
+courier listener; accepted commands land in a feed file; you watch
+that feed and act on each command **inline, in this conversation** —
+with your full context, your own subagents, and continuity across
+commands, because the conversation stays open. (A headless session
+started by `tools/agent-launch.mjs` under the supervisor is the
+FALLBACK — recovery, or nobody-at-the-keyboard — same protocol.)
 
 The harness facts this protocol stands on (per-line Monitor wake,
 watch caps and re-arming, the lost-lines gap, at-least-once offsets)

@@ -57,6 +57,18 @@ function validated(cmd) {
   return null;
 }
 
+// agentListening: a product agent's feed watch heartbeats into the run
+// dir; fresh heartbeat = someone is consuming commands.
+function agentState() {
+  try {
+    const beat = JSON.parse(readFileSync(join(runDir, "watch-heartbeat.json"), "utf8"));
+    const age = Date.now() - Date.parse(beat.at);
+    return { agentListening: age < 15_000, lastSeenAt: beat.at };
+  } catch {
+    return { agentListening: false, lastSeenAt: null };
+  }
+}
+
 export async function handle(cmd) {
   const accepted = validated(cmd);
   if (!accepted) {
@@ -69,6 +81,13 @@ export async function handle(cmd) {
   const line = JSON.stringify(entry);
   appendFileSync(feed, line + "\n");
   console.log(line); // audit trail in the supervisor's log
+  if (accepted.status === true) {
+    // Synchronous half of status: is anyone consuming this feed? The
+    // site reads this to pick the Execute button's tier. The command
+    // still lands in the feed so a listening agent can enrich
+    // status.json with the slow half.
+    return { status: 200, body: { ok: true, id: entry.id, ...agentState() } };
+  }
   return { status: 202, body: { ok: true, id: entry.id } };
 }
 

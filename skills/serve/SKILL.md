@@ -101,13 +101,15 @@ land — never its renamable display name.)
   bearer-authed enumerated commands on a local port, validates, and
   appends each accepted command to `commands.jsonl`. It holds the
   port, so it runs under supervise, never under a Monitor watch.
-- **The product agent** — one persistent Claude Code session per
-  product, launched by `tools/agent-launch.mjs` (which captures the
-  session id into `session.json` and resumes it on every relaunch).
-  It follows `skills/product-agent/`: watch the feed via Monitor on
-  `tools/feed-tail.mjs`, act on each command inline, commit
-  `offset.json` after each. The user can attach to the very same
-  conversation: `claude --resume <sessionId>`.
+- **The product agent** — the user's own interactive Claude Code
+  session (terminal or the Claude Code desktop app) running the
+  product-agent protocol; setup ends by telling them to keep it
+  open. It watches the feed, acts on each command inline, commits
+  `offset.json` after each, and heartbeats so the courier's status
+  can report `agentListening`. Fallback: `tools/agent-launch.mjs`
+  under the supervisor starts a headless session with the same
+  protocol (capturing/resuming `session.json`) — recovery and
+  nobody-at-the-keyboard mode, not the normal path.
 - **The feed** (`commands.jsonl` + `offset.json`) — the durable,
   at-least-once buffer between them. It's what survives watch
   timeouts, agent restarts, and reboots.
