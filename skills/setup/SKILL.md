@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up Proto on this machine and link a product — the pasted Proto setup snippet is the entry point (account + prototype brief), credentials into ~/.proto/config.json, find the product's source repo from whatever scraps the user gives, scaffold the product's ~/.proto/<product>/ home. Use when a message starts "Set up Proto for account …", when installing Proto or connecting a new product, or when other Proto skills find no config.json or product.json.
+description: Set up Proto on this machine and link a product. The pasted Proto setup snippet is the entry point: account into ~/.proto/config.json, the codebase located from a path, a name fingerprint, or a conversation, the product created in the cloud and keyed by its id, the product page recorded for the import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new product, or when other Proto skills find no config.json or product.json.
 ---
 
 # Setup
@@ -30,30 +30,33 @@ derive: the account, as the Proto site shows it (name and id) — one
 question, then proceed exactly as below. If they paste the snippet
 in reply, even better.
 
-**As the snippet** — a pasted snippet from the Proto site, in one of
-two shapes — with a prototype brief:
+**As the snippet** — pasted from the Proto site. Its first line is
+the sentence the recognizer keys on:
 
 ```
-Set up Proto for account <name> (<id>)[, product <name>]. Get
-proto-kit from <the kit repo> and follow skills/setup/SKILL.md.
-Then create a prototype with this brief:
-Title: …
-Description: …
-Reference page: <url>
-Reference HTML: (included below if any)
+Set up Proto for account <name> (<id>).
 ```
 
-— or setup-only: the same first two sentences and nothing after
-them.
+A `, product <id>` suffix appears only when resuming an unfinished
+setup; a new setup has none, and creating the product is this
+skill's job (below). The second line always says: identify your
+harness, install proto-kit for it, and follow this skill. The same
+line then carries two pointers, each in one of a few shapes:
 
-Recognize both and: take `<id>`/`<name>` as the account for
-config.json below; when the first sentence names a product, that IS
-the product's name (it beats the repo-name default); hold the brief
-(title, description, reference page, reference HTML) for the handoff
-at the end when there is one. Run the whole flow without re-asking
-for anything the snippet already says. (Account linking will later
-swap the plain-text account for a token the same entry point
-redeems — the flow's shape does not change.)
+- **The codebase**: `Use the codebase at "<path>".`, or `Locate the
+  codebase directory named "<folder>" on this laptop.` followed by a
+  names-only tree to match (see **Find their code**), or `Ask me to
+  choose the folder that contains my codebase.`
+- **The product page**: `Use "<url>" as the product page to parse.`
+  or the ask-me variant — always with the instruction to confirm the
+  user is logged in first and wait if not.
+
+The New prototype dialog's snippet is the same two lines followed by
+`After setup, create a prototype with this brief:` and Title,
+Description, Reference page, Reference HTML — hold the brief for the
+handoff. Run the whole flow without re-asking for anything the
+snippet already says. (Account linking will later swap the
+plain-text account for a token the same entry point redeems.)
 
 ## Machine
 
@@ -131,24 +134,20 @@ the credential is stale — redo the auth step above.
 
 ## Product
 
-A product is one product being prototyped: `~/.proto/<product>/`,
-slug-named after the product. The product is decided here, before
-any prototype exists. Its name: the snippet's `, product <name>`
-when present, else **default to the repo's name** once the repo is
-found — most users never touch it; only ask if something already
-occupies that name.
+A product is one product being prototyped, keyed everywhere by a
+cloud-minted id: `~/.proto/<id>/` on the laptop, and the id in every
+later call. Its display name is separate and renamable; never derive
+a path or slug from it. The product is the team's — tunnels are
+never named after it: they use per-laptop ids the cloud mints at
+courier registration (`c-<courierId>`, and the library's
+`libraryId`), stored in the run dir.
 
-**Product identity — incoming contract.** The site is moving to a
-stable random id per product (short lowercase alphanumerics,
-site-generated at creation) with a separate, renamable display name.
-Once snippets carry an id in `product <id>`: key laptop paths by the
-id (`~/.proto/<id>/`) and record the display name in `product.json`
-as `name`, display-only. Never derive a path or slug from the
-display name; names rename, ids don't. The product is the team's —
-tunnels are never named after it: they use per-LAPTOP ids the cloud
-mints at courier registration (`c-<courierId>`, and the library's
-`libraryId`), stored in the run dir. Until an id arrives, the
-slug-named flow above stands.
+**The product is created here**, once the codebase is found: call
+`set_product_source` with **no `product` field** — the server
+creates the product, names it after the source folder, and returns
+the id. Keep that id for everything that follows. When the snippet
+carries `, product <id>` (resuming an unfinished setup), skip
+creation and use that id.
 
 ### Find their code
 
@@ -157,6 +156,19 @@ give the one reassurance that matters, in exactly this plain shape:
 **"Your code stays on your laptop; Proto receives only the design
 system it extracts."**
 
+0. **The fingerprint, when the snippet carries one.** The snippet
+   may name the folder and list a shallow tree of its entry names
+   (`▸` folders, `•` files, two levels). Search the likely roots —
+   the current working directory first, then the home folder and
+   common project folders (`~/Projects`, `~/code`, `~/src`, `~/dev`,
+   `~/work`, `~/Documents`), two or three levels deep — and score
+   each candidate: exact folder-name match, then how many of the
+   listed entries exist inside. One clear winner: confirm it in one
+   line ("Using `~/Projects/inbox`. The tree matches.") and
+   continue. More than one plausible match: ask which one, listing
+   the paths. None: fall to the ask below. A `Use the codebase at
+   "<path>".` line skips all of this; an ask-me line starts at
+   step 2.
 1. **Silent scan first — the engineer fast path.** Quietly look for
    checkouts in the obvious places (`~/Projects`, `~/code`, `~/src`,
    `~/dev`, `~/work`, one or two levels deep for `.git`), matching
@@ -186,20 +198,22 @@ system it extracts."**
    locally." — and **park**: tell them setup will pick up right here
    once the repo exists, and mean it (re-running setup resumes from
    files, not memory).
-6. **Record it in the cloud** once confirmed: the
-   `set_product_source` MCP tool with
-   `{ product, sourcePath, repoRemote, account }` — `account` is
-   config.json's `account.user`, and it's required (the cloud stamps
-   who created the product and which org it belongs to). The site's
-   product pages read this registry. The local `product.json` below
-   stays the laptop's copy of the same pointers.
+6. **Create or record the product** once confirmed:
+   `set_product_source { sourcePath, repoRemote, account }` —
+   `account` is config.json's `account.user`. With no `product`
+   field the server creates the product, names it after the source
+   folder, and returns the id that keys everything from here on.
+   Resuming with a known id, pass `product` and the call records the
+   source instead. The local `product.json` below stays the laptop's
+   copy of the same pointers.
 
 ### `~/.proto/<product>/product.json`
 
 ```jsonc
 {
   "schemaVersion": 1,
-  "product": "acme",
+  "product": "<id>",                   // the cloud-minted id
+  "name": "acme-web",                  // display name; renamable, never a path
   "source": {
     "path": "/abs/path/to/acme-web",   // the checkout
     "remote": "git@github.com:acme/acme-web.git",
@@ -226,8 +240,12 @@ browser. Set that up once per machine, here:
    plugin, else the proto-kit checkout) — its profile lives at
    `~/.proto/chrome`, so logins persist across sessions and reboots;
    the login is one-time.
-2. Ask the user to open their product in that window and log in —
-   including the snippet's reference page when there is one.
+2. The snippet names the product page to parse (or says to ask for
+   one). Before anything reads it, confirm the user is logged in to
+   the product in that window: ask them to open the page there and
+   sign in, and wait until they say they have. Record the page in
+   `product.json` as `source.liveUrl` — the import-design-system
+   skill takes it from there instead of asking again.
 3. From then on, skills find the page by looking at the open tabs
    over CDP (prefer the active tab; offer a pick when several
    match). Pasting a URL into the chat is always an accepted

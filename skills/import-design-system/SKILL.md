@@ -26,8 +26,9 @@ You have both of these. Use both:
   This is where names live: token definitions (CSS custom properties,
   Tailwind `@theme`/config, design-token files), font faces, the
   component inventory, and the mechanism behind every look.
-- **A live page** — a URL the user has open in their own Chrome,
-  logged in, behind their auth. Read it over CDP. This is ground
+- **A live page** — the product page setup recorded
+  (`product.json`'s `source.liveUrl`), open and logged in in the
+  Proto window; setup confirmed the login, so don't ask again. Read it over CDP. This is ground
   truth for values: deployed builds drift from checkouts (feature
   flags, hotfixes, build-time changes). The source explains
   mechanisms; the live page arbitrates values.
