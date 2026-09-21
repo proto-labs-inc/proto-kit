@@ -95,16 +95,43 @@ const TYPES = {
   ".webp": "image/webp",
   ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
+  ".gif": "image/gif",
   ".woff2": "font/woff2",
   ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mp3": "audio/mpeg",
+  ".wasm": "application/wasm",
 };
 const typeFor = (path) => TYPES[extname(path)] ?? "application/octet-stream";
 
-const totalBytes = files.reduce((n, f) => n + statSync(f).size, 0);
-console.log(`${files.length} files, ${(totalBytes / 1024).toFixed(0)} KB in dist/`);
+// The files manifest begin_publish wants: relative posix paths with
+// content type and size. Mirror the server's limits here so failures
+// are one plain sentence instead of a round trip.
+const manifest = files.map((f) => ({
+  path: relative(dist, f).split(sep).join("/"),
+  contentType: typeFor(f),
+  size: statSync(f).size,
+}));
+const totalBytes = manifest.reduce((n, f) => n + f.size, 0);
+console.log(`${manifest.length} files, ${(totalBytes / 1024).toFixed(0)} KB in ${relative(workspace, dist) || "dist"}/`);
+const problems = [];
+if (!manifest.some((f) => f.path === "prototype.json"))
+  problems.push("the build has no prototype.json (the workspace's public/ folder should carry it)");
+if (manifest.length > 200) problems.push(`${manifest.length} files; the limit is 200`);
+if (totalBytes > 40 * 1024 * 1024) problems.push(`${(totalBytes / 1048576).toFixed(1)} MB total; the limit is 40 MB`);
+for (const f of manifest) {
+  if (f.size > 8 * 1024 * 1024) problems.push(`${f.path} is ${(f.size / 1048576).toFixed(1)} MB; the per-file limit is 8 MB`);
+}
+if (problems.length > 0) {
+  for (const p of problems) console.error(`cannot publish: ${p}`);
+  process.exit(1);
+}
 
 if (dryRun) {
-  for (const f of files) console.log(`  would upload ${relative(dist, f)}  (${typeFor(f)})`);
+  for (const f of manifest) console.log(`  would upload ${f.path}  (${f.contentType}, ${f.size} bytes)`);
   console.log("dry run: skipped begin_publish, uploads, finish_publish");
   process.exit(0);
 }
@@ -116,29 +143,32 @@ const unwrap = (result) => {
 };
 
 const account = config.account?.user;
-const opened = unwrap(await callTool("begin_publish", { product, slug, account }));
-if (!opened.buildId) {
+const opened = unwrap(await callTool("begin_publish", { product, slug, account, files: manifest }));
+if (!opened.buildId || !Array.isArray(opened.uploads)) {
   console.error(`begin_publish did not open a build: ${JSON.stringify(opened)}`);
   process.exit(1);
 }
-const { buildId, pathnamePrefix, clientToken } = opened;
-console.log(`build ${buildId} → ${pathnamePrefix}`);
+const { buildId, pathnamePrefix, uploads } = opened;
+console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload tokens)`);
 
+// One token per file, each bound to its exact pathname, content type
+// and size; the tokens live ten minutes, so upload in parallel.
 const { put } = await import("@vercel/blob/client");
-for (const file of files) {
-  const rel = relative(dist, file).split(sep).join("/");
-  await put(pathnamePrefix + rel, readFileSync(file), {
-    access: "public",
-    token: clientToken,
-    addRandomSuffix: false,
-    contentType: typeFor(file),
-  });
-  console.log(`  uploaded ${rel}`);
-}
+await Promise.all(
+  uploads.map(async (upload) => {
+    await put(upload.pathname, readFileSync(join(dist, upload.path)), {
+      access: "public",
+      token: upload.token,
+      contentType: upload.contentType,
+    });
+    console.log(`  uploaded ${upload.path}`);
+  }),
+);
 
 const finished = unwrap(await callTool("finish_publish", { product, slug, buildId, account }));
-if (!finished.url) {
+if (!finished.publishedUrl) {
   console.error(`finish_publish did not confirm: ${JSON.stringify(finished)}`);
   process.exit(1);
 }
-console.log(`published: ${finished.url}`);
+console.log(`published: ${finished.publishedUrl}`);
+console.log(`the Frame loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}prototype.json`);
