@@ -16,8 +16,8 @@
  * Usage: node prototype-heartbeat.mjs <run-dir> <product> <slug>
  *        node prototype-heartbeat.mjs <run-dir> <product> --library
  *   account comes from ~/.proto/config.json. --library beats for the
- *   product's library serving run instead of a prototype (kind
- *   "library", no slug).
+ *   product's library serving run instead of a prototype (the
+ *   library_heartbeat tool, no slug).
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -62,10 +62,8 @@ function siblingsUp() {
 async function beat() {
   if (!siblingsUp()) return; // serving is not healthy; stay silent
   try {
-    await callTool(
-      "prototype_heartbeat",
-      isLibrary ? { product, kind: "library", account } : { product, slug, account },
-    );
+    if (isLibrary) await callTool("library_heartbeat", { product, account });
+    else await callTool("prototype_heartbeat", { product, slug, account });
   } catch (e) {
     console.log(`heartbeat not sent (${e.message}); still beating`);
   }
