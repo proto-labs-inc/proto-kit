@@ -1,0 +1,8 @@
+[
+  {
+    "name": "courier-feed",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/tools/feed-watch-all.mjs\"",
+    "description": "Website commands arriving on this laptop's courier feeds",
+    "when": "on-skill-invoke:product-agent"
+  }
+]

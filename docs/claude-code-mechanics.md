@@ -127,12 +127,30 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   `${CLAUDE_PLUGIN_ROOT}`.
 - Plugin hooks live at `hooks/hooks.json` (default location,
   auto-loaded).
-- A bundled `.mcp.json` expands `${VAR}` in url/headers from the
-  SHELL environment only (with a denylist of credential vars like
-  ANTHROPIC_API_KEY that read as empty) — values in
-  `~/.proto/config.json` are not reachable from it, which is why
-  this kit's MCP server is added by the setup skill (`claude mcp
-  add` from config) instead of shipped in the plugin.
+- A bundled `.mcp.json` substitutes `${user_config.<key>}` in
+  url/headers/env from the plugin's `userConfig` (declared in
+  plugin.json; the user is prompted at enable time, `sensitive`
+  fields masked) — this is how the kit ships its `cloud` server
+  without a domain in code. Plugin MCP tools are scoped
+  `mcp__plugin_<plugin>_<server>__<tool>`. `${VAR}` shell-env
+  expansion also works, with a denylist of credential vars
+  (ANTHROPIC_API_KEY etc.) that read as empty in remote
+  urls/headers.
+- Plugin hooks: exec-form commands (`"command": ["node", "…"]`) are
+  the recommended shape; `${CLAUDE_PLUGIN_ROOT}` expands inside
+  them. Plugin monitors (`monitors/monitors.json`, `when:
+  "always" | "on-skill-invoke:<skill>"`) deliver stdout lines as
+  notifications but run in INTERACTIVE sessions only — headless
+  flows must arm the Monitor tool themselves.
+- Plugin agents (`agents/<name>.md`) are namespaced
+  `<plugin>:<name>`; `claude --agent <plugin>:<name>` runs a session
+  as that agent. Plugin agents may not declare hooks, mcpServers, or
+  permissionMode.
+- Omitting `version` from plugin.json makes the git SHA drive
+  updates — every push is an update; a `version` field pins users
+  until it's bumped.
+- `${CLAUDE_PLUGIN_DATA}` (~/.claude/plugins/data/<id>/) persists
+  across plugin updates; the cache copy does not.
 - A repo is its own marketplace via
   `.claude-plugin/marketplace.json` (`plugins: [{name, source:
   "./"}]`); add with `claude plugin marketplace add <path|owner/repo>`,

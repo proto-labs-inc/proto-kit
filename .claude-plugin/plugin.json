@@ -1,9 +1,23 @@
 {
   "name": "proto",
-  "version": "0.1.0",
   "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs — driven by your coding agent.",
   "author": {
     "name": "Proto Labs"
   },
-  "repository": "https://github.com/proto-labs-inc/proto-kit"
+  "repository": "https://github.com/proto-labs-inc/proto-kit",
+  "userConfig": {
+    "app_url": {
+      "type": "string",
+      "title": "Proto app URL",
+      "description": "Your Proto app's origin, e.g. https://<your proto domain> — shown in the setup snippet",
+      "required": true
+    },
+    "provision_secret": {
+      "type": "string",
+      "title": "Provisioning secret",
+      "description": "The shared provisioning secret from your Proto operator",
+      "sensitive": true,
+      "required": true
+    }
+  }
 }

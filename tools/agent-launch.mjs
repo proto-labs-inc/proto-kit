@@ -13,7 +13,8 @@
  *
  * courier.json's agent block:
  *   "agent": { "bin": "claude",
- *              "args": ["-p", "--output-format", "stream-json", "--verbose",
+ *              "args": ["-p", "--agent", "proto:product-agent",
+ *                        "--output-format", "stream-json", "--verbose",
  *                        "--allowed-tools=Bash,Monitor,Read,Skill"],
  *              "resumeArgs": ["--resume", "{sessionId}"],
  *              "instruction": "Load and follow the product-agent skill …",

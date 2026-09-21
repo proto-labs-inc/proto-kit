@@ -92,21 +92,26 @@ opaquely and sends `Authorization: Bearer <auth.secret>`.
 `chmod 600` the file — it holds a credential. Registration and every
 cloud call use `account.user` as the owner.
 
-### Connect the proto MCP server
+### The cloud MCP server
 
-The MCP server is how every kit skill talks to the cloud (tunnels,
-registration, source registry, comments). Add it to the user's Claude
-Code as soon as config.json exists — the URL comes from `app`, the
-header from `auth`; never a hardcoded domain:
+The `cloud` MCP server is how every kit skill talks to Proto
+(tunnels, registration, source registry, comments). Installed as the
+proto plugin, it ships in the plugin: enabling the plugin prompts for
+the app URL and provisioning secret (the plugin's user config), and
+the server connects with them — nothing to add by hand. Its tools
+appear under the plugin's scoped names
+(`mcp__plugin_proto_cloud__<tool>`); this and the other skills refer
+to them by bare tool name. Write the same two values into
+config.json (`app`, `auth.secret`) — the kit's plain tools (courier,
+supervisor) read config.json, not plugin config.
 
-```
-claude mcp add --transport http proto <app>/api/mcp \
-  --header "Authorization: Bearer <auth.secret>"
-```
+Running from a bare checkout instead, add the server manually:
+`claude mcp add --transport http proto <app>/api/mcp --header
+"Authorization: Bearer <auth.secret>"`.
 
-Then confirm with the `whoami` MCP tool: it reports the auth mode,
-org, and grants. A connected server whose `whoami` fails means the
-credential is stale — redo the auth step above.
+Either way, confirm with the `whoami` tool: it reports the auth
+mode, org, and grants. A connected server whose `whoami` fails means
+the credential is stale — redo the auth step above.
 
 ## Product
 
