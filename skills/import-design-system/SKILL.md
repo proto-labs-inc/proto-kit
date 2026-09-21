@@ -5,37 +5,18 @@ description: Import a product's design system into the Proto library — tokens,
 
 # Import a design system
 
-You are turning a real product into a library: color tokens, type
-styles, and standalone component previews that render faithfully. The
-output is the **library contract** — `manifest.json`, `progress.json`,
-and `components/*.html` in `~/.proto/<product>/library/` — specified in
+You are turning a real product into its design system: the colors,
+the type styles, the fonts, and the notable components — buttons,
+inputs, badges, the handful of composites the product leans on — each
+type appearing **once**, its variants side by side on a neutral
+canvas with a line of realistic sample copy. The page you read is a
+specimen catalog of living instances; matching a whole page is
+create-prototype's job. The output is the **library contract** —
+`manifest.json`, `progress.json`, and `components/*.html` in
+`~/.proto/<product>/library/` — specified in
 `docs/library-contract.md`. Read that first; the user is watching the
 viewer fill in as you write, so the write choreography there is not
 optional polish, it is the product.
-
-## A design system, not a replica
-
-You are extracting the SYSTEM, not rebuilding the site. The page is a
-specimen catalog: it shows you living instances of each component
-type. What lands in the library is each type **once** — its variants
-side by side, out of page context, on its own — plus the tokens and
-type styles underneath everything. Concretely, this import never
-produces:
-
-- a rebuilt page, section, or layout — no composite assembly, no page
-  chrome, no reproducing how the page arranges things;
-- the page's content — a component's example copy is ONE realistic
-  invented-or-sampled instance ("Expense report — September"), never
-  the page's actual rows, articles, or user data;
-- verbatim-copied page markup. Every replica is authored from read
-  values; there is no mirror mode here. Copying a page's dense
-  content wholesale is a *prototype* concern — when a prototype must
-  match a specific page, that's create-prototype's job, with these
-  same CDP tools.
-
-If you notice yourself reproducing the page's arrangement or its
-text, you've drifted out of this skill's job. Stop, return to the
-inventory, extract types.
 
 ## Two inputs, one output
 
@@ -61,10 +42,11 @@ source. If you catch yourself estimating a margin from a screenshot,
 stop. You have the tools to know. Guessed values look fine until they
 break, and when they break you can't tell which guess did it.
 
-This applies to layout mechanisms too, not just numbers. PostHog
-centers its hero with two growing spacer divs, not justify-content. If
-you use a different mechanism that lands in the same place today, it
-drifts tomorrow when content changes. Copy their mechanism.
+This applies to mechanisms too, not just numbers. A button that
+spaces its icon with flex `gap` behaves differently from one using a
+margin the moment the label wraps. If you use a different mechanism
+that lands in the same place today, it drifts tomorrow when content
+changes. Copy the component's mechanism.
 
 ## Tools
 
@@ -94,10 +76,8 @@ else the proto-kit checkout.)
 - `~/.proto/<product>/library/` — the contract files only. The viewer
   serves this folder; nothing else lands here.
 - `~/.proto/<product>/imports/<run>/` — your working artifacts:
-  wireframes, per-component notes, replica iterations, captures,
-  diffs. Same layout as a replicate run (`units/<name>/` with
-  `notes.md`, `stages/`). Keep every iteration; the artifacts are how
-  claims get checked.
+  wireframes, and one `units/<name>/` per component with `notes.md`,
+  captures, and diffs. The artifacts are how claims get checked.
 
 ## Setup
 
@@ -155,15 +135,18 @@ contract:
 2. **Type styles.** Same split: families/weights/scale from the source,
    arbitrated live (`getComputedStyle` on real headings, body text,
    captions). Use real product copy as each style's `sample`.
-3. **Inventory.** Build the component list before extracting anything,
-   and flush it all at once as `"found"` — the user sees the queue up
-   front. Read the source's component directories and package `exports`
-   maps; harvest class names from the live page (class identity like
-   `LemonButton--secondary` names both component and variant; the
-   accessibility tree is free semantics). Split **primitives** (button,
-   input, badge) from **composites** (card, table, page header). Order
-   the list primitives-first — the contract's viewer shows components
-   above colors, and the queue order is the extraction order.
+3. **Inventory — a curated shelf, not a census.** Build the component
+   list before extracting anything, and flush it all at once as
+   `"found"` — the user sees the queue up front. Pick the
+   **notable** components: the primitives everything is made of
+   (button, input, badge, and their peers), then the few composites
+   the product visibly leans on (its card, its table, its page
+   header). The source's component directories and the live page's
+   class names (`LemonButton--secondary` names both component and
+   variant) tell you what exists; your judgment picks what earns a
+   shelf spot — a first import of a dozen-odd components that
+   renders faithfully beats an exhaustive one. Order primitives
+   first; the queue order is the extraction order.
 4. **Components, in parallel.** Fan the inventory out to extraction
    subagents (see **Fan out** below); each component still walks
    `found → extracting → done/skipped` with every transition flushed
@@ -190,58 +173,9 @@ the next read.
    page can't, like why a container wraps at 4 buttons.
 6. When source and live page disagree, the live page wins.
 
-Traps we hit, so you don't:
-
-- display:contents wrappers report a 0x0 rect but their children render. Zero size does not mean empty. Descend anyway.
-- Page bounds come from the html element's own rect. Off-screen carousels can extend thousands of pixels past the viewport, so never size anything from the max over all descendants.
-- /json/new requires PUT on current Chrome.
-- Screenshots come back at device pixel ratio, usually 2x the CSS pixels you asked about.
-- svg className is an object, not a string.
-- The live viewport can change under you mid-task (the person resizes, a
-  sibling agent emulates). A wildly wrong clip usually means the tab
-  changed state, not that your replica is bad. Capture, then re-read the
-  rect and innerWidth, and retry until two consecutive reads agree.
-- Render the replica at the element's absolute page coordinates, not just
-  the same fractional phase. Two independent discoveries forced this:
-  dashed borders (dash phase accumulates from absolute position) and
-  gradients (Skia's dithering is device-position-keyed). Absolute-position
-  placement subsumes phase matching — make it the default.
-- Verify only after `document.fonts.status === "loaded"` — rect probes
-  taken while a woff2 is still loading report plausible-looking
-  fallback-font metrics that are all slightly wrong.
-- Serialized computed values round: a used line box of 31.9921875px
-  serializes as "31.9999px" and tempts you to hardcode 32. Copy the
-  authored value (here the unitless line-height var 1.33333), not the
-  serialization.
-- Computed style is not rendered truth. An element can report a fully
-  opaque 1px border in computed style and still rasterize nothing (state
-  the style system doesn't surface). When a read and the pixels disagree,
-  the pixels win — sample colors from the capture before painting
-  something the real page might not paint.
-- `img.decode()` never resolves in a background or occluded tab. Wait for
-  load events and let `drawImage` decode instead. Same family: anything
-  that waits on rendering-side promises can stall in hidden tabs.
-- `document.fonts.check()` returns true for families that are not
-  installed at all. It answers "would this render something", not "is
-  this face available". Trust `document.fonts.status` and rendered
-  pixels only.
-- Clip to the element's own paint, not its line box. A text element's
-  line box can overlap a neighbor's border; the diff then reports the
-  neighbor. A thin full-width strip at a clip edge in the cluster output
-  means the clip includes a neighbor — shrink the clip, don't chase the
-  replica.
-- Ancestor compositing is a paint mechanism. A sticky scroller inside a
-  `contain: paint` column gets its own composited layer; the layer's
-  fractional device origin snaps, SVG mask boxes snap with it, and text
-  glyphs absorb the shift instead. Result: icons one device pixel off
-  with identical rects and identical styles. If a 1-device-px shift
-  survives every per-element fix, reproduce the ancestor stack (sticky +
-  overflow + contain + real scroll height), not more styles. Sticky only
-  promotes when it has room to move.
-- Whitespace text nodes are real. React's `{" "}` emits a separate text
-  node; merging it with adjacent text changes glyph shaping by fractions
-  of a pixel. Reproduce text node splits (an HTML comment between text
-  runs does it).
+Before your first read — and again before your first pixel diff —
+read **`docs/cdp-traps.md`**: the accumulated traps of reading and
+pixel-verifying live pages. Every one of them was paid for.
 
 ## Extracting a component
 
@@ -251,31 +185,27 @@ run:
 1. **Find it live.** Locate an instance on the page (or ask the user to
    navigate somewhere it appears). Read its anatomy: outline, matched
    rules, the source component file. Note which variants are visible.
-2. **Author the replica — always authored, never copied.** Write a
-   standalone HTML file: the component's variants side by side, out
-   of page context, inline CSS built from read values and *their*
-   mechanisms, tokens referenced by the names you extracted, ONE
-   realistic sample instance of copy (invented in the product's
-   voice, or a single sampled line — never the page's data).
-   Authoring is the point: it produces understanding — named
-   variants, known mechanisms, values with sources. If a component
-   seems to demand copying page markup wholesale, it's probably not
-   a component — take it back to the orchestrator as an inventory
-   question.
-3. **Verify — rects before pixels.** Probe the same landmark rects in
-   the live instance and your replica and require exact agreement.
-   Geometry bugs surface as clean numbers there; in a pixel diff they
-   surface as thousands of red pixels you then have to interpret. Then
-   one pixel spot-check: `stableShot()` both at the same absolute
-   position, diff, and chase any cluster that indicates a wrong color,
-   missing paint, or font substitution. **The v1 bar is: rects exact,
-   spot-check clean of structural clusters** — not the full
-   zero-pixel loop. Escalate to the full loop (iterate to 0 differing
-   pixels at threshold 8) when a component will anchor everything else
-   (the button, the input) or when the spot-check keeps surprising you.
-4. **Land it.** Copy the verified replica to
+2. **Author the replica.** Write the component from read values:
+   inline CSS built with *their* mechanisms, tokens referenced by the
+   names you extracted, a line of realistic sample copy in the
+   product's voice. Authoring is the point: it produces
+   understanding — named variants, known mechanisms, values with
+   sources.
+3. **Verify each variant against its live instance — the full
+   loop.** Render the authored variant at the instance's absolute
+   page coordinates in a verification page (`docs/cdp-traps.md`
+   tells you why position matters and what will bite). Probe the
+   same landmark rects in both and require exact agreement —
+   geometry bugs surface as clean numbers there; in a pixel diff
+   they surface as thousands of red pixels you then have to
+   interpret. Then `stableShot()` both, diff, debug from the numbers
+   (clusters, sampled pixels), and iterate until clean at threshold
+   8. A component-sized clip makes this loop fast; zero is
+   reachable and components this small earn it.
+4. **Compose and land the variant sheet.** Assemble the verified
+   variants side by side on a neutral canvas as the standalone
    `library/components/<name>.html`, set the entry's `file` and
-   `height` (measure the replica's rendered height — don't guess),
+   `height` (measure the sheet's rendered height — don't guess),
    status `"done"`, flush.
 5. **Or skip it honestly.** A component you can't isolate cleanly
    (portals, canvas-rendered, needs state you can't reach) becomes
@@ -299,13 +229,11 @@ your harness comfortably runs; there is no fixed cap, and serial
 extraction is wrong unless only one unit remains). Tokens and type
 styles can be a parallel unit of their own alongside the components.
 
-Use cheap, fast models for unit work — the protocol above is
-prescriptive enough that they do it well (this was proven during the
-protocol's development: the last leaf reached zero on its first
-attempt because the skill carried every earlier lesson). On Claude
-Code the `importer` agent is preconfigured for this (Haiku); on
-Codex, `spawn_agent` with `proto-importer`. Verification of claims
-can go to the `verifier`/`proto-verifier` the same way.
+Use cheap, fast models for unit work — the protocol is prescriptive
+enough that they do it well. On Claude Code the `importer` agent is
+preconfigured for this (Haiku); on Codex, `spawn_agent` with
+`proto-importer`. Verification of claims can go to the
+`verifier`/`proto-verifier` the same way.
 
 One orchestrator — you, the bigger model — owns the run and the
 contract files; only you write `manifest.json` and `progress.json`.
@@ -314,11 +242,11 @@ its own `units/<name>/` folder (the only place it may write). Do not
 trust reports: spot-check claims against the artifacts (recompute a
 diff, re-read a cited source line) before flushing a unit as done.
 Verified surprises flow back into your run notes; recurring ones
-belong in this skill's traps list.
+belong in `docs/cdp-traps.md`.
 
 ## Working style
 
 Small steps. A few lines, run it, look at the output, then continue.
 When a result surprises you, chase it before building on it. The
-surprises are the product: every trap in this file came from looking at
-real output instead of assuming.
+surprises are the product: every entry in `docs/cdp-traps.md` came
+from looking at real output instead of assuming.

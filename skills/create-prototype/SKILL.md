@@ -88,10 +88,11 @@ alternate layout.
 
 Page-level fidelity is THIS skill's job (the import extracts the
 system; it never rebuilds pages). When a page must be matched
-closely, use the same CDP toolkit (`tools/cdp/`) and the reading
-discipline + traps list in the import-design-system skill — read
-values, copy mechanisms, verify rects — at whatever fidelity the
-prototype's purpose actually needs.
+closely, use the CDP toolkit (`tools/cdp/`) with the reading
+discipline in the import-design-system skill and the traps in
+`docs/cdp-traps.md` — read values, copy mechanisms, verify rects
+before pixels — at whatever fidelity the prototype's purpose
+actually needs.
 
 ## Build from their design system
 
