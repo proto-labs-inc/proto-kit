@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up Proto on this machine and link a product. The pasted Proto setup snippet is the entry point: account into ~/.proto/config.json, the codebase located from a path, a name fingerprint, or a conversation, the product created in the cloud and keyed by its id, the product page recorded for the import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new product, or when other Proto skills find no config.json or product.json.
+description: Set up Proto on this laptop and connect a codebase. Starts from the setup prompt copied from the Proto site: it records your account, finds your codebase folder, creates the product in Proto, opens your product page in a Proto browser window, and hands over to the design-system import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new product, or when other Proto skills find no config.json or product.json.
 ---
 
 # Setup

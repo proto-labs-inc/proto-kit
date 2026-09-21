@@ -1,6 +1,6 @@
 ---
 name: import-design-system
-description: Import a product's design system into the Proto library — tokens, type styles, and components — by reading the linked source repo and a live page in the user's browser through CDP. Use when setting up a product's library, when the user asks to import/sync their design system, or when the library viewer shows an empty library.
+description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a product's library, when the user asks to import or sync their design system, or when the library viewer shows an empty library.
 ---
 
 # Import a design system

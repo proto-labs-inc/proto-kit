@@ -1,6 +1,6 @@
 ---
 name: create-prototype
-description: Scaffold and build a Proto prototype — an atomic, framework-native slice of the user's app in its own workspace, with preview states, design explorations, and comment markers. Use when the user asks to create/build a prototype, mock up a flow or screen from their product, or explore design directions on a page.
+description: Build a prototype from your product's own code. A prototype is one screen or flow of your product, built in its own workspace with your design system, with preview states, design explorations, and comment markers, ready to review in Proto. Use when the user asks to create or build a prototype, mock up a flow or screen from their product, or explore design directions on a page.
 ---
 
 # Create a prototype

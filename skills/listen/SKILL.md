@@ -1,6 +1,6 @@
 ---
 name: listen
-description: Listen for website commands. The session that runs this watches the courier's command feed and acts on each command inline. Normally the user's own interactive session, in the terminal or a desktop app; the supervisor's headless launcher is the fallback. Use when the user runs the listen command or asks this session to listen for site commands.
+description: Take jobs from the Proto site in this session. Keep it open while you work and the site can ask this laptop to build, serve, and publish prototypes; you see every job happen here. Use when the user runs the listen command or asks this session to listen for site commands. The supervisor's headless launcher is the fallback when nobody keeps a session open.
 ---
 
 # Listen

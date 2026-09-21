@@ -1,14 +1,34 @@
 {
   "name": "proto-kit",
-  "description": "Proto's installable surface: the Proto plugin, with the skills, tools, and templates a coding agent drives.",
   "owner": {
     "name": "Proto Labs"
+  },
+  "metadata": {
+    "description": "Proto's plugin marketplace: one plugin, Proto, for Claude Code.",
+    "version": "0.1.0"
   },
   "plugins": [
     {
       "name": "proto",
       "source": "./",
-      "description": "Proto on your laptop: account setup, design-system import, prototype building, and public serving, with the supervisor, courier, and browser-reading tools the skills drive."
+      "description": "Prototypes from your product's own code, built and served from your laptop by your coding agent.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Proto Labs"
+      },
+      "homepage": "https://github.com/proto-labs-inc/proto-kit",
+      "repository": "https://github.com/proto-labs-inc/proto-kit",
+      "category": "productivity",
+      "tags": [
+        "prototyping",
+        "design-systems",
+        "frontend"
+      ],
+      "keywords": [
+        "prototyping",
+        "design-systems",
+        "frontend"
+      ]
     }
   ]
 }

@@ -1,6 +1,6 @@
 ---
 name: publish-library
-description: Publish the product's design-system library so it stays viewable after the laptop closes. Uploads ~/.proto/<product>/library/ as it stands to a fresh published path and prints the URL. Use when the user runs the publish-library command, asks to publish the library, or wants the library viewable while their laptop is off.
+description: Publish your design-system library so it stays viewable after your laptop closes. Uploads the library as it stands to a permanent address and prints it. Use when the user runs the publish-library command, asks to publish the library, or wants the library viewable while their laptop is off.
 ---
 
 # Publish the library

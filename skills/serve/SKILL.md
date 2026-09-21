@@ -1,6 +1,6 @@
 ---
 name: serve
-description: Serve a prototype at its public URL — provision its tunnel, start the dev server and connector under supervision, verify end to end, and recover when something is down. Use when the user wants to share/see a prototype online, when a prototype's public URL stopped working, or after create-prototype finishes.
+description: Put a prototype online at its public address. Provisions its tunnel, starts the dev server and connector under supervision, registers it in your gallery, publishes a permanent snapshot, verifies end to end, and recovers when something is down. Use when the user wants to share or see a prototype online, when a prototype's public address stopped working, or after create-prototype finishes.
 ---
 
 # Serve
