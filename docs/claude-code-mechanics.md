@@ -101,6 +101,49 @@ session break.
 
 Verified with a stub agent emulating both behaviors, 2026-09-20.
 
+## What the proto plugin runs — and what it never does
+
+A plugin's skills and hooks run **inside a session**; nothing a
+plugin ships keeps running on its own. In this kit: the session-start
+hook is a read-only health printout; the **supervisor** is a detached
+process the serve skill starts (it, not the plugin, keeps serving
+alive); the **product agent** is a separate persistent `claude`
+session the launcher starts under that supervisor. Uninstalling the
+plugin stops none of them; a reboot stops all of them (no boot
+persistence, by decision — MAA-130).
+
+Verified: plugin docs (hooks/skills are session-scoped; monitors are
+interactive-session-only) + this kit's own architecture, 2026-09-20.
+
+## Plugin packaging facts
+
+- Skills at `skills/<name>/SKILL.md` are auto-discovered — no
+  `skills` field needed in plugin.json; minimal manifest is
+  `{name, version, description}` at `.claude-plugin/plugin.json`.
+- Installed skills are namespaced `/proto:<skill>`; `/plugin list`
+  shows what's installed.
+- The whole repo ships as the plugin (source `"./"`), tools and
+  templates included; skills and hooks reach it via
+  `${CLAUDE_PLUGIN_ROOT}`.
+- Plugin hooks live at `hooks/hooks.json` (default location,
+  auto-loaded).
+- A bundled `.mcp.json` expands `${VAR}` in url/headers from the
+  SHELL environment only (with a denylist of credential vars like
+  ANTHROPIC_API_KEY that read as empty) — values in
+  `~/.proto/config.json` are not reachable from it, which is why
+  this kit's MCP server is added by the setup skill (`claude mcp
+  add` from config) instead of shipped in the plugin.
+- A repo is its own marketplace via
+  `.claude-plugin/marketplace.json` (`plugins: [{name, source:
+  "./"}]`); add with `claude plugin marketplace add <path|owner/repo>`,
+  install with `claude plugin install <plugin>@<marketplace>`,
+  validate with `claude plugin validate <dir>`.
+- Trust is per plugin source, one unit — no per-server approval
+  gates on install.
+
+Verified: official plugin/marketplace docs + the live install of this
+kit on this machine, 2026-09-20.
+
 ## CLI gotchas
 
 - `--allowed-tools` is VARIADIC: `--allowed-tools "Bash,Monitor"

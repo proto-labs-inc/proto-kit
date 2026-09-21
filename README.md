@@ -19,6 +19,20 @@ A plugin manifest will wrap `skills/` + `tools/` for Claude Code's
 marketplace; the same content transforms into Cursor rules. The core stays
 harness-neutral: markdown protocols + plain scripts.
 
+## Install (as a Claude Code plugin)
+
+The repo is its own plugin marketplace:
+
+```sh
+claude plugin marketplace add proto-labs-inc/proto-kit
+claude plugin install proto@proto-kit
+```
+
+Then, in any session: `/proto:setup` — it links your account,
+finds your product's code, and flows into the design-system import.
+A session-start hook prints one health line per product
+(serving/courier) once `~/.proto` exists.
+
 ## The laptop layout this kit produces
 
 ```

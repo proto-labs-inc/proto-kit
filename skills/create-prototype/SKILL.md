@@ -134,7 +134,9 @@ the selector and anchors comments to them.
   say) lives **outside `src/`** — `vendor/` at the workspace root.
   Everything under `src/` is prototype-authored and must be fully
   marker-covered; the checker enforces exactly that line.
-- `node tools/verify-markers.mjs <workspace>` must pass before you're
+- `node tools/verify-markers.mjs <workspace>` (kit tools resolve from
+  `${CLAUDE_PLUGIN_ROOT}` when running as the installed proto plugin,
+  else the proto-kit checkout) must pass before you're
   done: it fails any component-rendering file with no markers and any
   non-kebab id, and prints the id inventory — read it and check it
   names the page's real anatomy.

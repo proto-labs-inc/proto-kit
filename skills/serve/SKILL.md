@@ -10,7 +10,10 @@ stays reachable — the dev server and the tunnel connector run detached
 under `tools/supervise.mjs`, surviving this session. Cloud actions go
 through the **proto MCP server** (setup connects it; if its tools are
 missing or `whoami` fails, run setup first). The workspace's
-`public/prototype.json` carries the port.
+`public/prototype.json` carries the port. All `tools/…` and
+`<kit>/tools/…` paths resolve from the kit root:
+`${CLAUDE_PLUGIN_ROOT}` when running as the installed proto plugin,
+else the proto-kit checkout.
 
 ## Start
 
@@ -90,7 +93,9 @@ are recorded with their verification evidence in
 
 Once per **product** (not per prototype), the site can start agent
 work on this laptop. Three pieces, one supervised run dir
-(`~/.proto/<product>/run/courier/`):
+(`~/.proto/<product>/run/courier/`). (`<product>` in every path and
+tunnel slug here is the product's stable id once site-generated ids
+land — never its renamable display name.)
 
 - **The listener** (`tools/courier.mjs`) — the doorbell. Receives
   bearer-authed enumerated commands on a local port, validates, and

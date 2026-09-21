@@ -20,9 +20,15 @@ output, stack traces, or anything that reads as an error wall; and
 settings** — if access is missing, produce the forwardable message
 (below) and park instead.
 
-## The snippet
+## Two ways in
 
-The normal entry is a pasted snippet from the Proto site, in one of
+**As a command** — with the proto plugin installed, the user runs
+`/proto:setup` (or just asks to set up Proto). Nothing was pasted, so
+ask for the one thing setup can't derive: the account, as the Proto
+site shows it (name and id) — one question, then proceed exactly as
+below. If they paste the snippet in reply, even better.
+
+**As the snippet** — a pasted snippet from the Proto site, in one of
 two shapes — with a prototype brief:
 
 ```
@@ -111,6 +117,17 @@ when present, else **default to the repo's name** once the repo is
 found — most users never touch it; only ask if something already
 occupies that name.
 
+**Product identity — incoming contract.** The site is moving to a
+stable random id per product (short lowercase alphanumerics,
+site-generated at creation) with a separate, renamable display name.
+Once snippets carry an id in `product <id>`: key **everything** by
+the id — `~/.proto/<id>/`, tunnel slugs `agent-<id>` and
+`<id>-library` — and record the display name in `product.json` as
+`name`, display-only. Never derive a path or slug from the display
+name; names rename, ids don't, and tunnels + comment anchors must
+survive a rename. Until an id arrives, the slug-named flow above
+stands.
+
 ### Find their code
 
 You need the product's repo on this machine. Before anything else,
@@ -182,9 +199,11 @@ Prototypes and imports read the user's live product through their own
 browser. Set that up once per machine, here:
 
 1. Start the dedicated Proto Chrome window: `node
-   tools/cdp/chrome.mjs` — its profile lives at `~/.proto/chrome`, so
-   logins persist across sessions and reboots; the login is
-   one-time.
+   tools/cdp/chrome.mjs` (kit tools resolve from
+   `${CLAUDE_PLUGIN_ROOT}` when running as the installed proto
+   plugin, else the proto-kit checkout) — its profile lives at
+   `~/.proto/chrome`, so logins persist across sessions and reboots;
+   the login is one-time.
 2. Ask the user to open their product in that window and log in —
    including the snippet's reference page when there is one.
 3. From then on, skills find the page by looking at the open tabs

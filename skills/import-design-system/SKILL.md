@@ -45,7 +45,9 @@ drifts tomorrow when content changes. Copy their mechanism.
 ## Tools
 
 Deterministic helpers live in `tools/cdp/`. Use them. Do not rewrite
-them.
+them. (All `tools/…` paths in this skill resolve from the kit root:
+`${CLAUDE_PLUGIN_ROOT}` when running as the installed proto plugin,
+else the proto-kit checkout.)
 
 - `tools/cdp/chrome.mjs` — start (or find) the debug Chrome without
   taking focus.
