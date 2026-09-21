@@ -68,6 +68,22 @@ plain-text account for a token the same entry point redeems.)
 
 ## Machine
 
+### Keep the plugin current
+
+If the Proto plugin is already installed, update it before anything
+else, so setup runs on the latest version:
+
+- Claude Code: `claude plugin marketplace update proto-kit && claude
+  plugin update proto@proto-kit`
+- Codex: `codex plugin marketplace upgrade proto-kit && codex plugin
+  add proto@proto-kit` (Codex has no plugin update; re-adding
+  installs the refreshed snapshot)
+- Cursor: update it from the Customize panel.
+
+If an update was installed just now, re-read this skill from the
+updated copy before continuing: the text you are following may be
+stale.
+
 ### Prerequisites
 
 `node` (≥ 20), `pnpm`, and `cloudflared` on PATH. Install what's

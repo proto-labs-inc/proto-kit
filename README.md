@@ -38,6 +38,12 @@ codex plugin marketplace add proto-labs-inc/proto-kit
 codex plugin add proto@proto-kit
 ```
 
+If the plugin is already installed, update it first so it is on the
+latest version. Claude Code: `claude plugin marketplace update
+proto-kit && claude plugin update proto@proto-kit`. Codex: `codex
+plugin marketplace upgrade proto-kit && codex plugin add
+proto@proto-kit`. Cursor: update it from the Customize panel.
+
 Then run `/proto:setup` (Claude Code) or `$setup` (Codex) in any
 session. On Codex, setup writes the MCP server entry and installs the
 agent roles itself. The skills and tools are one shared set; only the
