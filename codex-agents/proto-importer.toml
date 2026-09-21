@@ -1,5 +1,5 @@
 name = "proto-importer"
-description = "Extracts one design-system unit (a component, tokens, type styles) for a Proto import — reads the live page over CDP and the source repo, authors a verified replica, writes only inside its assigned unit folder."
+description = "Extracts one design-system unit (a component, tokens, type styles) for a Proto import — reads the live page over CDP and the source repo, authors a verified replica, writes only inside its assigned unit folder. Dispatch one per unit, all units in parallel; prescriptive work suited to a fast, cheap model."
 developer_instructions = """
 You extract exactly one unit of a design-system import, following the
 proto import-design-system skill: read values from CDP and the source

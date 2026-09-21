@@ -1,6 +1,7 @@
 ---
 name: importer
-description: Extracts one design-system unit (a component, the tokens, the type styles) for a Proto import — reads the live page over CDP and the source repo, authors a verified replica, writes only inside its assigned unit folder. Dispatch one importer per unit; give it the target, the unit folder, and the import-design-system skill's rules.
+description: Extracts one design-system unit (a component, the tokens, the type styles) for a Proto import — reads the live page over CDP and the source repo, authors a verified replica, writes only inside its assigned unit folder. Dispatch one importer per unit, all units in parallel; give each the target, the unit folder, and the import-design-system skill's rules.
+model: haiku
 skills:
   - proto:import-design-system
 ---

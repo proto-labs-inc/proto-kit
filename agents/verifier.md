@@ -1,6 +1,7 @@
 ---
 name: verifier
 description: Read-only checker for Proto work — marker coverage, rect and pixel parity against the live page, state URL round-trips. Dispatch to verify an importer's or builder's claims; it can run tools and read everything but cannot edit anything.
+model: haiku
 disallowedTools:
   - Write
   - Edit

@@ -13,6 +13,30 @@ and `components/*.html` in `~/.proto/<product>/library/` — specified in
 viewer fill in as you write, so the write choreography there is not
 optional polish, it is the product.
 
+## A design system, not a replica
+
+You are extracting the SYSTEM, not rebuilding the site. The page is a
+specimen catalog: it shows you living instances of each component
+type. What lands in the library is each type **once** — its variants
+side by side, out of page context, on its own — plus the tokens and
+type styles underneath everything. Concretely, this import never
+produces:
+
+- a rebuilt page, section, or layout — no composite assembly, no page
+  chrome, no reproducing how the page arranges things;
+- the page's content — a component's example copy is ONE realistic
+  invented-or-sampled instance ("Expense report — September"), never
+  the page's actual rows, articles, or user data;
+- verbatim-copied page markup. Every replica is authored from read
+  values; there is no mirror mode here. Copying a page's dense
+  content wholesale is a *prototype* concern — when a prototype must
+  match a specific page, that's create-prototype's job, with these
+  same CDP tools.
+
+If you notice yourself reproducing the page's arrangement or its
+text, you've drifted out of this skill's job. Stop, return to the
+inventory, extract types.
+
 ## Two inputs, one output
 
 You have both of these. Use both:
@@ -107,6 +131,17 @@ largest png/svg, and call `set_product_icon {account, product,
 image}` with a ≤256KB data URL. Fail soft; never let it interrupt
 the import.)
 
+0. **Host the library first — before extracting anything.** The
+   whole point of the write choreography is that the user WATCHES the
+   library fill in; that needs the viewer serving before item one.
+   Scaffold `template/library/` into
+   `~/.proto/<product>/library/` if setup hasn't, then serve it
+   supervised so it outlives this session: a
+   `~/.proto/<product>/run/library/` spec running
+   `node tools/serve.mjs <library-dir> <port>`, `supervise.mjs
+   start`. Tell the user the URL (and the app's design-system page
+   picks it up). Only then start the import.
+
 Write `progress.json` **before** doing anything slow — the first
 heartbeat ("Reading the source…") is what tells the user the import is
 alive. Then, flushing manifest + progress after every item per the
@@ -129,8 +164,11 @@ contract:
    input, badge) from **composites** (card, table, page header). Order
    the list primitives-first — the contract's viewer shows components
    above colors, and the queue order is the extraction order.
-4. **Components, one at a time.** `found → extracting → done/skipped`,
-   each transition flushed. Extraction and verification below.
+4. **Components, in parallel.** Fan the inventory out to extraction
+   subagents (see **Fan out** below); each component still walks
+   `found → extracting → done/skipped` with every transition flushed
+   by you, as units land. The queue draining several-at-once IS the
+   experience the user should see.
 5. **Finish.** Set `completedAt`, write
    `{"status": "complete", "activity": "Import complete"}`.
 
@@ -213,14 +251,17 @@ run:
 1. **Find it live.** Locate an instance on the page (or ask the user to
    navigate somewhere it appears). Read its anatomy: outline, matched
    rules, the source component file. Note which variants are visible.
-2. **Author the replica.** Write a standalone HTML file: the
-   component's variants side by side, inline CSS built from read values
-   and *their* mechanisms, tokens referenced by the names you extracted,
-   real product copy. Authored mode is the default — it produces
-   understanding (named variants, known mechanisms, values with
-   sources). Mirror mode (copying live markup + styles verbatim) is for
-   dense content where authoring buys nothing; a mirror unit still
-   needs its boundaries curated. State the mode in the unit's notes.
+2. **Author the replica — always authored, never copied.** Write a
+   standalone HTML file: the component's variants side by side, out
+   of page context, inline CSS built from read values and *their*
+   mechanisms, tokens referenced by the names you extracted, ONE
+   realistic sample instance of copy (invented in the product's
+   voice, or a single sampled line — never the page's data).
+   Authoring is the point: it produces understanding — named
+   variants, known mechanisms, values with sources. If a component
+   seems to demand copying page markup wholesale, it's probably not
+   a component — take it back to the orchestrator as an inventory
+   question.
 3. **Verify — rects before pixels.** Probe the same landmark rects in
    the live instance and your replica and require exact agreement.
    Geometry bugs surface as clean numbers there; in a pixel diff they
@@ -248,16 +289,32 @@ copy the font files into `library/` and `@font-face` them locally with
 a real fallback stack — a component preview that silently falls back
 to Helvetica fails the "renders faithfully" bar.
 
-## Scaling with subagents
+## Fan out — this is a parallel job
 
-One orchestrator owns the run and the contract files; only it writes
-`manifest.json` and `progress.json`. Scoped work — one component — can
-go to smaller agents in parallel, each writing only inside its own
-`units/<name>/` folder, each briefed with: the target element, this
-skill, the unit folder. Do not trust reports: spot-check claims against
-the artifacts (recompute a diff, re-read a cited source line) before
-flushing a unit as done. Verified surprises flow back into your run
-notes; recurring ones belong in this skill's traps list.
+Extraction is embarrassingly parallel and speed is a feature: the
+user is watching the library fill. The curated tree already divides
+the work — one component type per unit — so **dispatch one
+extraction subagent per unit, all of them at once** (up to whatever
+your harness comfortably runs; there is no fixed cap, and serial
+extraction is wrong unless only one unit remains). Tokens and type
+styles can be a parallel unit of their own alongside the components.
+
+Use cheap, fast models for unit work — the protocol above is
+prescriptive enough that they do it well (this was proven during the
+protocol's development: the last leaf reached zero on its first
+attempt because the skill carried every earlier lesson). On Claude
+Code the `importer` agent is preconfigured for this (Haiku); on
+Codex, `spawn_agent` with `proto-importer`. Verification of claims
+can go to the `verifier`/`proto-verifier` the same way.
+
+One orchestrator — you, the bigger model — owns the run and the
+contract files; only you write `manifest.json` and `progress.json`.
+Each subagent gets a narrow brief: the target element, this skill,
+its own `units/<name>/` folder (the only place it may write). Do not
+trust reports: spot-check claims against the artifacts (recompute a
+diff, re-read a cited source line) before flushing a unit as done.
+Verified surprises flow back into your run notes; recurring ones
+belong in this skill's traps list.
 
 ## Working style
 
