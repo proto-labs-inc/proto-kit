@@ -6,11 +6,11 @@
  * workspace's own config sets relative asset paths (the templates
  * carry base "./"). publish.mjs then asks the cloud to open a build
  * (`begin_publish` returns a fresh `<product>/<slug>/<buildId>/`
- * prefix and a short-lived client token), uploads every file
- * straight to Vercel Blob with that token, closes the build
- * (`finish_publish`), and prints the published URL. Nothing passes
- * through the app's own function, and no published path is ever
- * overwritten.
+ * prefix and one short-lived presigned PUT URL per file), uploads
+ * every file straight to the published host with plain HTTP PUTs,
+ * closes the build (`finish_publish`), and prints the published URL.
+ * Nothing passes through the app's own function, and no published
+ * path is ever overwritten.
  *
  * Usage: node publish.mjs <workspace> [--dist <folder>] [--product <id>] [--slug <slug>] [--dry-run]
  *   --dist defaults to dist/. It must contain index.html. product
@@ -149,21 +149,28 @@ if (!opened.buildId || !Array.isArray(opened.uploads)) {
   process.exit(1);
 }
 const { buildId, pathnamePrefix, uploads } = opened;
-console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload tokens)`);
+console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload URLs)`);
 
-// One token per file, each bound to its exact pathname, content type
-// and size; the tokens live ten minutes, so upload in parallel.
-const { put } = await import("@vercel/blob/client");
-await Promise.all(
+// One presigned PUT URL per file, each bound to its exact object,
+// content type and size; the URLs live ten minutes, so upload in
+// parallel and fail plainly on the first refusal.
+const results = await Promise.all(
   uploads.map(async (upload) => {
-    await put(upload.pathname, readFileSync(join(dist, upload.path)), {
-      access: "public",
-      token: upload.token,
-      contentType: upload.contentType,
-    });
-    console.log(`  uploaded ${upload.path}`);
+    const res = await fetch(upload.url, {
+      method: "PUT",
+      body: readFileSync(join(dist, upload.path)),
+      headers: { "Content-Type": upload.contentType },
+    }).catch((e) => ({ ok: false, status: e.message }));
+    if (res.ok) console.log(`  uploaded ${upload.path}`);
+    return { path: upload.path, ok: res.ok, status: res.status };
   }),
 );
+const failed = results.filter((r) => !r.ok);
+if (failed.length > 0) {
+  for (const f of failed) console.error(`upload failed: ${f.path} (${f.status})`);
+  console.error("nothing was finished; run publish again for a fresh build");
+  process.exit(1);
+}
 
 const finished = unwrap(await callTool("finish_publish", { product, slug, buildId, account }));
 if (!finished.publishedUrl) {
