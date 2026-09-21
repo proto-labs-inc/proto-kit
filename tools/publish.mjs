@@ -82,19 +82,21 @@ const files = [];
   }
 })(dist);
 
+// Bare media types: the publish schema and the presigned signatures
+// use exact types with no parameters.
 const TYPES = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".map": "application/json",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".webp": "image/webp",
   ".ico": "image/x-icon",
-  ".txt": "text/plain; charset=utf-8",
+  ".txt": "text/plain",
   ".gif": "image/gif",
   ".woff2": "font/woff2",
   ".woff": "font/woff",
@@ -122,8 +124,11 @@ if (!manifest.some((f) => f.path === "prototype.json"))
   problems.push("the build has no prototype.json (the workspace's public/ folder should carry it)");
 if (manifest.length > 200) problems.push(`${manifest.length} files; the limit is 200`);
 if (totalBytes > 40 * 1024 * 1024) problems.push(`${(totalBytes / 1048576).toFixed(1)} MB total; the limit is 40 MB`);
+const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 for (const f of manifest) {
   if (f.size > 8 * 1024 * 1024) problems.push(`${f.path} is ${(f.size / 1048576).toFixed(1)} MB; the per-file limit is 8 MB`);
+  if (!f.path.split("/").every((seg) => SEGMENT.test(seg)))
+    problems.push(`${f.path} has a path segment the published host refuses (letters, digits, dot, dash, underscore; no leading dot)`);
 }
 if (problems.length > 0) {
   for (const p of problems) console.error(`cannot publish: ${p}`);
@@ -136,16 +141,26 @@ if (dryRun) {
   process.exit(0);
 }
 
-// The MCP tools answer with JSON in content[0].text.
+// The MCP tools answer with JSON in content[0].text; validation
+// failures arrive as plain text there instead.
 const unwrap = (result) => {
   const text = result?.content?.[0]?.text;
-  return text ? JSON.parse(text) : result;
+  if (!text) return result;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text.split("\n")[0] };
+  }
 };
 
 const account = config.account?.user;
-const opened = unwrap(await callTool("begin_publish", { product, slug, account, files: manifest }));
+const opened = unwrap(
+  await callTool("begin_publish", { product, slug, account, files: manifest }).catch((e) => ({
+    content: [{ text: e.message }],
+  })),
+);
 if (!opened.buildId || !Array.isArray(opened.uploads)) {
-  console.error(`begin_publish did not open a build: ${JSON.stringify(opened)}`);
+  console.error(`begin_publish did not open a build: ${opened.error ?? JSON.stringify(opened)}`);
   process.exit(1);
 }
 const { buildId, pathnamePrefix, uploads } = opened;
@@ -172,9 +187,13 @@ if (failed.length > 0) {
   process.exit(1);
 }
 
-const finished = unwrap(await callTool("finish_publish", { product, slug, buildId, account }));
+const finished = unwrap(
+  await callTool("finish_publish", { product, slug, buildId, account }).catch((e) => ({
+    content: [{ text: e.message }],
+  })),
+);
 if (!finished.publishedUrl) {
-  console.error(`finish_publish did not confirm: ${JSON.stringify(finished)}`);
+  console.error(`finish_publish did not confirm: ${finished.error ?? JSON.stringify(finished)}`);
   process.exit(1);
 }
 console.log(`published: ${finished.publishedUrl}`);
