@@ -105,10 +105,9 @@ supervised run dir (`~/.proto/<productId>/run/courier/`):
   bearer-authed enumerated commands on a local port, validates, and
   appends each accepted command to `commands.jsonl`. It holds the
   port, so it runs under supervise, never under a Monitor watch.
-- **The product agent** — the user's own interactive Claude Code
-  session (terminal or the Claude Code desktop app) running the
-  listen skill; setup ends by telling them to keep it
-  open. It watches the feed, acts on each command inline, commits
+- **The session running the listen skill**: the user's own
+  interactive Claude Code session (terminal or the Claude Code
+  desktop app); setup ends by telling them to keep it open. It watches the feed, acts on each command inline, commits
   `offset.json` after each, and heartbeats so the courier's status
   can report `agentListening`. Fallback: `tools/agent-launch.mjs`
   under the supervisor starts a headless session with the same

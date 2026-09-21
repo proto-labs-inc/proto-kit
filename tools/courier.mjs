@@ -4,15 +4,15 @@
  * doorbell. Receives bearer-authed enumerated JSON commands on a local
  * port (exposed publicly via the product's agent-<product> tunnel),
  * validates them, and appends each ACCEPTED command as one JSON line to
- * <run-dir>/commands.jsonl — the durable feed the always-on product
- * agent consumes (see skills/listen/ and
+ * <run-dir>/commands.jsonl — the durable feed the listening session
+ * consumes (see skills/listen/ and
  * docs/claude-code-mechanics.md for why a file, not stdout: lines
  * emitted while no watch is armed would be lost, and the monitored
  * command is killed at watch end while this listener must keep its
  * port).
  *
  * That's the whole job: no spawning, no queue, no run tracking — the
- * product agent acts on commands inline, in its own session.
+ * session running the listen skill acts on commands inline.
  *
  * Command handling is transport-agnostic: handle() takes a parsed JSON
  * command however it arrived. courier-http.mjs is the current
@@ -57,7 +57,7 @@ function validated(cmd) {
   return null;
 }
 
-// agentListening: a product agent's feed watch heartbeats into the run
+// agentListening: the listening session's feed watch heartbeats into the run
 // dir; fresh heartbeat = someone is consuming commands.
 function agentState() {
   try {

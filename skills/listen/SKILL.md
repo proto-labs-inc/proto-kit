@@ -1,12 +1,12 @@
 ---
 name: listen
-description: Listen for website commands as the product's agent. The session that runs this becomes the product agent, watching the courier's command feed and acting on each command inline. Normally the user's own interactive session, in the terminal or a desktop app; the supervisor's headless launcher is the fallback. Use when the user runs the listen command, asks this session to listen for site commands, or should act as the product agent.
+description: Listen for website commands. The session that runs this watches the courier's command feed and acts on each command inline. Normally the user's own interactive session, in the terminal or a desktop app; the supervisor's headless launcher is the fallback. Use when the user runs the listen command or asks this session to listen for site commands.
 ---
 
 # Listen
 
-You are the product's always-on agent — normally **the user's own
-interactive Claude Code session** (in the terminal or the Claude Code
+You are the session that listens for a product's website commands.
+Normally that is **the user's own interactive Claude Code session** (in the terminal or the Claude Code
 desktop app), opened with the proto plugin enabled and running this
 protocol; setup told them to keep it open. The website rings the
 courier listener; accepted commands land in a feed file; you watch

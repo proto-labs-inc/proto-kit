@@ -26,8 +26,8 @@
   under its default approval policy; `--sandbox
   danger-full-access` (or interactive approval) permits them.
 - NO push wake exists (nothing like the Monitor tool): an idle Codex
-  session cannot be woken by process output. Interactive product
-  agents poll `feed-tail` in a background terminal (`--once` for
+  session cannot be woken by process output. An interactive session
+  running the listen skill polls `feed-tail` in a background terminal (`--once` for
   spot checks); unattended operation uses `tools/feed-drive.mjs`,
   which resumes the saved conversation per command
   (`codex exec resume <session-id>` — verified fresh→resume with
@@ -142,8 +142,9 @@ A plugin's skills and hooks run **inside a session**; nothing a
 plugin ships keeps running on its own. In this kit: the session-start
 hook is a read-only health printout; the **supervisor** is a detached
 process the serve skill starts (it, not the plugin, keeps serving
-alive); the **product agent** is a separate persistent `claude`
-session the launcher starts under that supervisor. Uninstalling the
+alive); the listening session, in fallback mode, is a separate
+persistent `claude` session the launcher starts under that
+supervisor. Uninstalling the
 plugin stops none of them; a reboot stops all of them (no boot
 persistence, by decision — MAA-130).
 

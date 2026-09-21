@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * FALLBACK launcher for the product agent. The normal product agent
- * is the user's own interactive session (terminal or desktop app)
- * running the listen skill; this launcher exists for
+ * FALLBACK launcher for the listen skill. Normally the session
+ * running it is the user's own interactive session (terminal or
+ * desktop app); this launcher exists for
  * recovery and nobody-at-the-keyboard operation under the supervisor.
  *
- * Launches the always-on product agent for the supervisor. Keeps the
+ * Launches a headless listen session for the supervisor. Keeps the
  * "resume where possible" knowledge out of the agent and out of
  * supervise.mjs: reads <run-dir>/session.json, starts the agent fresh
  * or with --resume <id>, captures the session id from the agent's own
@@ -18,7 +18,7 @@
  *
  * courier.json's agent block:
  *   "agent": { "bin": "claude",
- *              "args": ["-p", "--agent", "proto:product-agent",
+ *              "args": ["-p", "--agent", "proto:listen",
  *                        "--output-format", "stream-json", "--verbose",
  *                        "--allowed-tools=Bash,Monitor,Read,Skill"],
  *              "resumeArgs": ["--resume", "{sessionId}"],

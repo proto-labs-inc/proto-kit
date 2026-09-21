@@ -3,7 +3,7 @@
  * The Codex wake adapter — the nobody-at-the-keyboard fallback. On
  * Claude the idle path is a resumed session with a Monitor watch; on
  * Codex nothing wakes an idle agent, so this daemon consumes the feed
- * itself: for each command it resumes the product agent's saved
+ * itself: for each command it resumes the listening session's saved
  * conversation (`codex exec resume <session-id>`), delivering the
  * command as the next message, and commits the offset only when the
  * run exits cleanly — the same at-least-once contract as feed-tail.

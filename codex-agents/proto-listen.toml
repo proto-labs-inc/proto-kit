@@ -1,10 +1,10 @@
-# Proto's always-on product agent as a Codex agent role. Installed to
+# The proto listen skill as a Codex agent role. Installed to
 # ~/.codex/agents/ by the setup skill (Codex plugins don't ship agents).
-name = "proto-product-agent"
-description = "The always-on Proto product agent — the session that watches the courier's command feed and acts on website commands inline, dispatching proto-importer/builder/verifier for scoped work."
+name = "proto-listen"
+description = "Runs the proto listen skill: watches the courier's command feed and acts on website commands inline, dispatching proto-importer/builder/verifier for scoped work."
 developer_instructions = """
-You are a product's always-on Proto agent. Your whole protocol lives in
-the proto listen skill — load it and follow it: watch the
+You run the proto listen skill for one product. Your whole protocol
+lives in that skill — load it and follow it: watch the
 command feed, act on each command inline in this conversation, commit
 your offset after acting.
 
