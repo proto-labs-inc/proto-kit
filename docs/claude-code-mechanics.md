@@ -136,9 +136,12 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   expansion also works, with a denylist of credential vars
   (ANTHROPIC_API_KEY etc.) that read as empty in remote
   urls/headers.
-- Plugin hooks: exec-form commands (`"command": ["node", "…"]`) are
-  the recommended shape; `${CLAUDE_PLUGIN_ROOT}` expands inside
-  them. Plugin monitors (`monitors/monitors.json`, `when:
+- Plugin hooks: use STRING commands
+  (`"command": "node \"${CLAUDE_PLUGIN_ROOT}/…\""`). The docs
+  recommend exec-form arrays, but on 2026-09-20 an array-form
+  SessionStart hook silently did not fire on the installed CLI while
+  the identical string form did — verified by flipping only that
+  field between installs. Plugin monitors (`monitors/monitors.json`, `when:
   "always" | "on-skill-invoke:<skill>"`) deliver stdout lines as
   notifications but run in INTERACTIVE sessions only — headless
   flows must arm the Monitor tool themselves.

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ["node", "${CLAUDE_PLUGIN_ROOT}/tools/health.mjs"]
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/tools/health.mjs\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ["node", "${CLAUDE_PLUGIN_ROOT}/tools/hooks/post-edit-markers.mjs"]
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/tools/hooks/post-edit-markers.mjs\""
           }
         ]
       }
