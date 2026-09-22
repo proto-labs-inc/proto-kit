@@ -4,15 +4,13 @@
     "name": "Proto Labs"
   },
   "metadata": {
-    "description": "Proto's plugin marketplace: one plugin, Proto, for Claude Code.",
-    "version": "0.1.0"
+    "description": "Proto's plugin marketplace: one plugin, Proto, for Claude Code."
   },
   "plugins": [
     {
       "name": "proto",
       "source": "./",
       "description": "Prototypes from your product's own code, built and served from your laptop by your coding agent.",
-      "version": "0.1.0",
       "author": {
         "name": "Proto Labs"
       },
