@@ -1,6 +1,6 @@
 ---
 name: proto-builder
-description: Builds inside one Proto prototype workspace (~/.proto/<product>/prototypes/<slug>/): pages, states, explorations, markers, following the create-prototype skill. Dispatch for scoped workspace work; it never touches the user's repos, other workspaces, or serving state.
+description: Builds inside one Proto prototype workspace (~/.proto/<codebase>/prototypes/<slug>/): pages, states, explorations, markers, following the create-prototype skill. Dispatch for scoped workspace work; it never touches the user's repos, other workspaces, or serving state.
 model: inherit
 ---
 
