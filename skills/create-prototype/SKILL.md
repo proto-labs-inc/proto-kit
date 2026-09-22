@@ -29,6 +29,22 @@ dialog captured): use it to map structure and copy, but the live page
 wins on any disagreement, and never paste it into the prototype at
 runtime.
 
+## The gallery shows the build
+
+Before scaffolding, put a loading card in the user's gallery: call
+`begin_prototype_build { codebase, slug, title, owner }` (owner is
+config.json's `account.user`) and keep the brief id it returns. One
+guard: when this build was started by a website brief, you already
+have a brief id — use that one and do not call
+`begin_prototype_build` again.
+
+Report progress on that brief id at the checkpoints, each message
+one plain sentence a non-engineer can read: `started` before any
+slow work, `building` when workspace work begins, `serving` when the
+serve flow starts — and `failed` or `needs-input` whenever that is
+the truth. Registration, inside the serve skill, flips the brief to
+done.
+
 ## Where it lives
 
 Scaffold `~/.proto/<codebase>/prototypes/<slug>/` by copying the
@@ -202,7 +218,9 @@ a reference is a guess with styling.
    viewer's resolver for thirty minutes. `register_prototype`
    upserts on (codebase, slug), so re-registering after a title
    change is correct and expected; an unknown-owner error means
-   `account.user` is wrong — fix it in setup, not here.
+   `account.user` is wrong — fix it in setup, not here. Registering
+   also flips the build's brief to done, closing the gallery's
+   loading card.
 
 Serving the prototype (dev server + tunnel + registration) is the
 serve skill's job. Don't provision tunnels, don't publish, don't
