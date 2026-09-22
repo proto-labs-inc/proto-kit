@@ -23,9 +23,10 @@ settings** — if access is missing, produce the forwardable message
 ## Two ways in
 
 **As a command** — with the proto plugin installed, the user runs
-`/proto:setup` on Claude Code, or `$setup` on Codex (or just asks to
-set up Proto — in the terminal, the Claude Code desktop app, or the
-Codex app). Nothing was pasted, so ask for the one thing setup can't
+`/proto:setup` on Claude Code, `$setup` on Codex, or picks the Proto
+setup skill from the chat's `/` menu on Cursor (or just asks to set
+up Proto — in the terminal, the Claude Code desktop app, the Codex
+app, or Cursor's chat). Nothing was pasted, so ask for the one thing setup can't
 derive: the account, as the Proto site shows it (name and id) — one
 question, then proceed exactly as below. If they paste the snippet
 in reply, even better.
@@ -78,11 +79,21 @@ else, so setup runs on the latest version:
 - Codex: `codex plugin marketplace upgrade proto-kit && codex plugin
   add proto@proto-kit` (Codex has no plugin update; re-adding
   installs the refreshed snapshot)
-- Cursor: update it from the Customize panel.
+- Cursor: installed from the Customize panel, the user opens the
+  Proto plugin there and refreshes it; installed as a local plugin
+  folder, run `git -C ~/.cursor/plugins/local/proto pull --ff-only`.
+  Either way the user then runs **Developer: Reload Window** so Cursor
+  loads the new copy (the chat survives the reload).
 
 If an update was installed just now, re-read this skill from the
 updated copy before continuing: the text you are following may be
 stale.
+
+On Cursor, when the plugin is not installed at all (the snippet was
+pasted into a chat without it), install it yourself: `git clone
+https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto`,
+tell the user to run **Developer: Reload Window**, and continue from
+the installed copy's `skills/setup/SKILL.md`.
 
 ### Prerequisites
 
@@ -130,10 +141,16 @@ cloud call use `account.user` as the owner.
 ### The proto MCP server
 
 The `proto` MCP server is how every kit skill talks to Proto
-(tunnels, registration, source registry, comments). In Claude and Cursor,
-it ships in the plugin: enabling the plugin prompts for the app URL and
+(tunnels, registration, source registry, comments). In Claude Code it
+ships in the plugin: enabling the plugin prompts for the app URL and
 provisioning secret, and the server connects with them — nothing to add by
-hand. Its tools may appear under a host-specific scoped name; this and the
+hand. In Cursor it ships in the plugin as the kit's own stdio bridge
+(`tools/mcp-stdio.mjs`): it uses the two values from the plugin's
+Configure panel when the user entered them, otherwise it reads
+config.json, so once this step has written config.json the server
+works with nothing else to add. The bridge announces its tools when
+config.json appears; if they still do not show, the user toggles the
+Proto MCP server off and on in Customize. Its tools may appear under a host-specific scoped name; this and the
 other skills refer to them by bare tool name. Write the same two values
 into config.json (`app`, `auth.secret`) — the kit's plain tools (courier,
 supervisor) read config.json, not plugin config.
@@ -341,8 +358,8 @@ Setup ends by continuing, not by stopping:
 3. End by telling the user, plainly: **keep this session open — it's
    your codebase's agent.** And one more sentence once the first
    import has finished: the library is published, so it stays
-   viewable after this laptop closes. This very session (in the terminal or the
-   Claude Code desktop app) is what receives the site's commands;
+   viewable after this laptop closes. This very session (in the terminal, the
+   Claude Code desktop app, the Codex app, or Cursor's chat) is what receives the site's commands;
    continue into the listen skill. Closing it doesn't lose
    anything — commands queue in the feed — but nothing runs until a
    session picks the protocol up again.

@@ -36,22 +36,64 @@ claude plugin install proto@proto-kit \
 # Codex (CLI or the desktop app; trust the hooks when asked)
 codex plugin marketplace add proto-labs-inc/proto-kit
 codex plugin add proto@proto-kit
+# Cursor (local plugin folder; see the Cursor section below)
+git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto
 ```
 
 If the plugin is already installed, update it first so it is on the
 latest version. Claude Code: `claude plugin marketplace update
 proto-kit && claude plugin update proto@proto-kit`. Codex: `codex
 plugin marketplace upgrade proto-kit && codex plugin add
-proto@proto-kit`. Cursor: update it from the Customize panel.
+proto@proto-kit`. Cursor: see the Cursor section below.
 
 Then run `/proto:setup` (Claude Code) or `$setup` (Codex) in any
-session. On Codex, setup writes the MCP server entry and installs the
-agent roles itself. The skills and tools are one shared set; only the
-packaging differs per harness (`.claude-plugin/` + `hooks/` +
-`agents/` + `monitors/` for Claude; `plugin.json` + `codex-hooks/` +
-`codex-agents/` for Codex; `.cursor-plugin/` for Cursor). A
+session; in Cursor, type `/` in the chat and pick the Proto setup
+skill, or paste the setup prompt. On Codex, setup writes the MCP
+server entry and installs the agent roles itself. The skills and
+tools are one shared set; only the packaging differs per harness
+(`.claude-plugin/` + `hooks/` + `agents/` + `monitors/` for Claude;
+`plugin.json` + `codex-hooks/` + `codex-agents/` for Codex;
+`.cursor-plugin/` + `cursor-hooks/` + `cursor-agents/` for Cursor). A
 session-start hook prints one health line per codebase once `~/.proto`
 exists.
+
+### Cursor
+
+Cursor installs plugins from a marketplace or from a local folder.
+This repository is its own marketplace (`.cursor-plugin/marketplace.json`),
+so either path works.
+
+**From the Customize panel.** Open **Customize** in Cursor's sidebar,
+choose **From GitHub Repository**, paste
+`https://github.com/proto-labs-inc/proto-kit`, and install **Proto**
+(user scope is the usual choice). The plugin declares two values,
+**Proto app URL** and **Provisioning secret**. If Cursor asks for
+them, enter the `Proto app:` and `Provisioning secret:` lines of the
+setup prompt you copied from the site. If it does not ask, leave
+them: setup writes the same two values to `~/.proto/config.json`, and
+the plugin's Proto MCP server reads them from there.
+
+**From a local folder.** Clone the kit into Cursor's local plugin
+folder (the `git clone` line above), then run **Developer: Reload
+Window** from the command palette. Proto appears in Customize under
+Plugins. Nothing to configure: the MCP server reads
+`~/.proto/config.json` once setup has written it. On Enterprise plans
+an admin has to allow local plugin imports first.
+
+**Updating.** For a Customize install, open the Proto plugin in
+Customize and refresh it (a marketplace with auto refresh updates
+itself). For the local folder, `git -C ~/.cursor/plugins/local/proto
+pull --ff-only`. Then **Developer: Reload Window**.
+
+**What Cursor gets.** The same skills, a session-start hook with the
+health line and a post-edit hook with the marker check
+(`cursor-hooks/hooks.json`), the `proto-importer`, `proto-builder`
+and `proto-verifier` subagents (`cursor-agents/`), and the `proto`
+MCP server as a stdio bridge (`tools/mcp-stdio.mjs`) to the app's
+MCP endpoint. On a laptop with no `~/.proto/config.json` yet the
+bridge starts with no tools and announces them once setup has written
+the file; if they still do not show, toggle the Proto MCP server off
+and on in Customize.
 
 ## The laptop layout this kit produces
 

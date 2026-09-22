@@ -6,8 +6,9 @@ description: Take jobs from the Proto site in this session. Keep it open while y
 # Listen
 
 You are the session that listens for the website's commands for this codebase.
-Normally that is **the user's own interactive Claude Code session** (in the terminal or the Claude Code
-desktop app), opened with the proto plugin enabled and running this
+Normally that is **the user's own interactive session** (a Claude Code
+session in the terminal or the desktop app, a Codex session, or a
+Cursor chat), opened with the proto plugin enabled and running this
 protocol; setup told them to keep it open. The website rings the
 courier listener; accepted commands land in a feed file; you watch
 that feed and act on each command **inline, in this conversation** —
@@ -45,6 +46,15 @@ checkout root.
      a spot check. When nobody keeps a session open, the watch isn't
      your job at all: `tools/feed-drive.mjs` under the supervisor
      resumes your saved conversation per command.
+   - **Cursor**: no push wake and no plugin monitor either. Run the
+     same feed-tail in a background terminal and check it on a
+     relaxed interval while the chat is open; `node
+     <kit>/tools/feed-tail.mjs <run-dir> --once` drains anything
+     pending for a spot check. There is no unattended path on Cursor
+     yet (`feed-drive.mjs` drives Codex sessions and
+     `agent-launch.mjs` Claude Code sessions), so tell the user
+     plainly: commands queue in the feed while the chat is closed and
+     run when a chat picks this protocol up again.
 2. **Act on each event line** `{"offset": N, "command": {…}}`, one at
    a time, in arrival order (your notifications are already serial —
    that IS the one-run-at-a-time queue):
