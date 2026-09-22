@@ -4,26 +4,13 @@
     "name": "Proto Labs"
   },
   "metadata": {
-    "description": "Proto's installable skills and tools for product prototyping."
+    "description": "Proto's plugin marketplace: one plugin, Proto, for Cursor."
   },
   "plugins": [
     {
       "name": "proto",
-      "source": ".",
-      "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs.",
-      "version": "0.1.0",
-      "author": {
-        "name": "Proto Labs"
-      },
-      "homepage": "https://github.com/proto-labs-inc/proto-kit",
-      "repository": "https://github.com/proto-labs-inc/proto-kit",
-      "logo": "assets/proto-logo.png",
-      "category": "productivity",
-      "tags": [
-        "prototyping",
-        "design-systems",
-        "frontend"
-      ]
+      "source": "./",
+      "description": "Prototypes from your product's own code, built and served from your laptop by your coding agent."
     }
   ]
 }

@@ -13,16 +13,22 @@
   "keywords": [
     "prototyping",
     "design-systems",
-    "frontend"
+    "frontend",
+    "cursor"
   ],
   "skills": "./skills/",
-  "agents": [],
-  "hooks": [],
+  "agents": "./cursor-agents/",
+  "hooks": "./cursor-hooks/hooks.json",
   "mcpServers": {
     "proto": {
-      "url": "${PROTO_APP_URL}/api/mcp",
-      "headers": {
-        "Authorization": "Bearer ${PROTO_PROVISION_SECRET}"
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${CURSOR_PLUGIN_ROOT}/tools/mcp-stdio.mjs"
+      ],
+      "env": {
+        "PROTO_APP_URL": "${PROTO_APP_URL}",
+        "PROTO_PROVISION_SECRET": "${PROTO_PROVISION_SECRET}"
       }
     }
   },
@@ -32,17 +38,13 @@
       "PROTO_APP_URL": {
         "type": "string",
         "title": "Proto app URL",
-        "description": "Your Proto app origin, for example https://proto.example.com"
+        "description": "Your Proto app's address, for example https://<your proto domain>. It is the Proto app line of the setup prompt you copy from the site. Optional: once setup has run, the plugin reads it from ~/.proto/config.json."
       },
       "PROTO_PROVISION_SECRET": {
         "type": "string",
         "title": "Provisioning secret",
-        "description": "The shared provisioning secret from your Proto operator"
+        "description": "The Provisioning secret line of the setup prompt you copy from the site. Optional: once setup has run, the plugin reads it from ~/.proto/config.json."
       }
-    },
-    "required": [
-      "PROTO_APP_URL",
-      "PROTO_PROVISION_SECRET"
-    ]
+    }
   }
 }

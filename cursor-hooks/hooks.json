@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/cursor-session-start.mjs\"",
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/cursor-post-tool-use.mjs\"",
+        "timeout": 20
+      }
+    ]
+  }
+}
