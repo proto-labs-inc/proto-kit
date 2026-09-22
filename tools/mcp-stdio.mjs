@@ -2,8 +2,8 @@
 /**
  * The proto MCP server as a stdio process, for hosts whose plugin
  * config can only carry a fixed url (Cursor). Bridges MCP over stdio
- * to the app's Streamable HTTP endpoint (<app>/api/mcp), the wire
- * mcp-call.mjs speaks. Where the endpoint and bearer come from, in
+ * to the app's Streamable HTTP endpoint (<app>/api/mcp) over the
+ * transport in mcp-call.mjs. Where the endpoint and bearer come from, in
  * order: PROTO_APP_URL and PROTO_PROVISION_SECRET in the environment
  * (Cursor substitutes the plugin's variables there), else
  * ~/.proto/config.json (`app`, `auth.secret`), which setup writes.
@@ -20,6 +20,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { post } from "./mcp-call.mjs";
 
 const PROTOCOL_VERSION = "2025-03-26";
 const CLIENT_INFO = { name: "proto-kit", version: "0" };
@@ -45,49 +46,10 @@ function resolveConfig() {
 const send = (message) => process.stdout.write(JSON.stringify(message) + "\n");
 const note = (text) => process.stderr.write(`proto mcp: ${text}\n`);
 
-/** Every JSON-RPC message in a response body: plain JSON or SSE frames. */
-function parseMessages(text) {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return [];
-  if (!/^(event:|data:|id:|retry:|:)/m.test(trimmed) || trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    const parsed = JSON.parse(trimmed);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  }
-  const messages = [];
-  for (const frame of trimmed.split(/\n\n+/)) {
-    const data = frame
-      .split("\n")
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trim())
-      .join("\n");
-    if (data.length === 0) continue;
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) messages.push(...parsed);
-    else messages.push(parsed);
-  }
-  return messages;
-}
-
 // One upstream session per (endpoint, bearer); re-made when either
 // changes or the server forgets the session.
 let upstream = null; // { key, config, sessionId, ready: Promise<initResult> }
 let clientInit = null; // the host's initialize params, replayed upstream
-
-async function post(config, body, sessionId) {
-  const headers = {
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-    Authorization: `Bearer ${config.secret}`,
-  };
-  if (sessionId) headers["Mcp-Session-Id"] = sessionId;
-  const res = await fetch(`${config.app}/api/mcp`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  return { status: res.status, sessionId: res.headers.get("mcp-session-id"), messages: res.ok ? parseMessages(text) : [], text };
-}
 
 function ensureUpstream(config) {
   const key = `${config.app}\n${config.secret}`;
