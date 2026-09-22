@@ -260,7 +260,7 @@ fills it; the serve skill serves it.
 
 ### The reference page (the Proto window)
 
-Prototypes and imports read the user's live codebase through their own
+Prototypes and imports read the user's live product through their own
 browser. Set that up once per machine, here:
 
 1. Start the dedicated Proto Chrome window: `node
@@ -286,10 +286,10 @@ browser. Set that up once per machine, here:
    match). Pasting a URL into the chat is always an accepted
    fallback — never a required step.
 
-### The codebase's icon
+### The product's icon
 
 Codebases carry a favicon the agent sets itself — right after the
-Proto window step, while the codebase's live page is open there:
+Proto window step, while the product's live page is open there:
 
 1. Prefer the live page's own icon: read its `<link rel="icon">`
    candidates over CDP and take the largest png/svg.

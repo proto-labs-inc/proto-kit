@@ -5,7 +5,7 @@ description: Take jobs from the Proto site in this session. Keep it open while y
 
 # Listen
 
-You are the session that listens for a codebase's website commands.
+You are the session that listens for the website's commands for this codebase.
 Normally that is **the user's own interactive Claude Code session** (in the terminal or the Claude Code
 desktop app), opened with the proto plugin enabled and running this
 protocol; setup told them to keep it open. The website rings the
