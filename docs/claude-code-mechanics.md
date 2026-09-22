@@ -33,6 +33,78 @@
   (`codex exec resume <session-id>` — verified fresh→resume with
   offset commits against a stub).
 
+## Cursor facts (2026-09-22)
+
+Read from Cursor's docs (cursor.com/docs/reference/plugins, /docs/plugins,
+/docs/hooks, /docs/subagents, /docs/skills, /docs/mcp) and the
+cursor/plugins and cursor/plugin-template repos; "verified" below means
+run on this machine without the Cursor app, which nobody has driven
+against this plugin yet.
+
+- Manifest `.cursor-plugin/plugin.json`; only `name` is required.
+  Cursor publishes a JSON schema (cursor/plugins, schemas/) with
+  additionalProperties false; `hooks` is a string path or an object,
+  `agents`/`skills` a path or list, and an explicit path REPLACES
+  folder discovery for that component (so `"hooks":
+  "./cursor-hooks/hooks.json"` keeps Cursor off the Claude-format
+  `hooks/hooks.json`). Verified: the schema validator from
+  cursor/plugins and the template validator from cursor/plugin-template
+  both pass on this repo; before the fix `"hooks": []` failed the
+  schema and the marketplace entry carried seven forbidden fields.
+- `.cursor-plugin/marketplace.json` entries allow only `name`,
+  `source`, `description`, `minClientVersions`; everything else
+  belongs in plugin.json. The repo being its own marketplace is what
+  the Customize panel's "From GitHub Repository" import needs.
+- Hooks: `{"version": 1, "hooks": {...}}`, camelCase events
+  (`sessionStart`, `postToolUse`, `afterFileEdit`, ...), JSON on stdin
+  and stdout. sessionStart returns `{"additional_context"}` (added to
+  the conversation's initial context; fire-and-forget); postToolUse
+  returns `{"additional_context"}` (injected after the tool result);
+  afterFileEdit has no output. `${CURSOR_PLUGIN_ROOT}` expands in hook
+  commands (Cursor's own Advisor plugin relies on it). postToolUse
+  matchers run against tool types (`Shell`, `Read`, `Write`, ...);
+  the kit's post-edit hook uses no matcher and reads the edited path
+  from whichever key the tool sent. Verified offline: both adapters
+  answer the documented input shapes with the documented output
+  (`tools/hooks/cursor-session-start.mjs`,
+  `tools/hooks/cursor-post-tool-use.mjs`).
+- Plugin variables: a JSON Schema under `variables` declares names;
+  users enter values in the plugin's Configure panel; `${VAR}` is
+  substituted in MCP `command`, `args`, `env`, `cwd` and `headers`.
+  Substitution in `url` is not documented, and every official plugin
+  uses a fixed url, so the kit ships its server as a stdio bridge
+  (`tools/mcp-stdio.mjs`) whose endpoint and bearer come from env
+  (the variables) or `~/.proto/config.json`. Verified: the bridge
+  completes initialize, tools/list and a `whoami` call against the
+  real app over stdio; started unconfigured it answers initialize and
+  an empty tools/list, then emits `notifications/tools/list_changed`
+  once config.json appears and serves the real tools; a literal
+  `${VAR}` left in env is treated as unset.
+- Agents: markdown with `name` and `description`, optional `model`
+  (`inherit` or a Cursor model id), `readonly`, `is_background`;
+  invoked as `/name`. Claude's `agents/*.md` carry Claude-only keys
+  (`model: haiku`, `skills`, `disallowedTools`), so Cursor gets its
+  own `cursor-agents/`.
+- Install paths: the official marketplace (submission and review),
+  Customize -> From GitHub Repository (needs the marketplace manifest),
+  a local folder `~/.cursor/plugins/local/<name>` loaded after
+  Developer: Reload Window (symlinks to elsewhere are skipped; on
+  Enterprise an admin allows local imports), and team marketplaces
+  (Dashboard, Teams/Enterprise plans). Updates: refresh in Customize
+  or `git pull` in the local folder, then reload.
+- Wake: no push wake and no plugin monitor; the listen skill polls
+  feed-tail in a background terminal, as on Codex. Cursor's `stop`
+  hook can auto-submit a follow-up message (loop_limit, null for no
+  cap), which is a loop, not a watch. The Cursor CLI (`cursor-agent`)
+  has `-p`, `--resume <chatId>` and `--plugin-dir`, so a feed-drive
+  adapter is possible later; not built.
+- Not provable without the app, left for the from-scratch run: that
+  Customize lists the plugin's skills, hooks and subagents; whether a
+  local-folder install shows the Configure panel for variables;
+  that Cursor honors `tools/list_changed` from the bridge (else the
+  server is toggled off and on); the tool_input key Cursor's edit
+  tools send to postToolUse.
+
 # Claude Code mechanics
 
 Verified facts about the harness, so skills stand on stated ground
