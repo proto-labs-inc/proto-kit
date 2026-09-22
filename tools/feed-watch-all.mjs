@@ -1,33 +1,33 @@
 #!/usr/bin/env node
 /**
- * Follows every product's courier feed at once — the plugin-monitor
+ * Follows every codebase's courier feed at once — the plugin-monitor
  * flavor of feed-tail.mjs, for an interactive session running the listen skill
  * (plugin monitors don't run in headless -p sessions; there the skill
  * arms the Monitor tool on feed-tail.mjs itself).
  *
- * Emits one line per command, envelope {"product", "offset",
- * "command"}; the consumer commits {"offset": N} to that product's
+ * Emits one line per command, envelope {"codebase", "offset",
+ * "command"}; the consumer commits {"offset": N} to that codebase's
  * run/courier/offset.json after acting, same at-least-once contract
- * as feed-tail. Picks up products created while running. Runs until
+ * as feed-tail. Picks up codebases created while running. Runs until
  * killed.
  */
 import { openSync, readSync, readFileSync, statSync, closeSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(process.env.HOME ?? "", ".proto");
-const feeds = new Map(); // product -> {offset, carry}
+const feeds = new Map(); // codebase -> {offset, carry}
 
-function drainProduct(product) {
-  const runDir = join(root, product, "run", "courier");
+function drainProduct(codebase) {
+  const runDir = join(root, codebase, "run", "courier");
   const feed = join(runDir, "commands.jsonl");
-  let state = feeds.get(product);
+  let state = feeds.get(codebase);
   if (!state) {
     let offset = 0;
     try {
       offset = JSON.parse(readFileSync(join(runDir, "offset.json"), "utf8")).offset ?? 0;
     } catch {}
     state = { offset, carry: "" };
-    feeds.set(product, state);
+    feeds.set(codebase, state);
   }
   let size;
   try {
@@ -50,22 +50,22 @@ function drainProduct(product) {
     consumed += Buffer.byteLength(line, "utf8") + 1;
     if (line.trim().length === 0) continue;
     try {
-      console.log(JSON.stringify({ product, offset: consumed, command: JSON.parse(line) }));
+      console.log(JSON.stringify({ codebase, offset: consumed, command: JSON.parse(line) }));
     } catch {
-      console.log(JSON.stringify({ product, offset: consumed, malformed: line }));
+      console.log(JSON.stringify({ codebase, offset: consumed, malformed: line }));
     }
   }
   state.offset = consumed;
 }
 
-// Heartbeat per product: the courier's status reports agentListening
+// Heartbeat per codebase: the courier's status reports agentListening
 // from this file's freshness — a live watch means a live consumer.
 let lastBeat = 0;
-function beat(products) {
+function beat(codebases) {
   if (Date.now() - lastBeat < 5000) return;
   lastBeat = Date.now();
   const stamp = JSON.stringify({ at: new Date().toISOString() });
-  for (const p of products) {
+  for (const p of codebases) {
     try {
       statSync(join(root, p, "run", "courier"));
       writeFileSync(join(root, p, "run", "courier", "watch-heartbeat.json"), stamp);
@@ -74,16 +74,16 @@ function beat(products) {
 }
 
 function tick() {
-  let products = [];
+  let codebases = [];
   try {
-    products = readdirSync(root, { withFileTypes: true })
+    codebases = readdirSync(root, { withFileTypes: true })
       .filter((e) => e.isDirectory() && e.name !== "chrome")
       .map((e) => e.name);
   } catch {
     return; // no ~/.proto yet; keep waiting
   }
-  for (const p of products) drainProduct(p);
-  beat(products);
+  for (const p of codebases) drainProduct(p);
+  beat(codebases);
 }
 
 tick();

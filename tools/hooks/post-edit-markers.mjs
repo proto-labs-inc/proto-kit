@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * PostToolUse hook (Write|Edit): when the edited file sits inside a
- * Proto prototype workspace (~/.proto/<product>/prototypes/<slug>/),
+ * Proto prototype workspace (~/.proto/<codebase>/prototypes/<slug>/),
  * re-run the marker check on that workspace and say one line — only
  * when something's wrong. Fail soft everywhere: any problem in the
  * hook itself is silence, never a wall.

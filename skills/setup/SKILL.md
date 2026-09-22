@@ -1,12 +1,12 @@
 ---
 name: setup
-description: Set up Proto on this laptop and connect a codebase. Starts from the setup prompt copied from the Proto site: it records your account, finds your codebase folder, creates the product in Proto, opens your product page in a Proto browser window, and hands over to the design-system import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new product, or when other Proto skills find no config.json or product.json.
+description: Set up Proto on this laptop and connect a codebase. Starts from the setup prompt copied from the Proto site: it records your account, finds your codebase folder, creates the codebase in Proto, opens your product page in a Proto browser window, and hands over to the design-system import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new codebase, or when other Proto skills find no config.json or codebase.json.
 ---
 
 # Setup
 
 Two scopes, both idempotent: the **machine** (once — config.json,
-prerequisites) and a **product** (once per product being prototyped —
+prerequisites) and a **codebase** (once per codebase being prototyped —
 source link, library scaffold). Re-running setup repairs; it never
 clobbers working state. **Setup is resumable**: every step below
 leaves its result in a file, so if it parks mid-way (waiting on an
@@ -37,8 +37,8 @@ the sentence the recognizer keys on:
 Set up Proto for account <name> (<id>).
 ```
 
-A `, product <id>` suffix appears only when resuming an unfinished
-setup; a new setup has none, and creating the product is this
+A `, codebase <id>` suffix appears only when resuming an unfinished
+setup; a new setup has none, and creating the codebase is this
 skill's job (below). For signed-in users the snippet then carries
 the two cloud values, one per line:
 
@@ -161,26 +161,26 @@ Either way, confirm with the `whoami` tool: it reports the auth
 mode, org, and grants. A connected server whose `whoami` fails means
 the credential is stale — redo the auth step above.
 
-## Product
+## Codebase
 
-A product is one product being prototyped, keyed everywhere by a
+A codebase is one codebase being prototyped, keyed everywhere by a
 cloud-minted id: `~/.proto/<id>/` on the laptop, and the id in every
 later call. Its display name is separate and renamable; never derive
-a path or slug from it. The product is the team's — tunnels are
+a path or slug from it. The codebase is the team's — tunnels are
 never named after it: they use per-laptop ids the cloud mints at
 courier registration (`c-<courierId>`, and the library's
 `libraryId`), stored in the run dir.
 
-**The product is created here**, once the codebase is found: call
-`set_product_source` with **no `product` field** — the server
-creates the product, names it after the source folder, and returns
+**The codebase is created here**, once the codebase is found: call
+`set_codebase_source` with **no `codebase` field** — the server
+creates the codebase, names it after the source folder, and returns
 the id. Keep that id for everything that follows. When the snippet
-carries `, product <id>` (resuming an unfinished setup), skip
+carries `, codebase <id>` (resuming an unfinished setup), skip
 creation and use that id.
 
 ### Find their code
 
-You need the product's repo on this machine. Before anything else,
+You need the codebase's repo on this machine. Before anything else,
 give the one reassurance that matters, in exactly this plain shape:
 **"Your code stays on your laptop; Proto receives only the design
 system it extracts."**
@@ -207,7 +207,7 @@ system it extracts."**
    `~/Projects/cobble-web`?"). **Fail soft**: if the scan finds
    nothing, just move to the ask — never announce "no repositories
    found".
-2. **Ask without jargon, either/or.** "Is your product's code on this
+2. **Ask without jargon, either/or.** "Is your codebase on this
    laptop, or on GitHub?" No "checked out", no "clone", no assuming
    one repo.
 3. **Scraps are a full answer.** A PR link, a repo link, "we're
@@ -227,26 +227,26 @@ system it extracts."**
    locally." — and **park**: tell them setup will pick up right here
    once the repo exists, and mean it (re-running setup resumes from
    files, not memory).
-6. **Create or record the product** once confirmed:
-   `set_product_source { sourcePath, repoRemote, account }` —
-   `account` is config.json's `account.user`. With no `product`
-   field the server creates the product, names it after the source
+6. **Create or record the codebase** once confirmed:
+   `set_codebase_source { sourcePath, repoRemote, account }` —
+   `account` is config.json's `account.user`. With no `codebase`
+   field the server creates the codebase, names it after the source
    folder, and returns the id that keys everything from here on.
-   Resuming with a known id, pass `product` and the call records the
-   source instead. The local `product.json` below stays the laptop's
+   Resuming with a known id, pass `codebase` and the call records the
+   source instead. The local `codebase.json` below stays the laptop's
    copy of the same pointers.
 
-### `~/.proto/<product>/product.json`
+### `~/.proto/<codebase>/codebase.json`
 
 ```jsonc
 {
   "schemaVersion": 1,
-  "product": "<id>",                   // the cloud-minted id
+  "codebase": "<id>",                   // the cloud-minted id
   "name": "acme-web",                  // display name; renamable, never a path
   "source": {
     "path": "/abs/path/to/acme-web",   // the checkout
     "remote": "git@github.com:acme/acme-web.git",
-    "liveUrl": "https://…"             // where the product runs, if known —
+    "liveUrl": "https://…"             // where the codebase runs, if known —
   },                                   //  the import skill wants it
   "createdAt": "2026-09-19T…"
 }
@@ -254,13 +254,13 @@ system it extracts."**
 
 ### Library scaffold
 
-Copy `template/library/` → `~/.proto/<product>/library/` (skip if it
+Copy `template/library/` → `~/.proto/<codebase>/library/` (skip if it
 already has a manifest with content). The import-design-system skill
 fills it; the serve skill serves it.
 
 ### The reference page (the Proto window)
 
-Prototypes and imports read the user's live product through their own
+Prototypes and imports read the user's live codebase through their own
 browser. Set that up once per machine, here:
 
 1. Start the dedicated Proto Chrome window: `node
@@ -279,44 +279,45 @@ browser. Set that up once per machine, here:
    through the debug port only. If the page shows no signed-in
    marker, tell the user to sign in in the Proto window and wait
    until they say they have; then read again. Record the page in
-   `product.json` as `source.liveUrl` — the import-design-system
+   `codebase.json` as `source.liveUrl` — the import-design-system
    skill takes it from there instead of asking again.
 3. From then on, skills find the page by looking at the open tabs
    over CDP (prefer the active tab; offer a pick when several
    match). Pasting a URL into the chat is always an accepted
    fallback — never a required step.
 
-### The product's icon
+### The codebase's icon
 
-Products carry a favicon the agent sets itself — right after the
-Proto window step, while the product's live page is open there:
+Codebases carry a favicon the agent sets itself — right after the
+Proto window step, while the codebase's live page is open there:
 
 1. Prefer the live page's own icon: read its `<link rel="icon">`
    candidates over CDP and take the largest png/svg.
 2. Else scan the repo: `public/favicon.*`, `app/icon.*`,
    `src/app/icon.*`.
 3. Convert to a data URL (png/svg/ico, ≤ 256 KB — pick a size that
-   fits) and call the `set_product_icon` MCP tool with
-   `{ account, product, image }` (`account` = config.json's
+   fits) and call the `set_codebase_icon` MCP tool with
+   `{ account, codebase, image }` (`account` = config.json's
    `account.user`).
 4. **Fail soft.** Nothing usable found → skip silently and move on;
    the site shows a letter fallback. No icon is ever worth a
    question or an error sentence.
 
-### Migration: pre-rename homes (before 2026-09-20 "product")
+### Migration: pre-rename homes
 
-This concept was briefly called "project". If a home has
-`project.json`, repair it in place: rename the file to `product.json`
-and its `"project"` key to `"product"` (same for a `courier.json`
-carrying a `"project"` key, and a library `manifest.json` with a
-`"project"` field). Nothing running is affected — supervisors and
-run-dir specs never reference these files by that name — so migrate
+This concept was called "project", then "product", before
+"codebase". If a home has `project.json` or `product.json`, repair
+it in place: rename the file to `codebase.json` and its `"project"`
+or `"product"` key to `"codebase"` (same for a `courier.json`
+carrying either old key, and a library `manifest.json` with either
+old field). Nothing running is affected — supervisors and run-dir
+specs never reference these files by those names — so migrate
 without stopping anything.
 
 ## Verify
 
-- `config.json` and `product.json` parse; `source.path` exists and its
-  `package.json`/remote match the product (they can legitimately
+- `config.json` and `codebase.json` parse; `source.path` exists and its
+  `package.json`/remote match the codebase (they can legitimately
   disagree with each other — a fork or renamed checkout — which is
   why confirmation beat validation above).
 - The `whoami` MCP tool answers with the expected org and grants.
@@ -338,7 +339,7 @@ Setup ends by continuing, not by stopping:
    reference HTML (structure hints only — the live page wins).
    Registration there uses `account.user` as owner.
 3. End by telling the user, plainly: **keep this session open — it's
-   your product's agent.** And one more sentence once the first
+   your codebase's agent.** And one more sentence once the first
    import has finished: the library is published, so it stays
    viewable after this laptop closes. This very session (in the terminal or the
    Claude Code desktop app) is what receives the site's commands;

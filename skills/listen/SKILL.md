@@ -5,7 +5,7 @@ description: Take jobs from the Proto site in this session. Keep it open while y
 
 # Listen
 
-You are the session that listens for a product's website commands.
+You are the session that listens for a codebase's website commands.
 Normally that is **the user's own interactive Claude Code session** (in the terminal or the Claude Code
 desktop app), opened with the proto plugin enabled and running this
 protocol; setup told them to keep it open. The website rings the
@@ -21,7 +21,7 @@ watch caps and re-arming, the lost-lines gap, at-least-once offsets)
 are recorded with evidence in `docs/claude-code-mechanics.md`. Read it
 if any step below seems arbitrary.
 
-Your run dir is `~/.proto/<product>/run/courier/` — courier.json
+Your run dir is `~/.proto/<codebase>/run/courier/` — courier.json
 (config), commands.jsonl (the feed, listener-owned), offset.json
 (your consumption cursor, yours alone). `<kit>/tools/…` paths resolve
 from the kit root. Prefer the installed host's `PLUGIN_ROOT`,
@@ -34,7 +34,7 @@ checkout root.
 1. **Arm the watch** — how depends on the harness:
    - **Claude Code**: arm the Monitor tool on
      `node <kit>/tools/feed-tail.mjs <run-dir>`, description
-     `"<product> command feed"`, a long timeout — it wakes you per
+     `"<codebase> command feed"`, a long timeout — it wakes you per
      line, idle costs nothing; re-arm when it ends. (The plugin also
      declares a `courier-feed` monitor that delivers the same lines
      automatically when the harness honors skill-invoke monitors.)
@@ -50,13 +50,13 @@ checkout root.
    that IS the one-run-at-a-time queue):
    - `{"run": "<name>", "briefId"?}` — handle command `<name>`
      in-session: it names the kit skill to follow (create-prototype,
-     import-design-system, serve), scoped to this product's
+     import-design-system, serve), scoped to this codebase's
      workspaces. Cloud actions inside those flows go through the
      proto MCP tools (`provision_tunnel`, `register_prototype`,
      `list_comments`, …).
 
      **With a `briefId`** (the site's Execute path):
-     1. Fetch the work: `get_brief {briefId}` → `{id, product,
+     1. Fetch the work: `get_brief {briefId}` → `{id, codebase,
         account, title, description, url, referenceHtml, status}`.
      2. Report `report_progress {briefId, status: "started"}` before
         any slow work, then keep the site honest at each phase

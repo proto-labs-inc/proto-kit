@@ -13,19 +13,19 @@
  * missed beat, never a crash. The app treats a prototype as not live
  * after ~45s of silence.
  *
- * Usage: node prototype-heartbeat.mjs <run-dir> <product> <slug>
- *        node prototype-heartbeat.mjs <run-dir> <product> --library
+ * Usage: node prototype-heartbeat.mjs <run-dir> <codebase> <slug>
+ *        node prototype-heartbeat.mjs <run-dir> <codebase> --library
  *   account comes from ~/.proto/config.json. --library beats for the
- *   product's library serving run instead of a prototype (the
+ *   codebase's library serving run instead of a prototype (the
  *   library_heartbeat tool, no slug).
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { callTool } from "./mcp-call.mjs";
 
-const [runDirArg, product, slug] = process.argv.slice(2);
-if (!runDirArg || !product || !slug) {
-  console.error("usage: node prototype-heartbeat.mjs <run-dir> <product> <slug|--library>");
+const [runDirArg, codebase, slug] = process.argv.slice(2);
+if (!runDirArg || !codebase || !slug) {
+  console.error("usage: node prototype-heartbeat.mjs <run-dir> <codebase> <slug|--library>");
   process.exit(1);
 }
 const isLibrary = slug === "--library";
@@ -68,8 +68,8 @@ function siblingsUp() {
 async function beat() {
   if (!siblingsUp()) return; // serving is not healthy; stay silent
   try {
-    if (isLibrary) await callTool("library_heartbeat", { product, account });
-    else await callTool("prototype_heartbeat", { product, slug, account });
+    if (isLibrary) await callTool("library_heartbeat", { codebase, account });
+    else await callTool("prototype_heartbeat", { codebase, slug, account });
   } catch (e) {
     console.log(`heartbeat not sent (${e.message}); still beating`);
   }

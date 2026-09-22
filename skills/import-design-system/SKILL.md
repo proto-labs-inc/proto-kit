@@ -1,6 +1,6 @@
 ---
 name: import-design-system
-description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a product's library, when the user asks to import or sync their design system, or when the library viewer shows an empty library.
+description: Import your codebase's design system into Proto. Reads your codebase and a live page of your codebase in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library viewer shows an empty library.
 ---
 
 # Import a design system
@@ -13,21 +13,21 @@ canvas with a line of realistic sample copy. The page you read is a
 specimen catalog of living instances; matching a whole page is
 create-prototype's job. The output is the **library contract** —
 `manifest.json`, `progress.json`, and `components/*.html` in
-`~/.proto/<product>/library/` — specified in
+`~/.proto/<codebase>/library/` — specified in
 `docs/library-contract.md`. Read that first; the user is watching the
 viewer fill in as you write, so the write choreography there is not
-optional polish, it is the product.
+optional polish, it is the codebase.
 
 ## Two inputs, one output
 
 You have both of these. Use both:
 
-- **The source repo** — path in `~/.proto/<product>/product.json`.
+- **The source repo** — path in `~/.proto/<codebase>/codebase.json`.
   This is where names live: token definitions (CSS custom properties,
   Tailwind `@theme`/config, design-token files), font faces, the
   component inventory, and the mechanism behind every look.
 - **A live page** — the product page setup recorded
-  (`product.json`'s `source.liveUrl`), open and logged in in the
+  (`codebase.json`'s `source.liveUrl`), open and logged in in the
   Proto window; setup confirmed the login, so don't ask again. Read it over CDP. This is ground
   truth for values: deployed builds drift from checkouts (feature
   flags, hotfixes, build-time changes). The source explains
@@ -76,9 +76,9 @@ checkout root.)
 
 ## Where things go
 
-- `~/.proto/<product>/library/` — the contract files only. The viewer
+- `~/.proto/<codebase>/library/` — the contract files only. The viewer
   serves this folder; nothing else lands here.
-- `~/.proto/<product>/imports/<run>/` — your working artifacts:
+- `~/.proto/<codebase>/imports/<run>/` — your working artifacts:
   wireframes, and one `units/<name>/` per component with `notes.md`,
   captures, and diffs. The artifacts are how claims get checked.
 
@@ -108,9 +108,9 @@ data; never commit or share them without a check.
 
 ## Order of operations
 
-(One side errand while the live page is attached: if the product has
+(One side errand while the live page is attached: if the codebase has
 no icon yet — setup skipped it — grab the page's `<link rel="icon">`,
-largest png/svg, and call `set_product_icon {account, product,
+largest png/svg, and call `set_codebase_icon {account, codebase,
 image}` with a ≤256KB data URL. Fail soft; never let it interrupt
 the import.)
 
@@ -119,24 +119,24 @@ the import.)
    library fill in; that needs the viewer reachable from the site
    before item one. Reachable means through its tunnel, not on
    localhost: the app's Design system page loads
-   `https://<product>-library.<base domain>`, nothing else. If the
+   `https://<codebase>-library.<base domain>`, nothing else. If the
    library is already running under supervision (a `run/library/`
    with a live daemon), leave it; otherwise, in this order:
-   1. Scaffold `template/library/` into `~/.proto/<product>/library/`
+   1. Scaffold `template/library/` into `~/.proto/<codebase>/library/`
       if setup hasn't.
    2. **Provision the tunnel before anything can look the name up**:
       call the `provision_tunnel` MCP tool with
-      `{ slug: "<product>-library", port: <port> }`. This creates the
+      `{ slug: "<codebase>-library", port: <port> }`. This creates the
       DNS record. It must happen before the site, a browser, or you
       ever ask for that hostname: a lookup that finds no record is
       remembered as "does not exist" by every resolver on the path
       for thirty minutes, and the library will look dead long after
       it is up. Never `curl https://<hostname>` before this step.
-   3. Write the `~/.proto/<product>/run/library/` spec with **three**
+   3. Write the `~/.proto/<codebase>/run/library/` spec with **three**
       processes, exactly as the serve skill does for a prototype:
       `node tools/serve.mjs <library-dir> <port>`, the tunnel
       connector from the provisioning result, and the liveness beat
-      `node tools/prototype-heartbeat.mjs <run-dir> <product>
+      `node tools/prototype-heartbeat.mjs <run-dir> <codebase>
       --library`. Then `supervise.mjs start`. A library run without a
       tunnel process is a bug: the beat stays silent without one, so
       the site would never call it live anyway.
@@ -159,7 +159,7 @@ contract:
    in your run notes. Push each token as you confirm it.
 2. **Type styles.** Same split: families/weights/scale from the source,
    arbitrated live (`getComputedStyle` on real headings, body text,
-   captions). Use real product copy as each style's `sample`.
+   captions). Use real codebase copy as each style's `sample`.
 3. **Inventory — a curated shelf, not a census.** Build the component
    list before extracting anything, and flush it all at once as
    `"found"` — the user sees the queue up front. Pick the
@@ -188,7 +188,7 @@ contract:
    - `completedAt` is set and `progress.json` says
      `{"status": "complete", "activity": "Import complete"}`;
    - the library is published so it outlives the laptop:
-     `node tools/publish.mjs --library <product>`;
+     `node tools/publish.mjs --library <codebase>`;
    - one line to the user: the library is published and stays
      viewable after this laptop closes;
    - then continue into the next thing setup asked for (a prototype
@@ -261,7 +261,7 @@ run:
    faked.
 
 Component files must stand alone: inline CSS or same-folder assets, no
-build step, no external requests. If the product's fonts are webfonts,
+build step, no external requests. If the codebase's fonts are webfonts,
 copy the font files into `library/` and `@font-face` them locally with
 a real fallback stack — a component preview that silently falls back
 to Helvetica fails the "renders faithfully" bar.
@@ -295,5 +295,5 @@ belong in `docs/cdp-traps.md`.
 
 Small steps. A few lines, run it, look at the output, then continue.
 When a result surprises you, chase it before building on it. The
-surprises are the product: every entry in `docs/cdp-traps.md` came
+surprises are the codebase: every entry in `docs/cdp-traps.md` came
 from looking at real output instead of assuming.

@@ -177,8 +177,8 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   interactive session from the installed cache, and an appended feed
   line arrived as a Monitor event the session acted on.
   `when: "on-skill-invoke:<skill>"` did NOT start the monitor
-  when the skill (then named product-agent, now `listen`) was
-  invoked as /proto:product-agent — verified on
+  when the skill (then named codebase-agent, now `listen`) was
+  invoked as /proto:codebase-agent — verified on
   BOTH the CLI build (2.1.267) and the Desktop app's embedded engine
   (2.1.274), with the skill's invocation confirmed in-pane.
   The kit ships on-skill-invoke (correct semantics; `always` would
@@ -197,7 +197,7 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   ~/Library/Application Support/Claude/claude-code/<version>/) and
   shares ~/.claude state — user-scope plugins, hooks, and skills all
   load in it. Verified live against 2.1.274: SessionStart health
-  hook fires; the listen skill (then /proto:product-agent) invokes. Plugin monitors (`monitors/monitors.json`, `when:
+  hook fires; the listen skill (then /proto:codebase-agent) invokes. Plugin monitors (`monitors/monitors.json`, `when:
   "always" | "on-skill-invoke:<skill>"`) deliver stdout lines as
   notifications but run in INTERACTIVE sessions only — headless
   flows must arm the Monitor tool themselves.

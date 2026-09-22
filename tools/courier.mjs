@@ -2,7 +2,7 @@
 /**
  * The courier listener (MAA-130, amendment 2): the website→laptop
  * doorbell. Receives bearer-authed enumerated JSON commands on a local
- * port (exposed publicly via the product's agent-<product> tunnel),
+ * port (exposed publicly via the codebase's agent-<codebase> tunnel),
  * validates them, and appends each ACCEPTED command as one JSON line to
  * <run-dir>/commands.jsonl — the durable feed the listening session
  * consumes (see skills/listen/ and
@@ -24,7 +24,7 @@
  *   { "restart-serving": "<slug>" | true }
  *
  * Usage: node courier.mjs <run-dir>     (reads <run-dir>/courier.json:
- *   { "product": "acme", "port": 5300, "secret": "…" })
+ *   { "codebase": "acme", "port": 5300, "secret": "…" })
  */
 import { appendFileSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -92,7 +92,7 @@ export async function handle(cmd) {
 }
 
 serveHttp({ port: config.port, secret: config.secret, handle }, () =>
-  console.log(`courier listener for ${config.product} on 127.0.0.1:${config.port}`),
+  console.log(`courier listener for ${config.codebase} on 127.0.0.1:${config.port}`),
 );
 
 // Heartbeat to the cloud (~30s): how the site knows this laptop's

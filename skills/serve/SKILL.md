@@ -25,12 +25,12 @@ directory, which is also the proto-kit checkout root.
    this one tunnel, nothing else). An auth failure means the MCP
    connection's credential is stale — back to setup.
 
-2. **Write the run spec** at `~/.proto/<product>/run/<slug>/spec.json`
+2. **Write the run spec** at `~/.proto/<codebase>/run/<slug>/spec.json`
    (this dir, not the workspace — the workspace stays naked):
 
    ```jsonc
    {
-     "name": "<product>/<slug>",
+     "name": "<codebase>/<slug>",
      "processes": [
        { "name": "dev", "cwd": "<workspace>", "command": ["pnpm", "dev"],
          "env": { "PROTO_TUNNEL": "1", "PROTO_PACKAGES": "<config.packages, pre-npm>" } },
@@ -41,7 +41,7 @@ directory, which is also the proto-kit checkout root.
        // are up; its lifetime is the serving lifetime, so stopping the
        // run silences it and staleness tells the Frame to use the
        // published build. No "is live" flag exists anywhere.
-       { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "<run-dir>", "<product>", "<slug>"] }
+       { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "<run-dir>", "<codebase>", "<slug>"] }
      ]
    }
    ```
@@ -50,7 +50,7 @@ directory, which is also the proto-kit checkout root.
    HMR — without it the tunnel serves a blocked-host error. `chmod
    600 spec.json`; it holds the connector token.
 
-3. **Start**: `node tools/supervise.mjs start ~/.proto/<product>/run/<slug>`.
+3. **Start**: `node tools/supervise.mjs start ~/.proto/<codebase>/run/<slug>`.
    Children that die are restarted with backoff; `stop` and `status`
    take the same run dir.
 
@@ -124,16 +124,16 @@ Harness facts this design stands on — per-line Monitor wake-ups,
 are recorded with their verification evidence in
 `docs/claude-code-mechanics.md`.
 
-Once per **laptop and product** the site can start agent work here.
-The product is the team's — many developers, each with their own
+Once per **laptop and codebase** the site can start agent work here.
+The codebase is the team's — many developers, each with their own
 laptop and courier; **the courier is this laptop's**, identified by a
 cloud-minted opaque `courierId`. The courier's tunnel is never named
-after the product: its slug is the per-laptop id `c-<courierId>`.
+after the codebase: its slug is the per-laptop id `c-<courierId>`.
 The library's tunnel is the exception: the site's Design system page
 loads `https://<productId>-library.<base domain>`, so the library
-tunnel's slug is `<productId>-library` (one per product; two laptops
-serving the same product's library would contend for it, accepted
-for now). Laptop paths stay keyed by the product id
+tunnel's slug is `<productId>-library` (one per codebase; two laptops
+serving the same codebase's library would contend for it, accepted
+for now). Laptop paths stay keyed by the codebase id
 (`~/.proto/<productId>/`); the courier id lives in the run dir. Three pieces, one
 supervised run dir (`~/.proto/<productId>/run/courier/`):
 
@@ -156,7 +156,7 @@ supervised run dir (`~/.proto/<productId>/run/courier/`):
 Setup:
 
 1. **Identity, once per laptop.** If the run dir has no `courierId`:
-   `register_courier { product, account }` → `{ courierId,
+   `register_courier { codebase, account }` → `{ courierId,
    libraryId }` — both cloud-minted, both stored in `courier.json`.
    Never call this when a courierId already exists (a reinstall
    keeps its ids; one account with two laptops gets two couriers).
@@ -171,7 +171,7 @@ Setup:
    rotated secret just overwrites. The user never sees or touches a
    credential.
 5. Write `~/.proto/<productId>/run/courier/courier.json`
-   (`chmod 600`) — `{ product, port, secret, courierId, libraryId,
+   (`chmod 600`) — `{ codebase, port, secret, courierId, libraryId,
    agent }`; the `agent` block is the fallback launcher's command
    template (see `tools/agent-launch.mjs`'s header).
 6. `spec.json` — the listener

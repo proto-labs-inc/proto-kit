@@ -5,7 +5,7 @@
  * builds first, with the workspace's own build script, and the
  * workspace's own config sets relative asset paths (the templates
  * carry base "./"). publish.mjs then asks the cloud to open a build
- * (`begin_publish` returns a fresh `<product>/<slug>/<buildId>/`
+ * (`begin_publish` returns a fresh `<codebase>/<slug>/<buildId>/`
  * prefix and one short-lived presigned PUT URL per file), uploads
  * every file straight to the published host with plain HTTP PUTs,
  * closes the build (`finish_publish`), and prints the published URL.
@@ -13,14 +13,14 @@
  * path is ever overwritten.
  *
  * Usage:
- *   node publish.mjs <workspace> [--dist <folder>] [--product <id>] [--slug <slug>] [--dry-run]
- *   node publish.mjs --library <product> [--dir <folder>] [--dry-run]
+ *   node publish.mjs <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
+ *   node publish.mjs --library <codebase> [--dir <folder>] [--dry-run]
  *
  * Prototype mode: --dist defaults to dist/; the folder must contain
- * index.html and prototype.json; product and slug default from the
- * workspace path (~/.proto/<product>/prototypes/<slug>/). Library
+ * index.html and prototype.json; codebase and slug default from the
+ * workspace path (~/.proto/<codebase>/prototypes/<slug>/). Library
  * mode uploads the library as it stands (kind "library", no slug):
- * --dir defaults to ~/.proto/<product>/library and must contain
+ * --dir defaults to ~/.proto/<codebase>/library and must contain
  * index.html and manifest.json. account comes from
  * ~/.proto/config.json. --dry-run prints the upload plan without
  * touching the cloud.
@@ -39,16 +39,16 @@ const libraryProduct = flag("library");
 const kind = libraryProduct ? "library" : "prototype";
 const workspace = libraryProduct ? null : resolve(args.find((a) => !a.startsWith("--")) ?? "");
 if (!args[0]) {
-  console.error("usage: node publish.mjs <workspace> [--dist <folder>] [--product <id>] [--slug <slug>] [--dry-run]\n       node publish.mjs --library <product> [--dir <folder>] [--dry-run]");
+  console.error("usage: node publish.mjs <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]\n       node publish.mjs --library <codebase> [--dir <folder>] [--dry-run]");
   process.exit(1);
 }
 
-// product/slug from the canonical layout, overridable for tests.
+// codebase/slug from the canonical layout, overridable for tests.
 const parts = (workspace ?? "").split(sep);
 const protoIdx = parts.lastIndexOf(".proto");
-const product =
+const codebase =
   libraryProduct ??
-  flag("product") ??
+  flag("codebase") ??
   (protoIdx !== -1 && parts[protoIdx + 2] === "prototypes" ? parts[protoIdx + 1] : null);
 const dist = libraryProduct
   ? resolve(flag("dir") ?? join(process.env.HOME ?? "", ".proto", libraryProduct, "library"))
@@ -59,8 +59,8 @@ const slug = libraryProduct
     (protoIdx !== -1 && parts[protoIdx + 2] === "prototypes"
       ? parts[protoIdx + 3]
       : JSON.parse(readFileSync(join(dist, "prototype.json"), "utf8")).name);
-if (!product && !dryRun) {
-  console.error("cannot derive product from the workspace path; pass --product <id>");
+if (!codebase && !dryRun) {
+  console.error("cannot derive codebase from the workspace path; pass --codebase <id>");
   process.exit(1);
 }
 
@@ -177,7 +177,7 @@ const unwrap = (result) => {
 const account = config.account?.user;
 const opened = unwrap(
   await callTool("begin_publish", {
-    product,
+    codebase,
     ...(slug ? { slug } : {}),
     ...(kind === "library" ? { kind } : {}),
     account,
@@ -217,7 +217,7 @@ if (failed.length > 0) {
 
 const finished = unwrap(
   await callTool("finish_publish", {
-    product,
+    codebase,
     ...(slug ? { slug } : {}),
     ...(kind === "library" ? { kind } : {}),
     buildId,

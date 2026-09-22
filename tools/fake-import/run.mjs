@@ -5,7 +5,7 @@
  * write: manifest.json, progress.json, components/*.html.
  *
  * The recording is of "Meridian", a fictional expense product — every
- * name below (product, tokens, components, copy) is that fixture's
+ * name below (codebase, tokens, components, copy) is that fixture's
  * data, not a default anything inherits.
  *
  * Usage: node run.mjs <library-dir> [--fast]
@@ -55,7 +55,7 @@ const COMPONENTS = [
 ];
 
 const manifest = {
-  product: "meridian",
+  codebase: "meridian",
   source: "meridian-web",
   startedAt: new Date().toISOString(),
   completedAt: null,

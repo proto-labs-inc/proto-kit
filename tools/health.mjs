@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Read-only health check across ~/.proto — the proto plugin's
- * session-start hook. One line per product: what's serving and whether
+ * session-start hook. One line per codebase: what's serving and whether
  * the courier is listening, with the one command that fixes it when
  * something's down. Never restarts anything, never errors: a machine
  * with no ~/.proto prints nothing and exits 0.
@@ -26,17 +26,17 @@ const readJson = (path) => {
   }
 };
 
-let products;
+let codebases;
 try {
-  products = readdirSync(root, { withFileTypes: true }).filter(
+  codebases = readdirSync(root, { withFileTypes: true }).filter(
     (e) => e.isDirectory() && e.name !== "chrome",
   );
 } catch {
   process.exit(0); // no ~/.proto: not set up, nothing to say
 }
 
-for (const product of products) {
-  const runRoot = join(root, product.name, "run");
+for (const codebase of codebases) {
+  const runRoot = join(root, codebase.name, "run");
   let runDirs = [];
   try {
     runDirs = readdirSync(runRoot, { withFileTypes: true }).filter((e) => e.isDirectory());
@@ -71,7 +71,7 @@ for (const product of products) {
     (servingTotal === 0 || servingUp === servingTotal) && courier !== false;
   console.log(
     allGood
-      ? `${product.name}: ${parts.join(", ")}`
-      : `${product.name}: ${parts.join(", ")} — run /proto:serve to bring it back`,
+      ? `${codebase.name}: ${parts.join(", ")}`
+      : `${codebase.name}: ${parts.join(", ")} — run /proto:serve to bring it back`,
   );
 }

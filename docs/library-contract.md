@@ -1,6 +1,6 @@
 # The library contract
 
-What an import writes into `~/.proto/<product>/library/`, and what the
+What an import writes into `~/.proto/<codebase>/library/`, and what the
 viewer (`template/library/`) reads. **This contract is frozen.** The
 fake driver (`tools/fake-import/run.mjs`) is its executable reference —
 the real import skill must be indistinguishable from it at the file
@@ -23,7 +23,7 @@ import — never rewritten from scratch mid-run.
 
 ```jsonc
 {
-  "product": "meridian",          // product slug; null until the import starts
+  "codebase": "meridian",          // codebase slug; null until the import starts
   "source": "meridian-web",       // where it came from (repo name / host); null until start
   "startedAt": "…ISO…",           // null until start
   "completedAt": "…ISO…",         // null until the import finishes — this is the done bit
@@ -35,7 +35,7 @@ import — never rewritten from scratch mid-run.
     {
       "name": "Heading L", "family": "Inter", "size": "24px",
       "weight": 650, "lineHeight": "32px",
-      "sample": "Expense report — September"   // real copy from the product, not lorem
+      "sample": "Expense report — September"   // real copy from the codebase, not lorem
     }
   ],
   "components": [
@@ -81,7 +81,7 @@ rhythm IS the user experience:
    is alive.
 2. Flush `manifest.json` + `progress.json` together after **every
    item** (each token, each type style, each component transition), not
-   per phase. The library filling in piece by piece is the product.
+   per phase. The library filling in piece by piece is the codebase.
 3. List all components as `"found"` as soon as the inventory exists,
    before extracting any — the user sees the full queue up front.
 4. One component at a time: `found → extracting → done/skipped`, each

@@ -31,16 +31,16 @@ runtime.
 
 ## Where it lives
 
-Scaffold `~/.proto/<product>/prototypes/<slug>/` by copying the
+Scaffold `~/.proto/<codebase>/prototypes/<slug>/` by copying the
 workspace template **matching the source repo's framework** — read the
-product's `package.json`: `vue` → `template/workspace-vue/`, otherwise
+codebase's `package.json`: `vue` → `template/workspace-vue/`, otherwise
 (react, or no source repo) → `template/workspace-react/`. The
-prototype is a framework-native slice; a React mock of a Vue product
+prototype is a framework-native slice; a React mock of a Vue codebase
 isn't one. Then make it this prototype's own:
 
 1. `package.json` `name`, `index.html` `<title>`, and
    `public/prototype.json` `name` → the slug.
-2. Pick a free port (one prototype per port; check the product's other
+2. Pick a free port (one prototype per port; check the codebase's other
    workspaces) and set it in **both** `vite.config.ts` and
    `prototype.json` — they must agree, the Frame reads the manifest.
 3. Pre-npm: the rig resolves via the `PROTO_PACKAGES` env var (path to
@@ -75,7 +75,7 @@ not like the source code's idea of it, not like your memory of it.
 2. Walk the page before building: hover the controls, open the menus,
    dropdowns, sheets. Capture what each interaction reveals. The
    resting screenshot is not the page.
-3. Find the matching page in the product's source repo and read its
+3. Find the matching page in the source repo and read its
    layout and components — the source explains mechanisms (why a
    toolbar wraps, what an active state looks like). Copy render
    structure and mechanisms into the prototype; never import the
@@ -96,8 +96,8 @@ actually needs.
 
 ## Build from their design system
 
-Before writing UI, open the product's library
-(`~/.proto/<product>/library/`) and map each region of the page to
+Before writing UI, open the codebase's library
+(`~/.proto/<codebase>/library/`) and map each region of the page to
 extracted components and tokens. Reuse what the import produced; when
 a component the page needs is missing from the library, build it
 faithfully from source + live page (and note it as an import gap) —
@@ -109,8 +109,8 @@ source styles itself and reproduce that chain:
 
 - Tailwind source (the common case): add `tailwindcss` +
   `@tailwindcss/vite` to the workspace, register the plugin in
-  `vite.config.ts`, and import the product's theme/token layer in
-  `styles.css` before your own rules — the goal is that the product's
+  `vite.config.ts`, and import the codebase's theme/token layer in
+  `styles.css` before your own rules — the goal is that the codebase's
   utility classes and tokens resolve identically in the prototype.
 - Plain CSS/custom-property systems: import the token stylesheet(s)
   (from the library import or copied from source) at the top of
@@ -177,7 +177,7 @@ title, a `note` saying what the direction is for), the `default`, the
 against current reality), and an `overview` framing the question being
 decided. Drive the code with `useVariant`.
 
-Ground variants in reality: for each direction, find a real product
+Ground variants in reality: for each direction, find a real codebase
 that does it well, capture or draw a small reference image into
 `public/references/`, and register it under `references` with a note
 saying what to look at and which variant it informs. A variant without
@@ -194,13 +194,13 @@ a reference is a guess with styling.
 3. Reload the app at `?state=<id>` for each registered state and
    confirm the right mode renders.
 4. **Hand off to the serve skill, which registers the prototype.**
-   Registration (`register_prototype` with `{ product, slug, title,
+   Registration (`register_prototype` with `{ codebase, slug, title,
    owner }`, owner = config.json's `account.user`) happens inside
    the serve skill, after the tunnel is provisioned and the run is
    up, never here: a registered prototype is a tile on the site, and
    opening a tile whose hostname does not exist yet poisons the
    viewer's resolver for thirty minutes. `register_prototype`
-   upserts on (product, slug), so re-registering after a title
+   upserts on (codebase, slug), so re-registering after a title
    change is correct and expected; an unknown-owner error means
    `account.user` is wrong — fix it in setup, not here.
 
