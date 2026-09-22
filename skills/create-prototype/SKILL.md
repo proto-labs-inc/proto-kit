@@ -35,7 +35,7 @@ Scaffold `~/.proto/<codebase>/prototypes/<slug>/` by copying the
 workspace template **matching the source repo's framework** — read the
 codebase's `package.json`: `vue` → `template/workspace-vue/`, otherwise
 (react, or no source repo) → `template/workspace-react/`. The
-prototype is a framework-native slice; a React mock of a Vue codebase
+prototype is a framework-native slice; a React mock of a Vue product
 isn't one. Then make it this prototype's own:
 
 1. `package.json` `name`, `index.html` `<title>`, and
@@ -109,8 +109,8 @@ source styles itself and reproduce that chain:
 
 - Tailwind source (the common case): add `tailwindcss` +
   `@tailwindcss/vite` to the workspace, register the plugin in
-  `vite.config.ts`, and import the codebase's theme/token layer in
-  `styles.css` before your own rules — the goal is that the codebase's
+  `vite.config.ts`, and import the product's theme/token layer in
+  `styles.css` before your own rules — the goal is that the product's
   utility classes and tokens resolve identically in the prototype.
 - Plain CSS/custom-property systems: import the token stylesheet(s)
   (from the library import or copied from source) at the top of
@@ -177,7 +177,7 @@ title, a `note` saying what the direction is for), the `default`, the
 against current reality), and an `overview` framing the question being
 decided. Drive the code with `useVariant`.
 
-Ground variants in reality: for each direction, find a real codebase
+Ground variants in reality: for each direction, find a real product
 that does it well, capture or draw a small reference image into
 `public/references/`, and register it under `references` with a note
 saying what to look at and which variant it informs. A variant without

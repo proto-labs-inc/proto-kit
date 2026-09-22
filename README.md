@@ -1,7 +1,7 @@
 # proto-kit
 
 Proto's installable surface — everything a customer's machine runs. The
-cloud codebase lives in the `proto` repo; this repo is what their coding
+cloud product lives in the `proto` repo; this repo is what their coding
 agent installs and drives.
 
 ## Layout

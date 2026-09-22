@@ -1,6 +1,6 @@
 ---
 name: import-design-system
-description: Import your codebase's design system into Proto. Reads your codebase and a live page of your codebase in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library viewer shows an empty library.
+description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library viewer shows an empty library.
 ---
 
 # Import a design system
@@ -16,7 +16,7 @@ create-prototype's job. The output is the **library contract** —
 `~/.proto/<codebase>/library/` — specified in
 `docs/library-contract.md`. Read that first; the user is watching the
 viewer fill in as you write, so the write choreography there is not
-optional polish, it is the codebase.
+optional polish, it is the product.
 
 ## Two inputs, one output
 
@@ -159,7 +159,7 @@ contract:
    in your run notes. Push each token as you confirm it.
 2. **Type styles.** Same split: families/weights/scale from the source,
    arbitrated live (`getComputedStyle` on real headings, body text,
-   captions). Use real codebase copy as each style's `sample`.
+   captions). Use real product copy as each style's `sample`.
 3. **Inventory — a curated shelf, not a census.** Build the component
    list before extracting anything, and flush it all at once as
    `"found"` — the user sees the queue up front. Pick the
@@ -261,7 +261,7 @@ run:
    faked.
 
 Component files must stand alone: inline CSS or same-folder assets, no
-build step, no external requests. If the codebase's fonts are webfonts,
+build step, no external requests. If the product's fonts are webfonts,
 copy the font files into `library/` and `@font-face` them locally with
 a real fallback stack — a component preview that silently falls back
 to Helvetica fails the "renders faithfully" bar.
@@ -295,5 +295,5 @@ belong in `docs/cdp-traps.md`.
 
 Small steps. A few lines, run it, look at the output, then continue.
 When a result surprises you, chase it before building on it. The
-surprises are the codebase: every entry in `docs/cdp-traps.md` came
+surprises are the product: every entry in `docs/cdp-traps.md` came
 from looking at real output instead of assuming.

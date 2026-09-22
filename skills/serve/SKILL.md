@@ -130,8 +130,8 @@ laptop and courier; **the courier is this laptop's**, identified by a
 cloud-minted opaque `courierId`. The courier's tunnel is never named
 after the codebase: its slug is the per-laptop id `c-<courierId>`.
 The library's tunnel is the exception: the site's Design system page
-loads `https://<productId>-library.<base domain>`, so the library
-tunnel's slug is `<productId>-library` (one per codebase; two laptops
+loads `https://<codebaseId>-library.<base domain>`, so the library
+tunnel's slug is `<codebaseId>-library` (one per codebase; two laptops
 serving the same codebase's library would contend for it, accepted
 for now). Laptop paths stay keyed by the codebase id
 (`~/.proto/<productId>/`); the courier id lives in the run dir. Three pieces, one

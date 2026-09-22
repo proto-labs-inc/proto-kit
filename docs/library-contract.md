@@ -35,7 +35,7 @@ import — never rewritten from scratch mid-run.
     {
       "name": "Heading L", "family": "Inter", "size": "24px",
       "weight": 650, "lineHeight": "32px",
-      "sample": "Expense report — September"   // real copy from the codebase, not lorem
+      "sample": "Expense report — September"   // real copy from the product, not lorem
     }
   ],
   "components": [
@@ -81,7 +81,7 @@ rhythm IS the user experience:
    is alive.
 2. Flush `manifest.json` + `progress.json` together after **every
    item** (each token, each type style, each component transition), not
-   per phase. The library filling in piece by piece is the codebase.
+   per phase. The library filling in piece by piece is the product.
 3. List all components as `"found"` as soon as the inventory exists,
    before extracting any — the user sees the full queue up front.
 4. One component at a time: `found → extracting → done/skipped`, each
