@@ -18,15 +18,22 @@ const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 // out of, public/queue.json, where the import polls for it; the slug
 // "*" asks for the whole import again. A published build has no server
 // behind it, so there the POST fails and the app says so.
-const DATA = /^\/(manifest\.json|events\.jsonl|queue\.json|components\/)/;
+const DATA = /^\/(manifest\.json|events\.jsonl|queue\.json|components\/|product\/)/;
 type QueueRequest = { slug: string; at: string };
 type QueueMessage = { action: "add" | "remove"; slug: string };
 // The contract's data files: the manifest, the event stream, the queue,
-// and each component's crop and history images.
+// each component's crop and history images, and the product page's icon
+// in whichever format the page served it.
 const TYPES: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".jsonl": "application/x-ndjson; charset=utf-8",
   ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
 };
 
 function libraryData(): Plugin {

@@ -34,6 +34,7 @@ library/                          the app, scaffolded from template/library/
 │   ├── manifest.json             everything extracted so far
 │   ├── events.jsonl              append-only activity stream; the app tails it
 │   ├── queue.json                what the user asked for from the app
+│   ├── product/favicon.<ext>     the product page's icon, when the page has one
 │   └── components/<slug>/
 │       ├── screenshot.png        once skipped: the component cropped from the live page at 2x
 │       └── history/<n>.png, <n>-diff.png   every pass's replica capture and diff
@@ -43,7 +44,7 @@ library/                          the app, scaffolded from template/library/
 ## The writer
 
 ```
-node tools/library.mjs init <library> <codebase> <source> --page-url <url> --page-title "…" [--product-name "…"]
+node tools/library.mjs init <library> <codebase> <source> --page-url <url> --page-title "…" [--product-name "…"] [--favicon <file>]
 node tools/library.mjs token <library> '<json>'
 node tools/library.mjs type <library> '<json>'
 node tools/library.mjs inventory <library> '<json array>'
@@ -84,7 +85,10 @@ import, never rewritten from scratch mid-run.
     "name": "Meridian",           // the page title's product name: the app's page heading;
                                   //   a page with no title gives the codebase's display name, never its id
     "pageUrl": "https://app.meridian.example/expenses",  // the live page the import read
-    "pageTitle": "Expenses · Meridian"                   // that page's <title>, verbatim
+    "pageTitle": "Expenses · Meridian",                  // that page's <title>, verbatim
+    "favicon": "product/favicon.svg"                     // the page's icon, copied into public/ by init --favicon;
+                                                         //   only when the page has one: the app heads the library
+                                                         //   with it and uses it as its own tab icon
   },
   "startedAt": "…ISO…",           // null until start
   "completedAt": "…ISO…",         // null while anything is still being extracted: this is the done bit;
