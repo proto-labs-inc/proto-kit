@@ -8,16 +8,23 @@ description: Import your product's design system into Proto. Reads your codebase
 You are turning a real product into its design system: the colors,
 the type styles, the fonts, and the notable components: buttons,
 inputs, badges, the handful of composites the product leans on, each
-type appearing **once**, its variants side by side on a neutral
-canvas with a line of realistic sample copy. The page you read is a
-specimen catalog of living instances; matching a whole page is
-create-prototype's job. The output is the **library contract**:
-`public/manifest.json`, `public/events.jsonl` and
-`public/components/<slug>/<state>.html` inside the library app at
-`~/.proto/<codebase>/library/`, specified in
-`docs/library-contract.md`. Read that first; the user is watching the
-library fill in as you write, so the write choreography there is not
-optional polish, it is the product.
+type appearing **once**, with its states, on a neutral canvas with a
+line of realistic sample copy. The page you read is a specimen
+catalog of living instances; matching a whole page is
+create-prototype's job. The output is the **library contract**
+(`docs/library-contract.md`) inside the library app at
+`~/.proto/<codebase>/library/`: the user is watching that app fill
+in as you write, so the write rhythm is the product, not polish.
+
+Speed is a feature. The first component should be visible in the
+library within a minute of the prompt; the whole run for a small page
+takes a few minutes, not sixteen. Every slow step in the last real
+run was the model writing a program for something the kit now does in
+one line. So: **you never write a node script**. Every write goes
+through `tools/library.mjs`, every hosting step through
+`tools/host-library.mjs`, every verification pass through
+`tools/verify-replica.mjs`. If you find yourself composing more than
+one line to do one thing, stop: the line exists.
 
 ## Two inputs, one output
 
@@ -28,11 +35,11 @@ You have both of these. Use both:
   Tailwind `@theme`/config, design-token files), font faces, the
   component inventory, and the mechanism behind every look.
 - **A live page**: the product page setup recorded
-  (`codebase.json`'s `source.liveUrl`), open and logged in in the
-  Proto window; setup confirmed the login, so don't ask again. Read it over CDP. This is ground
-  truth for values: deployed builds drift from checkouts (feature
-  flags, hotfixes, build-time changes). The source explains
-  mechanisms; the live page arbitrates values.
+  (`codebase.json`'s `source.liveUrl`), open and signed in in the
+  Proto window; setup confirmed the sign-in, so don't ask again. Read
+  it over CDP. This is ground truth for values: deployed builds drift
+  from checkouts (feature flags, hotfixes, build-time changes). The
+  source explains mechanisms; the live page arbitrates values.
 
 When source and live page disagree, the live page wins.
 
@@ -52,44 +59,72 @@ changes. Copy the component's mechanism.
 
 ## Tools
 
-Deterministic helpers live in `tools/cdp/`. Use them. Do not rewrite
-them. (All `tools/…` paths in this skill resolve from the kit root.
-Prefer the installed plugin root exposed by the host (`PLUGIN_ROOT`,
-`CLAUDE_PLUGIN_ROOT`, or `CURSOR_PLUGIN_ROOT`); otherwise use the root
-above this skill's `skills/` directory, which is also the proto-kit
-checkout root.)
+Deterministic helpers. Use them; do not rewrite them; do not read
+their source to learn them, the signatures here are complete. (All
+`tools/…` paths resolve from the kit root: the installed plugin root
+the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
+`CURSOR_PLUGIN_ROOT`), otherwise the root above this skill's `skills/`
+directory.)
 
-- `tools/cdp/chrome.mjs`: start (or find) the visible Proto window
-  without taking focus. The product page lives there; you read it.
-- `tools/cdp/headless.mjs`: start (or find) the headless Chrome that
-  renders every replica; `headlessPage(url, { width, height, dpr })`
-  from code. Nothing it draws is ever on screen.
-- `tools/cdp/cdp.mjs`: connect to a CDP websocket; `evaluate()` in a page.
-- `tools/cdp/attach.mjs`: `findPage(urlSubstring)` on the visible
-  window; `openBackground()` and `navigate()` for tabs the kit opened.
-- `tools/cdp/wireframe.mjs`: the raw layout tree as labeled
-  depth-colored boxes with a slider. The map, not the understanding.
-- `tools/cdp/capture.mjs`: `stableShot()`, clip screenshots behind the
-  stability gate (two agreeing probes, then capture, then recheck);
-  the clip is cut in node, never by Chrome.
-- `tools/verify-replica.mjs <replica> <live-tab-url> <x,y,w,h>`: one
-  verification pass in one call: captures the live element, renders
-  the replica headlessly at the same viewport and ratio, diffs in
-  node, writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` and prints
-  the mismatch and clusters. Nobody writes a diff page.
-- `tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
+The writer, one line per write (`<library>` is the codebase id or
+the app's folder; JSON is a literal or `@file`):
+
+```
+node tools/library.mjs init <library> <codebase> <source>
+node tools/library.mjs token <library> '{"name":"slate-900","value":"#0f172a","group":"gray","role":"text"}'
+node tools/library.mjs type <library> '{"name":"Heading L","family":"Inter","size":"24px","weight":650,"lineHeight":"32px","sample":"Expense report: September"}'
+node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button","category":"primitive"}, …]'
+node tools/library.mjs component <library> <slug> status extracting
+node tools/library.mjs history <library> <slug> --screenshot <n>.png --diff <n>-diff.png --mismatch <n> --activity "Padding is 2px short on the right; widening"
+node tools/library.mjs state <library> <slug> "Default" <file.html> <height>
+node tools/library.mjs component <library> <slug> status done
+node tools/library.mjs component <library> <slug> status skipped --reason "<one plain sentence>" --screenshot <crop.png>
+node tools/library.mjs event <library> [slug] "<activity>"
+node tools/library.mjs take-queued <library>
+node tools/library.mjs complete <library>
+```
+
+Each call flushes the manifest and appends its own event line, so the
+app moves on every call; add an `event` only for something the
+default lines do not say. A call that cannot apply refuses in one
+sentence and writes nothing.
+
+The readers and renderers:
+
+- `node tools/host-library.mjs <codebase>`: scaffold, install, tunnel,
+  supervised run, edge check, in one call; prints the public and local
+  addresses. Idempotent.
+- `tools/cdp/chrome.mjs`: the visible Proto window (port 9333), where
+  the product page is signed in. You read it, only.
+- `tools/cdp/headless.mjs`: the headless Chrome (port 9444) that
+  renders every replica. Nothing it draws is on screen.
+- `tools/cdp/cdp.mjs`: `connect(wsUrl)`, `evaluate(page, expression)`.
+- `tools/cdp/attach.mjs`: `findPage(urlSubstring)`,
+  `openBackground(url)`, `navigate(page, url)`, `closePage(tab)`.
+- `tools/cdp/wireframe.mjs <tab-url> [out.html]`: the raw layout tree
+  as labeled boxes. The map, not the understanding.
+- `tools/cdp/capture.mjs`: `stableShot(page, probeExpr, out, clip)`,
+  clip screenshots behind the stability gate.
+- `node tools/verify-replica.mjs <replica.html|url> <live-tab-url> <x,y,w,h> --out <dir>`:
+  one verification pass: captures the live element, renders the
+  replica headlessly at the same viewport and ratio, diffs in node,
+  writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` into `--out`, prints
+  `{ pass, mismatch, pct, maxDelta, clusters, screenshot, diff }`.
+- `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
   component cropped from the live page at 2x, for a skipped card.
-- `tools/serve.mjs <dir> 0`: static server on a free port, when a
-  replica needs to be reached by URL rather than by path.
+- `node tools/serve.mjs <dir> 0`: a static server on a free port, when
+  a replica must be reached by URL rather than by path.
 
 ## Where things go
 
-- `~/.proto/<codebase>/library/`: the library app. You write only
-  into its `public/` folder, and only the contract files; nothing
-  else lands there.
-- `~/.proto/<codebase>/imports/<run>/`, your working artifacts:
-  wireframes, and one `units/<name>/` per component with `notes.md`,
-  captures, and diffs. The artifacts are how claims get checked.
+- `~/.proto/<codebase>/library/public/`: the contract files, written
+  by `library.mjs` only. Nothing else lands there.
+- `~/.proto/<codebase>/imports/<run>/units/<slug>/`: each unit's
+  working folder: `notes.md` (every value with its source),
+  `replica.html`, the states, fonts, and `passes/` (what
+  `verify-replica.mjs` writes). The artifacts are how claims get
+  checked, and `history` moves the pass images from here into the
+  library.
 
 ## Setup
 
@@ -115,118 +150,72 @@ data; never commit or share them without a check.
 
 ## Order of operations
 
-(One side errand while the live page is attached: if the codebase has
-no icon yet, setup skipped it, grab the page's `<link rel="icon">`,
-largest png/svg, and call `set_codebase_icon {account, codebase,
-image}` with a ≤256KB data URL. Fail soft; never let it interrupt
-the import.)
+The order is built so the user sees something within a minute and
+the fan-out starts as soon as the inventory exists. Every step is one
+call; chain the short ones in one shell line.
 
-0. **Host the library first, before extracting anything.** The
-   whole point of the write choreography is that the user WATCHES the
-   library fill in; that needs the library app reachable from the site
-   before item one. Reachable means through its tunnel, not on
-   localhost: the app's Design system page loads the address the site
-   returns and stores when the library's tunnel is provisioned,
-   nothing else. If the library is already running under supervision
-   (a `run/library/` with a live daemon), leave it; otherwise, in this
-   order:
-   1. Scaffold `template/library/` into `~/.proto/<codebase>/library/`
-      if setup hasn't (skip when its `public/manifest.json` already
-      has content), then `pnpm install --frozen-lockfile` there. The
-      library is a Vite React app (ADR 0003); the install is paid
-      once per codebase.
-   2. **Provision the tunnel before anything can look the name up**:
-      call the `provision_tunnel` MCP tool with
-      `{ kind: "library", codebase: "<codebase>", port: <port> }`. The
-      site chooses the address, creates the DNS record, stores the
-      address on the codebase's row, and returns it as `url` with its
-      bare `hostname` and the `connectorToken`; never build the
-      address yourself. It must happen before the site, a browser, or
-      you ever ask for that hostname: a lookup that finds no record is
-      remembered as "does not exist" by every resolver on the path
-      for thirty minutes, and the library will look dead long after
-      it is up. Never `curl https://<hostname>` before this step.
-   3. Write the `~/.proto/<codebase>/run/library/` spec with **three**
-      processes, exactly as the serve skill's "The library" section
-      shows: Vite's dev server (`pnpm dev` in the library folder with
-      `PROTO_TUNNEL=1`; the port is the one in its `vite.config.ts`,
-      5210, and is what you passed to `provision_tunnel`), the tunnel
-      connector from the provisioning result, and the liveness beat
-      `node tools/prototype-heartbeat.mjs --kind library <run-dir>
-      <codebase>`. Then `supervise.mjs start`. A library run without a
-      tunnel process is a bug: the beat stays silent without one, so
-      the site would never call it live anyway.
-   4. Verify through Cloudflare's edge only, once: `curl --resolve
-      <hostname>:443:<edge ip> https://<hostname>/manifest.json`
-      (any IP from `dig @1.1.1.1 <hostname> A`). A plain `curl` or
-      opening the hostname in a browser is a resolver lookup, and if
-      it races the record it poisons this laptop for thirty minutes.
-      Then tell the user the URL. Only then start the import.
+0. **Host the library.** `node tools/host-library.mjs <codebase>`.
+   Setup usually ran it in the background at codebase creation; run
+   it again anyway, it returns at once when the run is up and prints
+   the address. The site's Design system page loads that address (the
+   one the site chose and stored), so hosting first is what lets the
+   user watch. Also `node tools/cdp/headless.mjs start`.
+1. **Open the run.** `node tools/library.mjs init <library> <codebase>
+   <source>` (`<source>` is the repo name or the live host). This
+   appends "Reading the source": the line that tells the user the
+   import is alive. Make a run folder
+   `~/.proto/<codebase>/imports/<UTC stamp>/units/`.
+2. **Read.** The source's component directories, token files and
+   font faces; the live page's outline, class names and computed
+   styles (see **Reading the page**). Small reads, printed, looked at.
+3. **Inventory, flushed at once.** Decide the shelf (see **A curated
+   shelf**) and write it in one call: `inventory <library> '[…]'`.
+   Every component is `found` and the user sees the whole queue.
+   This comes *before* tokens and type styles: the fan-out is the
+   critical path and it waits on nothing but this list.
+4. **Fan out, in one turn.** Issue every sub-agent spawn in the same
+   turn (see **Fan out**), at most four extracting at once; the rest
+   start as lanes free up. Mark each `component <slug> status
+   extracting` as you spawn it.
+5. **Tokens and type styles, while the units run.** Push each token
+   and each type style as you confirm it, one `token`/`type` line
+   each (chain a dozen in one shell line): the source has the names
+   and the grouping, the live page's computed styles arbitrate the
+   values, and a disagreement goes in your run notes with the live
+   value winning. `role: "surface"` on the page background token and
+   `role: "text"` on the page text token, once each. Use real product
+   copy for every `sample`.
+6. **Land units as they report.** The moment a report arrives, land
+   it before anything else (see **Landing a unit**): a report that is
+   not landed is a unit the user never sees finish. The manifest, not
+   your memory, is the record of what is done.
+7. **Finish**, per the checklist below.
 
-Append the first event to `public/events.jsonl` **before** doing
-anything slow: that line ("Reading the source") is what tells the user
-the import is alive. The same first flush of the manifest sets
-`codebase`, `source`, `startedAt` and `product`: the live page's
-address, its `<title>` verbatim, and the product's name taken from
-that title ("Expenses · Meridian" names Meridian), which is the
-library's page heading. Then, flushing the manifest and appending an event
-after every item per the contract:
-
-1. **Tokens.** Harvest definitions from the source (custom properties,
-   `@theme` blocks, token files): the source has the *names* and the
-   grouping. Spot-check values against the live page's computed styles;
-   where they disagree, the live value wins and the disagreement goes
-   in your run notes. Push each token as you confirm it.
-2. **Type styles.** Same split: families/weights/scale from the source,
-   arbitrated live (`getComputedStyle` on real headings, body text,
-   captions). Use real product copy as each style's `sample`.
-3. **Inventory: a curated shelf, not a census.** Build the component
-   list before extracting anything, and flush it all at once as
-   `"found"`: the user sees the queue up front. Pick the
-   **notable** components: the primitives everything is made of
-   (button, input, badge, and their peers), then the few composites
-   the product visibly leans on (its card, its table, its page
-   header). The source's component directories and the live page's
-   class names (`LemonButton--secondary` names both component and
-   variant) tell you what exists; your judgment picks what earns a
-   shelf spot: a first import of a dozen-odd components that
-   renders faithfully beats an exhaustive one. Order primitives
-   first; the queue order is the extraction order.
-4. **Components, in parallel.** Fan the inventory out to extraction
-   subagents (see **Fan out** below); each component still walks
-   `found → extracting → done/skipped` with every transition flushed
-   by you, as units land. The queue draining several-at-once IS the
-   experience the user should see. **The moment a subagent reports
-   back, flush that unit's status before doing anything else.** A
-   report that arrives and is not flushed is a unit the user never
-   sees finish; the manifest, not your memory, is the record of what
-   is done.
-5. **Finish. Every line of this list, in order, before you say the
-   import is done:**
-   - every component in the manifest is `done` or `skipped` (none
-     `found` or `extracting`);
-   - `completedAt` is set and the last event says "Import complete";
-   - the library is published so it outlives the laptop: build it
-     first (`pnpm build` in `~/.proto/<codebase>/library/`; the build
-     carries a copy of `public/`), then
-     `node tools/publish.mjs --kind library --codebase <codebase>`;
-   - keep watching `public/queue.json` for as long as the session
-     lasts: a "Queue it" from the library page is a request to extract
-     a skipped component (the contract says how to take it), and a
-     component that lands afterwards means building and publishing
-     again;
-   - one line to the user: the library is published and stays
-     viewable after this laptop closes;
-   - then continue into the next thing setup asked for (a prototype
-     brief, or the listen skill). The import is not done until the
-     list is.
+Side errand, once, while the live page is attached: if the codebase
+has no icon yet, take the page's `<link rel="icon">` (largest png or
+svg) and call `set_codebase_icon { account, codebase, image }` with a
+data URL of at most 256 KB. Fail soft; never let it interrupt.
 
 **If anything interrupts you** (the user asks for something else
 mid-import, a recovery prompt from the site, a crash, a resumed
-session): do that thing, then come back here. Read `manifest.json`,
-treat every component that is not `done` or `skipped` as still
-yours, and carry on from step 4. Never declare the import finished
-from memory; the manifest says what is finished.
+session): do that thing, then come back here. `init` again resumes
+an open run without touching what is there; read `manifest.json`,
+treat every component that is not `done` or `skipped` as still yours,
+and carry on from step 4. Never declare the import finished from
+memory; the manifest says what is finished.
+
+## A curated shelf, not a census
+
+Pick the **notable** components: the primitives everything is made of
+(button, input, badge, and their peers), then the few composites the
+product visibly leans on (its card, its table, its page header). The
+source's component directories and the live page's class names
+(`LemonButton--secondary` names both component and variant) tell you
+what exists; your judgment picks what earns a shelf spot: a first
+import of a dozen-odd components that renders faithfully beats an
+exhaustive one. Primitives first; the inventory order is the
+extraction order. Slugs are lowercase with dashes; names are what the
+product's own code calls the thing.
 
 ## Reading the page
 
@@ -254,75 +243,145 @@ pixel-verifying live pages. Every one of them was paid for.
 
 ## Extracting a component
 
-For each inventory entry, in its own `units/<name>/` folder under the
-run:
+Each unit works in its own `units/<slug>/` folder under the run, and
+writes only there. The loop:
 
-1. **Find it live.** Locate an instance on the page (or ask the user to
-   navigate somewhere it appears). Read its anatomy: outline, matched
-   rules, the source component file. Note which variants are visible.
-2. **Author the replica.** Write the component from read values:
-   inline CSS built with *their* mechanisms, tokens referenced by the
-   names you extracted, a line of realistic sample copy in the
-   product's voice. Authoring is the point: it produces
-   understanding, named variants, known mechanisms, values with
-   sources.
-3. **Verify each variant against its live instance, the full
-   loop.** Render the authored variant at the instance's absolute
-   page coordinates in a verification page (`docs/cdp-traps.md`
-   tells you why position matters and what will bite). Probe the
-   same landmark rects in both and require exact agreement:
-   geometry bugs surface as clean numbers there; in a pixel diff
-   they surface as thousands of red pixels you then have to
-   interpret. Then `stableShot()` both, diff, debug from the numbers
-   (clusters, sampled pixels), and iterate until clean at threshold
-   8. A component-sized clip makes this loop fast; zero is
-   reachable and components this small earn it.
-4. **Compose and land the states.** Write each verified state as a
-   standalone `public/components/<slug>/<state>.html`, the default
-   first, and push each onto the entry's `states` with its `file` and
-   `height` (measure the rendered height: don't guess); then status
-   `"done"`, flush.
+1. **Find it live.** Locate an instance on the page. Read its
+   anatomy: outline, rect, matched rules, the source component file,
+   the resolved font (`CSS.getPlatformFontsForNode`). Note which
+   states the product shows: the default, and hover and disabled
+   where they exist, and anything else visible (selected, error,
+   loading, empty). At most six. The rect is the `x,y,w,h` every pass
+   uses.
+2. **Author the replica.** `replica.html`: the component from read
+   values, inline CSS built with *their* mechanisms, rendered at the
+   instance's absolute page coordinates (position matters for dash
+   phase and gradient dithering; the traps doc says why). Webfonts
+   the product uses are copied beside it and declared with
+   `@font-face` and a real fallback stack: a preview that silently
+   falls back to Helvetica fails the bar.
+3. **Verify, one call per pass.** `node tools/verify-replica.mjs
+   replica.html <live-tab-url> <x,y,w,h> --out passes`. Read the
+   numbers, not the red map: rects must agree exactly (a geometry bug
+   is a clean number here and thousands of red pixels in the diff);
+   clusters say where. Fix the cause, run the next pass. Stop when
+   the mismatch is zero, or when what remains is confined to glyph
+   clusters of text set in the system font, which is the two Chromes
+   choosing different faces (the traps doc), not your replica. Every
+   pass's files stay in `passes/`; the orchestrator moves them into
+   the library's history, where the user watches the red drain. Ten
+   passes is the cap the library keeps and a reasonable cap for you:
+   past it, skip with what you learned as the reason.
+4. **Compose the states.** One standalone file per state,
+   `default.html` first, then `hover.html`, `disabled.html`, and any
+   other the product shows: inline CSS or same-folder assets, no
+   build step, no external requests, real copy, sized to show the
+   state compactly. Measure each file's rendered height in the
+   headless Chrome (`document.documentElement.scrollHeight` after
+   fonts load); never guess it. A generative component (a canvas, a
+   chart, a p5 sketch) shows several variations side by side in its
+   default state file rather than one frozen instance.
 5. **Or skip it honestly.** A component you can't isolate cleanly
-   (portals, canvas-rendered, needs state you can't reach) becomes
-   `"skipped"` with a `reason` written for the user (what blocked
-   you, whether a retry could work) and a `screenshot` cropped from
-   the live product into `public/components/<slug>/screenshot.png`.
-   Never silently dropped, never faked.
+   (portals, canvas you cannot reproduce, a state you can't reach)
+   is skipped: `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h>
+   screenshot.png` for the card, and one plain sentence for the user
+   in the product's own terms: what blocked you and whether queueing
+   it could work. Never silently dropped, never faked.
 
-State files must stand alone: inline CSS or same-folder assets, no
-build step, no external requests. If the product's fonts are webfonts,
-copy the font files into the component's folder and `@font-face` them
-locally with a real fallback stack: a component preview that silently falls back
-to Helvetica fails the "renders faithfully" bar.
+State files must stand alone: the app frames them in an iframe at the
+recorded height, so the product's styles never touch the library's
+own.
 
 ## Fan out: this is a parallel job
 
-Extraction is embarrassingly parallel and speed is a feature: the
-user is watching the library fill. The curated tree already divides
-the work, one component type per unit, so **dispatch one
-extraction subagent per unit, all of them at once** (up to whatever
-your harness comfortably runs; there is no fixed cap, and serial
-extraction is wrong unless only one unit remains). Tokens and type
-styles can be a parallel unit of their own alongside the components.
+Extraction is embarrassingly parallel and the user is watching the
+library fill. Dispatch one sub-agent per component, **all spawns in
+one turn**, four extracting at a time (the fifth starts when one
+reports). Use the cheap importer role: `importer` on Claude Code
+(Haiku), `spawn_agent` with `proto-importer` on Codex. Serial
+extraction is wrong unless one unit remains.
 
-Use cheap, fast models for unit work: the protocol is prescriptive
-enough that they do it well. On Claude Code the `importer` agent is
-preconfigured for this (Haiku); on Codex, `spawn_agent` with
-`proto-importer`. Verification of claims can go to the
-`verifier`/`proto-verifier` the same way.
+One orchestrator, you, owns the run and the contract files: **only
+you call `library.mjs`**. A sub-agent writes inside its unit folder
+and nowhere else, and reports. Its brief is short and complete, in
+this shape:
 
-One orchestrator, you, the bigger model, owns the run and the
-contract files; only you write `manifest.json` and `events.jsonl`.
-Each subagent gets a narrow brief: the target element, this skill,
-its own `units/<name>/` folder (the only place it may write). Do not
-trust reports: spot-check claims against the artifacts (recompute a
-diff, re-read a cited source line) before flushing a unit as done.
+> Extract `<Name>` (`<slug>`), `<category>`, into
+> `<run>/units/<slug>/`. This skill, `docs/cdp-traps.md` and the
+> source files are already in your context: do not search for them or
+> read them again. Live tab: `<liveUrl>` in the Proto window on port
+> 9333, read only; the instance is `<selector>` at `<x,y,w,h>`; the
+> states the product shows are `<list>`. Tools, complete signatures:
+> `node <kit>/tools/verify-replica.mjs replica.html <liveUrl> <x,y,w,h> --out passes`
+> (one pass, prints mismatch and clusters, files in `passes/`);
+> `node <kit>/tools/cdp/crop.mjs <liveUrl> <x,y,w,h> screenshot.png`
+> (only if you skip); `node <kit>/tools/cdp/headless.mjs` is already
+> running on 9444 for measuring state heights. Author from read values
+> only; put every value's source in `notes.md`. Never write outside
+> your folder; never touch the library. Report, as data: status (done
+> or skipped), the states as `name, file, height` in order, each pass
+> as `n, mismatch, one activity line` in order, and for a skip the
+> reason sentence and the screenshot path.
+
+Do not trust reports: spot-check claims against the artifacts (re-run
+a pass, re-read a cited source line) before landing a unit as done.
 Verified surprises flow back into your run notes; recurring ones
 belong in `docs/cdp-traps.md`.
 
+## Landing a unit
+
+One shell line, chained, the moment the report arrives:
+
+```
+node tools/library.mjs history <library> <slug> --screenshot passes/1.png --diff passes/1-diff.png --mismatch 4212 --activity "…" \
+&& node tools/library.mjs history <library> <slug> --screenshot passes/2.png --diff passes/2-diff.png --mismatch 0 --activity "…" \
+&& node tools/library.mjs state <library> <slug> "Default" units/<slug>/default.html 110 \
+&& node tools/library.mjs state <library> <slug> "Hover" units/<slug>/hover.html 110 \
+&& node tools/library.mjs component <library> <slug> status done
+```
+
+A skip is `component <slug> status skipped --reason "…" --screenshot
+units/<slug>/screenshot.png`, after its `history` lines if it made
+passes. Then spawn the next waiting component, if any.
+
+## The queue
+
+While the session lasts, the library's "Queue it" button is a request
+to extract a skipped component. `node tools/library.mjs take-queued
+<library>` pops one request and prints its slug (nothing printed
+means nothing queued); the component is now `queued` and
+`completedAt` is cleared, so the app is watching again. Extract it
+like any other unit (a fresh unit folder; the reason it was skipped
+is your first clue), land it, `complete`, then build and publish
+again. Check the queue after each landing, at the finish, and on
+every wake while you listen. A request nothing takes stays in the
+file: the card says the agent picks it up next time an import runs,
+which is the resumed run's job.
+
+## Finish
+
+Every line, in order, before you say the import is done:
+
+- every component in the manifest is `done` or `skipped`, none
+  `found`, `extracting` or `queued`;
+- `node tools/library.mjs complete <library>` (it refuses otherwise);
+- `pnpm build` in the library folder, then `node tools/publish.mjs
+  --kind library --codebase <codebase>`: the library outlives the
+  laptop. Start the build while the last unit is being verified if
+  you can; it carries whatever `public/` holds when it runs, so build
+  again after the last landing;
+- the courier is up (`node tools/supervise.mjs status
+  ~/.proto/<codebase>/run/courier`); setup started it at codebase
+  creation, and if it is not, the serve skill's courier section is
+  the fix;
+- one sentence to the user: the library is published and stays
+  viewable after this laptop closes;
+- then listen: continue into the next thing setup asked for (a
+  prototype brief, or the listen skill), and keep taking the queue.
+
 ## Working style
 
-Small steps. A few lines, run it, look at the output, then continue.
+Small steps. One line, run it, look at the output, then continue.
 When a result surprises you, chase it before building on it. The
 surprises are the product: every entry in `docs/cdp-traps.md` came
 from looking at real output instead of assuming.
