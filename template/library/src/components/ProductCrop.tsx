@@ -6,9 +6,10 @@ type CrispProps = { src: string; alt: string; className?: string };
 
 /**
  * A 2x capture shown at 1x, so it is crisp: never scaled past 1:1. The
- * 2x candidate makes a 2x display right at once; the measured width
- * keeps a 1x display from showing the capture at twice its size. Sits
- * in a frame that scrolls when the capture is wider, never clipping.
+ * width is half the file's pixels, measured once it loads (a srcset
+ * density would make the browser report a corrected size on some
+ * displays and not others). Sits in a frame that scrolls when the
+ * capture is wider, never clipping.
  */
 export function Crisp({ src, alt, className = "" }: CrispProps) {
   const [width, setWidth] = useState<number | null>(null);
@@ -16,7 +17,6 @@ export function Crisp({ src, alt, className = "" }: CrispProps) {
     <div className={`overflow-x-auto ${className}`}>
       <img
         src={src}
-        srcSet={`${src} 2x`}
         alt={alt}
         className="mx-auto block max-w-none"
         style={{ width: width ?? undefined }}
