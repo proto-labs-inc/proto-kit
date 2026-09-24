@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up Proto on this laptop and connect a codebase. Starts from the setup prompt copied from the Proto site: it records your account, finds your codebase folder, creates the codebase in Proto, opens your product page in a Proto browser window, and hands over to the design-system import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new codebase, or when other Proto skills find no config.json or codebase.json.
+description: Set up Proto on this laptop and connect a codebase. Starts from the setup prompt copied from the Proto site, two lines whose second is a one-time link to the setup document: it records your account, finds your codebase folder, creates the codebase in Proto, opens your product page in a Proto browser window, and hands over to the design-system import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new codebase, or when other Proto skills find no config.json or codebase.json.
 ---
 
 # Setup
@@ -26,74 +26,84 @@ settings**: if access is missing, produce the forwardable message
 `/proto:setup` on Claude Code, `$setup` on Codex, or picks the Proto
 setup skill from the chat's `/` menu on Cursor (or just asks to set
 up Proto, in the terminal, the Claude Code desktop app, the Codex
-app, or Cursor's chat). Nothing was pasted, so ask for the one thing setup can't
-derive: the account, as the Proto site shows it (name and id). One
-question, then proceed exactly as below. If they paste the snippet
-in reply, even better.
+app, or Cursor's chat). Nothing was pasted, so ask for the one thing
+setup can't derive: the setup prompt, copied from the Proto site's
+setup steps or its New prototype dialog (it carries the account, the
+credential and everything else below). One question, then proceed
+exactly as below once they paste it.
 
-**As the snippet**: pasted from the Proto site. Its first line is
-the sentence the recognizer keys on:
+**As the prompt**: pasted from the Proto site. It is two lines. The
+first is the sentence the recognizer keys on:
 
 ```
 Set up Proto for account <name> (<id>).
+Fetch <app>/api/setup/<code> and follow it; the document is valid for 15 minutes and works once.
 ```
 
-A `, codebase <id>` suffix appears only when resuming an unfinished
-setup; a new setup has none, and creating the codebase is this
-skill's job (below). For signed-in users the snippet then carries
-the two cloud values, one per line:
+A `, codebase <id>` suffix on the first line appears only when
+resuming an unfinished setup; a new setup has none, and creating the
+codebase is this skill's job (below). Everything else comes from the
+document the second line points at. Run the whole flow without
+re-asking for anything the document already says.
 
+### The setup document
+
+Fetch the link with a plain HTTPS GET and no auth, `curl -fsS
+<link>`, exactly once: the link works one time and expires 15
+minutes after the site made it. If you already fetched it before the
+plugin was installed (to learn the install command), use that copy;
+do not fetch again. A `410` answer means the link has expired or was
+already used: tell the user, in its one sentence, to copy the setup
+prompt from the Proto site again, and wait for the new prompt. The
+document is JSON:
+
+```jsonc
+{
+  "instructions": "...",                       // what to do with the document, one paragraph
+  "account": { "id": "<id>", "name": "<name>" },
+  "codebase": "<id>",                          // only when resuming
+  "app": "https://...",                        // the Proto app's origin
+  "provisionSecret": "...",                    // the credential: config.json only, never the chat
+  "install": {                                 // the plugin command per harness
+    "claude": { "install": "...", "update": "..." },
+    "codex":  { "install": "...", "update": "..." },
+    "cursor": { "install": "...", "update": "..." }
+  },
+  "source": { "folderPath": "..." },           // or { "fingerprint": { "name", "tree": [...] } }, or absent
+  "productUrl": "https://...",                 // the product page to parse, or absent
+  "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" }  // New prototype prompts only
+}
 ```
-Proto app: <url>
-Provisioning secret: <secret>
-```
 
-The next line always says: identify your
-harness, install proto-kit for it, and follow this skill. The same
-line then carries two pointers, each in one of a few shapes:
-
-- **The codebase**: `Use the codebase at "<path>".`, or `Locate the
-  codebase directory named "<folder>" on this laptop.` followed by a
-  names-only tree to match (see **Find their code**), or `Ask me to
-  choose the folder that contains my codebase.`
-- **The product page**: `Use "<url>" as the product page to parse.`
-  or the ask-me variant, always with the instruction to confirm the
-  user is logged in first and wait if not.
-
-The New prototype dialog's snippet is the same two lines followed by
-`After setup, create a prototype with this brief:` and Title,
-Description, Reference page, Reference HTML: hold the brief for the
-handoff. Run the whole flow without re-asking for anything the
-snippet already says. (Account linking will later swap the
-plain-text account for a token the same entry point redeems.)
+**Never print `provisionSecret`**, not in a summary, not in a
+command the user sees, not in a file other than config.json. Hold
+the brief for the handoff. (Account linking will later put a
+per-laptop token in `provisionSecret`; nothing here changes shape.)
 
 ## Machine
 
 ### Keep the plugin current
 
 If the Proto plugin is already installed, update it before anything
-else, so setup runs on the latest version:
-
-- Claude Code: `claude plugin marketplace update proto-kit && claude
-  plugin update proto@proto-kit`
-- Codex: `codex plugin marketplace upgrade proto-kit && codex plugin
-  add proto@proto-kit` (Codex has no plugin update; re-adding
-  installs the refreshed snapshot)
-- Cursor: installed from the Customize panel, the user opens the
-  Proto plugin there and refreshes it; installed as a local plugin
-  folder, run `git -C ~/.cursor/plugins/local/proto pull --ff-only`.
-  Either way the user then runs **Developer: Reload Window** so Cursor
-  loads the new copy (the chat survives the reload).
+else, so setup runs on the latest version, with the document's
+`install.<harness>.update` command for the harness you are running
+in. Two notes the command does not say: Codex has no plugin update,
+so its command re-adds the plugin, which installs the refreshed
+snapshot; on Cursor, a Customize-panel install is refreshed by the
+user in that panel, a local plugin folder by the `git pull` in the
+command, and either way the user then runs **Developer: Reload
+Window** so Cursor loads the new copy (the chat survives the
+reload).
 
 If an update was installed just now, re-read this skill from the
 updated copy before continuing: the text you are following may be
 stale.
 
-On Cursor, when the plugin is not installed at all (the snippet was
-pasted into a chat without it), install it yourself: `git clone
-https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto`,
-tell the user to run **Developer: Reload Window**, and continue from
-the installed copy's `skills/setup/SKILL.md`.
+On Cursor, when the plugin is not installed at all (the prompt was
+pasted into a chat without it), install it yourself with the
+document's `install.cursor.install` command, tell the user to run
+**Developer: Reload Window**, and continue from the installed copy's
+`skills/setup/SKILL.md`.
 
 ### Prerequisites
 
@@ -109,29 +119,30 @@ for "who am I and where is the app":
 ```jsonc
 {
   "schemaVersion": 1,
-  "app": "https://…",              // the Proto app's origin, from the setup prompt
-  "account": { "user": "<id>", "name": "<name>" },   // both from the snippet; org comes from whoami
+  "app": "https://…",              // the document's app
+  "account": { "user": "<id>", "name": "<name>" },   // the document's account; org comes from whoami
   "auth": { "kind": "shared-secret", "secret": "…" },
   "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
 }
 ```
 
-**The auth step is a swappable slot.** Today the snippet names the
+**The auth step is a swappable slot.** Today the document names the
 account in plain text and the credential is the shared provisioning
-secret. Where the app URL and secret come from, in order: the
-snippet itself, when it carries the `Proto app:` and `Provisioning
-secret:` lines; an existing `~/.proto/config.json` on this laptop (a
-resume); the plugin's own configuration, when the host prompted for
-the two values at install (Claude Code, Cursor); otherwise **ask the
-user for the two values and stop until they answer**. Never search the disk for them: a `.env` file
-belonging to some checkout is not this user's credential, even if it
-would work. Record both, then **tell the user which account they're
-set up as**, by name. When account linking ships, this same step
-redeems a token from the snippet instead and writes a different
-`auth.kind`: nothing downstream may depend on the auth kind;
-everything reads `auth` opaquely and sends `Authorization: Bearer
-<auth.secret>`.
+secret. Where the app URL and secret come from, in order: the setup
+document (`app` and `provisionSecret`); an existing
+`~/.proto/config.json` on this laptop (a resume); the plugin's own
+configuration, when the host prompted for the two values at install
+(Claude Code, Cursor); otherwise, when setup started as a command
+with no prompt, **ask the user to copy the setup prompt from the
+Proto site and stop until they paste it**. Never search the disk for
+them: a `.env` file belonging to some checkout is not this user's
+credential, even if it would work. Record both, then **tell the user
+which account they're set up as**, by name. When account linking
+ships, the document carries a per-laptop token in the same field and
+this step writes a different `auth.kind`: nothing downstream may
+depend on the auth kind; everything reads `auth` opaquely and sends
+`Authorization: Bearer <auth.secret>`.
 
 `chmod 600` the file: it holds a credential. Registration and every
 cloud call use `account.user` as the owner.
@@ -190,9 +201,9 @@ by the codebase id. The site chooses and stores every address.
 **The codebase is created here**, once the codebase is found: call
 `set_codebase_source` with **no `codebase` field**. The server
 creates the codebase, names it after the source folder, and returns
-the id. Keep that id for everything that follows. When the snippet
-carries `, codebase <id>` (resuming an unfinished setup), skip
-creation and use that id.
+the id. Keep that id for everything that follows. When the document
+carries `codebase` (resuming an unfinished setup), skip creation and
+use that id.
 
 ### Find their code
 
@@ -201,9 +212,10 @@ give the one reassurance that matters, in exactly this plain shape:
 **"Your code stays on your laptop; Proto receives only the design
 system it extracts."**
 
-0. **The fingerprint, when the snippet carries one.** The snippet
-   may name the folder and list a shallow tree of its entry names
-   (`▸` folders, `•` files, two levels). Search the likely roots,
+0. **The fingerprint, when the document carries one.** The
+   document's `source.fingerprint` names the folder and lists a
+   shallow tree of its entry names (`▸` folders, `•` files, two
+   levels). Search the likely roots,
    the current working directory first, then the home folder and
    common project folders (`~/Projects`, `~/code`, `~/src`, `~/dev`,
    `~/work`, `~/Documents`), two or three levels deep, and score
@@ -211,14 +223,13 @@ system it extracts."**
    listed entries exist inside. One clear winner: confirm it in one
    line ("Using `~/Projects/inbox`. The tree matches.") and
    continue. More than one plausible match: ask which one, listing
-   the paths. None: fall to the ask below. A `Use the codebase at
-   "<path>".` line skips all of this; an ask-me line starts at
-   step 2.
+   the paths. None: fall to the ask below. A `source.folderPath`
+   skips all of this; no `source` at all starts at step 1.
 1. **Silent scan first, the engineer fast path.** Quietly look for
    checkouts in the obvious places (`~/Projects`, `~/code`, `~/src`,
    `~/dev`, `~/work`, one or two levels deep for `.git`), matching
    directory names, `package.json` names, and git remotes against
-   anything the snippet or conversation names. On a hit, ask ONE
+   anything the document or conversation names. On a hit, ask ONE
    confirmation question with the evidence in it ("Is it
    `~/Projects/cobble-web`?"). **Fail soft**: if the scan finds
    nothing, just move to the ask: never announce "no repositories
@@ -285,8 +296,9 @@ browser. Set that up once per machine, here:
    otherwise use the root above this skill's `skills/` directory). Its profile lives at
    `~/.proto/chrome`, so logins persist across sessions and reboots;
    the login is one-time.
-2. The snippet names the product page to parse (or says to ask for
-   one). Open it in that window yourself, over CDP:
+2. The document's `productUrl` is the product page to parse; with
+   none, ask the user for the URL of a page in their product. Open it
+   in that window yourself, over CDP:
    `openBackground(url)` from `tools/cdp/attach.mjs`, then read the
    page (`evaluate`) for a signed-in marker: the user's name in a
    greeting or menu, an account control, no sign-in form. **Never
@@ -350,9 +362,10 @@ Setup ends by continuing, not by stopping:
 1. Run **import-design-system** against the found source + the Proto
    window's live page: the library filling in is the first thing the
    user watches.
-2. If the snippet carried a brief, hand it to **create-prototype**
-   verbatim: title, description, reference page URL, and the
-   reference HTML (structure hints only: the live page wins).
+2. If the document carried a `brief`, hand it to **create-prototype**
+   verbatim: title, description, the brief document URL, the
+   reference page (`productUrl`), the reference HTML (structure
+   hints only: the live page wins) and whether to use real data.
    Registration there uses `account.user` as owner.
 3. End by telling the user, plainly: **keep this session open, it's
    your codebase's agent.** And one more sentence once the first
