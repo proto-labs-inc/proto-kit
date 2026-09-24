@@ -257,8 +257,16 @@ experience:
    transition flushed. Components may move in parallel.
 5. A component that cannot be extracted cleanly is `skipped` with a `reason`
    and a `screenshot`: never silently dropped, never faked.
-6. Finish by setting `completedAt` and appending "Import complete". Then
-   watch `queue.json` for as long as the session lasts.
+6. Publish after every landing, `done` or `skipped`: `node
+   tools/publish-library.mjs <library>` builds the app and uploads
+   `dist/`, so the published library is never more than one component
+   behind the one the user is watching. It takes a publish lock of its
+   own, so two units landing at the same moment produce one build after
+   the other and never two into the same `dist/`; the writer's lock is
+   untouched, so a unit's own lines stay instant while a build runs.
+7. Finish by setting `completedAt`, appending "Import complete" and
+   publishing once more. Then watch `queue.json` for as long as the
+   session lasts.
 
 ## What the app tolerates
 

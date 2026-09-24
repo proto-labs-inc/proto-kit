@@ -119,6 +119,9 @@ The readers and renderers:
   through the app, so it renders before anything is landed.
 - `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
   component cropped from the live page at 2x, for a skipped card.
+- `node tools/publish-library.mjs <library>`: build the library app and
+  upload the build, one publish at a time; prints the published URL.
+  Run it after every landing and at the finish.
 - `node tools/serve.mjs <dir> 0`: a static server on a free port, for
   a static folder that must be reached by URL.
 
@@ -403,14 +406,22 @@ One shell line, chained, the moment the report arrives:
 ```
 node tools/library.mjs history <library> <slug> --screenshot passes/1.png --diff passes/1-diff.png --mismatch 4212 --activity "…" \
 && node tools/library.mjs history <library> <slug> --screenshot passes/2.png --diff passes/2-diff.png --mismatch 0 --activity "…" \
-&& node tools/library.mjs component <library> <slug> status done
+&& node tools/library.mjs component <library> <slug> status done \
+&& node tools/publish-library.mjs <library>
 ```
 
 `done` reads the unit's folder itself and refuses if the module, its
 stylesheet or `states.json` is not what the contract says; a refusal
 goes back to the unit as one line. A skip is `component <slug> status
 skipped --reason "…" --screenshot passes/screenshot.png`, after its
-`history` lines if it made passes.
+`history` lines if it made passes, and it publishes too.
+
+Every landing ends in that publish line, `done` or `skipped`.
+Publishing is cheap and the published library is what outlives the
+laptop, so the user's link is one component behind at worst. The
+command takes a publish lock of its own, so two landings at the same
+moment build one after the other; a publish that waits carries
+everything landed by the time it builds.
 
 ## The queue
 
@@ -420,8 +431,8 @@ to extract a skipped component. `node tools/library.mjs take-queued
 means nothing queued); the component is now `queued` and
 `completedAt` is cleared, so the app is watching again. Extract it
 like any other unit (a fresh unit folder; the reason it was skipped
-is your first clue), land it, `complete`, then build and publish
-again. Check the queue after each landing, at the finish, and on
+is your first clue), land it (the landing publishes), then `complete`
+and publish once more. Check the queue after each landing, at the finish, and on
 every wake while you listen. A request nothing takes stays in the
 file: the card says the agent picks it up next time an import runs,
 which is the resumed run's job.
@@ -433,11 +444,9 @@ Every line, in order, before you say the import is done:
 - every component in the manifest is `done` or `skipped`, none
   `found`, `extracting` or `queued`;
 - `node tools/library.mjs complete <library>` (it refuses otherwise);
-- `pnpm build` in the library folder, then `node tools/publish.mjs
-  --kind library --codebase <codebase>`: the library outlives the
-  laptop. Start the build while the last unit is being verified if
-  you can; it carries whatever `public/` holds when it runs, so build
-  again after the last landing;
+- `node tools/publish-library.mjs <library>`: the library outlives the
+  laptop, and this last publish carries `completedAt`, so the
+  published copy says the import finished;
 - the courier is up (`node tools/supervise.mjs status
   ~/.proto/<codebase>/run/courier` shows the listener and tunnel up,
   and a `{"status": true}` POST through the edge answers); step 6

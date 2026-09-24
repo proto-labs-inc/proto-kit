@@ -131,10 +131,11 @@ and the app's recovery prompt ("serve ~/.proto/<codebase>/library and
 run its tunnel") means run it once more. A library run without a
 tunnel process is a bug: the beat stays silent without one.
 
-Publish when the import finishes, or on request: `pnpm build` in the
-library folder (the build carries a copy of `public/`, the import's
-data), then `node tools/publish.mjs --kind library --codebase
-<codebase>`, which uploads `dist/`.
+Publish on request with `node tools/publish-library.mjs <codebase>`:
+it builds the library folder (the build carries a copy of `public/`,
+the import's data) and uploads `dist/`, one publish at a time. The
+import runs the same command after every component lands and again
+when it finishes.
 
 ## Recovery
 

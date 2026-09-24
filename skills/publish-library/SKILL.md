@@ -5,25 +5,26 @@ description: Publish your design-system library so it stays viewable after your 
 
 # Publish the library
 
-Two steps: build the library app, upload the build, and print where it
-lives now.
+One command builds the library app, uploads the build and prints where
+it lives now.
 
 1. Find the codebase id (the current codebase's `~/.proto/<id>/`; ask
    only if several codebases exist and the conversation doesn't say
    which).
-2. Build: `pnpm build` in `~/.proto/<codebase>/library/` (the library
-   is a Vite app; its build carries a copy of `public/`, where the
-   import's data lives, so `dist/` is the whole library).
-3. Run `node tools/publish.mjs --kind library --codebase <codebase>` (kit tools
-   resolve from `${CLAUDE_PLUGIN_ROOT}` when running as the installed
-   proto plugin, else the proto-kit checkout). It uploads `dist/` and
-   refuses politely if there is no build or the build's
-   `manifest.json` names no codebase: a library with nothing imported
-   has nothing to publish; run import-design-system first.
-4. Tell the user in one line: the library is published at the printed
+2. Run `node tools/publish-library.mjs <codebase>` (kit tools resolve
+   from `${CLAUDE_PLUGIN_ROOT}` when running as the installed proto
+   plugin, else the proto-kit checkout). It runs `pnpm build` in
+   `~/.proto/<codebase>/library/` (the library is a Vite app; its build
+   carries a copy of `public/`, where the import's data lives, so
+   `dist/` is the whole library), then uploads `dist/`. It refuses
+   politely when the library's `manifest.json` names no codebase: a
+   library with nothing imported has nothing to publish; run
+   import-design-system first. If another publish is running it waits
+   for it, then builds, so it carries everything on disk by then.
+3. Tell the user in one line: the library is published at the printed
    URL and stays viewable after this laptop closes.
 
-The import-design-system skill publishes automatically when an import
-finishes; this command exists for publishing again after manual edits
-or when that step was skipped. Each publish uploads to a fresh path,
-so links to earlier publishes keep working.
+The import-design-system skill runs this command after every component
+lands and again when the import finishes; this command exists for
+publishing again after manual edits. Each publish uploads to a fresh
+path, so links to earlier publishes keep working.
