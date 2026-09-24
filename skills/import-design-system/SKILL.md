@@ -118,17 +118,21 @@ the import.)
    whole point of the write choreography is that the user WATCHES the
    library fill in; that needs the viewer reachable from the site
    before item one. Reachable means through its tunnel, not on
-   localhost: the app's Design system page loads
-   `https://<codebase>-library.<base domain>`, nothing else. If the
-   library is already running under supervision (a `run/library/`
-   with a live daemon), leave it; otherwise, in this order:
+   localhost: the app's Design system page loads the address the site
+   returns and stores when the library's tunnel is provisioned,
+   nothing else. If the library is already running under supervision
+   (a `run/library/` with a live daemon), leave it; otherwise, in this
+   order:
    1. Scaffold `template/library/` into `~/.proto/<codebase>/library/`
       if setup hasn't.
    2. **Provision the tunnel before anything can look the name up**:
       call the `provision_tunnel` MCP tool with
-      `{ slug: "<codebase>-library", port: <port> }`. This creates the
-      DNS record. It must happen before the site, a browser, or you
-      ever ask for that hostname: a lookup that finds no record is
+      `{ kind: "library", codebase: "<codebase>", port: <port> }`. The
+      site chooses the address, creates the DNS record, stores the
+      address on the codebase's row, and returns it as `url` with its
+      bare `hostname` and the `connectorToken`; never build the
+      address yourself. It must happen before the site, a browser, or
+      you ever ask for that hostname: a lookup that finds no record is
       remembered as "does not exist" by every resolver on the path
       for thirty minutes, and the library will look dead long after
       it is up. Never `curl https://<hostname>` before this step.
