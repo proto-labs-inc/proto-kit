@@ -74,6 +74,19 @@ export function galleryUrl(search: string = window.location.search): string | nu
   }
 }
 
+/**
+ * Which copy of the library this is, as the site says in the address it
+ * framed (?serving=live|published): the live one can take requests, the
+ * published copy has no import behind it, so the page never offers to ask.
+ * A library opened on its own is the live one.
+ */
+export type Serving = "live" | "published";
+
+export function servingCopy(search: string = window.location.search): Serving {
+  if (new URLSearchParams(search).get("serving") === "published") return "published";
+  return "live";
+}
+
 export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
   useEffect(() => {

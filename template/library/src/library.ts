@@ -49,8 +49,10 @@ export type Component = {
   history: Pass[];
 };
 
-/** The product as its live page presents it: the name heads the library. */
-export type Product = { name: string; pageUrl: string; pageTitle: string };
+/** The product as its live page presents it: the name heads the library,
+ *  and the page (its title, its icon) is the sentence under it. The icon
+ *  is a path under public/, present only when the page has one. */
+export type Product = { name: string; pageUrl: string; pageTitle: string; favicon?: string };
 
 export type Manifest = {
   codebase: string | null;
@@ -62,6 +64,16 @@ export type Manifest = {
   type: TypeStyle[];
   components: Component[];
 };
+
+/** The product's heading face, from the first type style the import
+ *  read (the import lists them largest first): what the library's own
+ *  title is set in, so the page opens in the product's voice. Null until
+ *  a type style has landed. */
+export function headingStyle(manifest: Manifest): { family: string; weight: number } | null {
+  const first = manifest.type[0];
+  if (!first) return null;
+  return { family: first.family, weight: first.weight };
+}
 
 export type ActivityEvent = { at: string; component?: string; activity: string };
 export type QueueRequest = { slug: string; at: string };
@@ -229,8 +241,8 @@ const NEXT_RUN = "Queued: your agent builds this next time it runs.";
 /**
  * What something queued is waiting for, in the one wording the whole
  * page uses: the running import takes it next, and a finished one
- * leaves it to the agent's next run. The header's re-import and a
- * component's block read it from here, so they never drift apart.
+ * leaves it to the agent's next run. A component's block and the queue
+ * rail read it from here, so they never drift apart.
  */
 export function queuedSentence(manifest: Manifest): string {
   if (manifest.completedAt === null) return NEXT;
