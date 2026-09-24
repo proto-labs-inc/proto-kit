@@ -1,60 +1,93 @@
-// Pixel diffing runs in a browser tab. The canvas decodes the images and
-// compares them. This module builds the URL and holds the read expressions.
-//
-// Steps:
-// 1. Start the server: node tools/serve.mjs <workdir> 8123
-// 2. Open (background tab or worker-tab navigation): diffUrl("real.png", "mine.png")
-// 3. Read the numbers: evaluate(page, DIFF_NUMBERS)
-// 4. Debug from clusters: evaluate(page, CLUSTERS)
+// Pixel diff of two captures, in node: no tab, no server, no canvas.
+// The numbers and clusters are what to debug from, never the red map
+// by eye. `tools/verify-replica.mjs` is the one-shot that captures
+// both sides and calls this.
+import { readFileSync, writeFileSync } from "node:fs";
+import { decodePng, encodePng } from "./png.mjs";
 
-export function diffUrl(realPng, minePng, base = "http://localhost:8123") {
-  return `${base}/tools/cdp/diff.html?a=${encodeURIComponent(realPng)}&b=${encodeURIComponent(minePng)}`;
-}
+export const THRESHOLD = 8;
 
-// -> '{"diffPixels":..,"pct":"..","maxDelta":..}'
-// The same numbers twice across an iteration means the input did not change.
-// That is a stale tab or a raced capture, not a stubborn page.
-export const DIFF_NUMBERS = `document.getElementById("out").textContent`;
-
-// Poll the diff page until it reports numbers. Tolerates the tab still
-// parsing (evaluate throws) and the images still loading ("loading").
-export async function readDiff(page, evaluate, timeoutMs = 15000) {
-  const until = Date.now() + timeoutMs;
-  while (Date.now() < until) {
-    try {
-      const out = await evaluate(page, DIFF_NUMBERS);
-      if (out !== "loading") return JSON.parse(out);
-    } catch {}
-    await new Promise((r) => setTimeout(r, 300));
+/**
+ * Compare two PNGs at `threshold` (max channel delta that still
+ * counts as equal). Writes the diff image (the real capture with
+ * every disagreeing pixel painted red) to `diffPath` when given.
+ * -> { width, height, diffPixels, pct, maxDelta, clusters }
+ *    clusters: bounding boxes of the disagreeing regions, largest
+ *    first, in CSS px at `dpr`.
+ */
+export function diffPngs(realPath, minePath, { diffPath, threshold = THRESHOLD, dpr = 2 } = {}) {
+  const real = decodePng(readFileSync(realPath));
+  const mine = decodePng(readFileSync(minePath));
+  const width = Math.min(real.width, mine.width);
+  const height = Math.min(real.height, mine.height);
+  const out = new Uint8Array(width * height * 4);
+  const bad = new Uint8Array(width * height);
+  let diffPixels = 0;
+  let maxDelta = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const a = (y * real.width + x) * 4;
+      const b = (y * mine.width + x) * 4;
+      const o = (y * width + x) * 4;
+      const delta = Math.max(
+        Math.abs(real.data[a] - mine.data[b]),
+        Math.abs(real.data[a + 1] - mine.data[b + 1]),
+        Math.abs(real.data[a + 2] - mine.data[b + 2]),
+      );
+      maxDelta = Math.max(maxDelta, delta);
+      if (delta > threshold) {
+        diffPixels += 1;
+        bad[y * width + x] = 1;
+        out[o] = 255;
+        out[o + 1] = 0;
+        out[o + 2] = 0;
+      } else {
+        out[o] = real.data[a];
+        out[o + 1] = real.data[a + 1];
+        out[o + 2] = real.data[a + 2];
+      }
+      out[o + 3] = 255;
+    }
   }
-  throw new Error("diff page never produced numbers");
+  if (diffPath) writeFileSync(diffPath, encodePng({ width, height, data: out }));
+  return {
+    width,
+    height,
+    sizeReal: [real.width, real.height],
+    sizeMine: [mine.width, mine.height],
+    threshold,
+    diffPixels,
+    pct: ((100 * diffPixels) / (width * height)).toFixed(2) + "%",
+    maxDelta,
+    clusters: clusters(bad, width, height, dpr),
+  };
 }
 
-// -> bounding boxes of the differing regions, in CSS px, largest first.
-// Debug from these numbers. Do not debug from the red map by eye.
-export const CLUSTERS = `(() => {
-  const a = document.getElementById("a"), b = document.getElementById("b");
-  const w = a.naturalWidth, h = a.naturalHeight;
-  const c = document.createElement("canvas"); c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  ctx.drawImage(a, 0, 0); const pa = ctx.getImageData(0, 0, w, h).data;
-  ctx.drawImage(b, 0, 0); const pb = ctx.getImageData(0, 0, w, h).data;
+// Disagreeing pixels grouped into boxes 20 device px apart, largest
+// first, at most twelve: a thin full-width strip at a clip edge means
+// the clip includes a neighbour; a box the size of the glyphs means
+// text; one the size of the element means position.
+function clusters(bad, width, height, dpr) {
   const boxes = [];
-  const near = (x, y) => boxes.find(bx => x >= bx.x0 - 20 && x <= bx.x1 + 20 && y >= bx.y0 - 20 && y <= bx.y1 + 20);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = (y * w + x) * 4;
-    const d = Math.max(Math.abs(pa[i] - pb[i]), Math.abs(pa[i+1] - pb[i+1]), Math.abs(pa[i+2] - pb[i+2]));
-    if (d > 8) {
-      let bx = near(x, y);
-      if (!bx) { bx = { x0: x, y0: y, x1: x, y1: y, n: 0, maxD: 0 }; boxes.push(bx); }
-      bx.x0 = Math.min(bx.x0, x); bx.x1 = Math.max(bx.x1, x);
-      bx.y0 = Math.min(bx.y0, y); bx.y1 = Math.max(bx.y1, y);
-      bx.n++; bx.maxD = Math.max(bx.maxD, d);
+  const near = (x, y) => boxes.find((b) => x >= b.x0 - 20 && x <= b.x1 + 20 && y >= b.y0 - 20 && y <= b.y1 + 20);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!bad[y * width + x]) continue;
+      let box = near(x, y);
+      if (!box) {
+        box = { x0: x, y0: y, x1: x, y1: y, n: 0 };
+        boxes.push(box);
+      }
+      box.x0 = Math.min(box.x0, x);
+      box.x1 = Math.max(box.x1, x);
+      box.y0 = Math.min(box.y0, y);
+      box.y1 = Math.max(box.y1, y);
+      box.n += 1;
     }
   }
   boxes.sort((p, q) => q.n - p.n);
-  return JSON.stringify(boxes.slice(0, 12).map(bx => ({
-    cssRect: [bx.x0/2, bx.y0/2, (bx.x1-bx.x0)/2, (bx.y1-bx.y0)/2],
-    px: bx.n, maxDelta: bx.maxD
-  })));
-})()`;
+  return boxes.slice(0, 12).map((b) => ({
+    cssRect: [b.x0 / dpr, b.y0 / dpr, (b.x1 - b.x0 + 1) / dpr, (b.y1 - b.y0 + 1) / dpr],
+    px: b.n,
+  }));
+}

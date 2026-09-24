@@ -7,12 +7,20 @@ before your first read of a live page, and again before your first
 pixel diff. Every entry came from looking at real output; when a new
 verified surprise recurs, it belongs in this list.
 
+Two Chromes are involved. The visible Proto window (port 9333) holds
+the product page the user signed into: it is read and captured, never
+navigated, never raised. The headless Chrome (`tools/cdp/headless.mjs`,
+port 9444) renders every replica; nothing it draws appears on screen.
+The diff runs in node (`tools/cdp/diff.mjs`), so no third page exists.
+
 Traps we hit, so you don't:
 
 - display:contents wrappers report a 0x0 rect but their children render. Zero size does not mean empty. Descend anyway.
 - Page bounds come from the html element's own rect. Off-screen carousels can extend thousands of pixels past the viewport, so never size anything from the max over all descendants.
-- /json/new requires PUT on current Chrome.
-- Screenshots come back at device pixel ratio, usually 2x the CSS pixels you asked about.
+- /json/new requires PUT on current Chrome, and it raises the window: never use it on the visible Chrome.
+- Screenshots come back at device pixel ratio, usually 2x the CSS pixels you asked about. The headless Chrome has a ratio of 1 until you emulate the live tab's: `headlessPage()` does, from the viewport and ratio you pass it, and `verify-replica.mjs` reads both from the live tab first.
+- Never pass `clip` to `Page.captureScreenshot` on a tab that is not the active one. Chrome resizes that tab's view to the clip while it waits for a new frame; on a background tab the frame sometimes never comes, and the resize outlives a capture that dies (the tab then reports the clip as its viewport until it is closed). `stableShot()` captures the whole viewport and cuts the clip in node instead.
+- The macOS system font is not the same face in the two Chromes: `system-ui` at weight 600 resolved to the variable `.SF NS` instance in the visible window and to the static `.SFNS-Bold` in headless (`CSS.getPlatformFontsForNode` shows it). Identical pages then differ by a few hundred pixels inside the glyphs, maxDelta near 185. A webfont declared beside the replica renders identically in both (zero). So: geometry agrees by rects, a residue confined to glyph clusters of system-font text is the browsers disagreeing, not the replica, and chasing it is the waste the 22 run paid 40 s for.
 - svg className is an object, not a string.
 - The live viewport can change under you mid-task (the person resizes, a
   sibling agent emulates). A wildly wrong clip usually means the tab
@@ -35,9 +43,10 @@ Traps we hit, so you don't:
   the style system doesn't surface). When a read and the pixels disagree,
   the pixels win: sample colors from the capture before painting
   something the real page might not paint.
-- `img.decode()` never resolves in a background or occluded tab. Wait for
-  load events and let `drawImage` decode instead. Same family: anything
-  that waits on rendering-side promises can stall in hidden tabs.
+- Anything that waits on a rendering-side promise (`img.decode()`,
+  `requestAnimationFrame`) can stall forever in a background or occluded
+  tab. Read data, never wait on paint, in the visible window; render in
+  the headless Chrome, where every tab paints.
 - `document.fonts.check()` returns true for families that are not
   installed at all. It answers "would this render something", not "is
   this face available". Trust `document.fonts.status` and rendered

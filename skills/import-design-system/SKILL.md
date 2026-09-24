@@ -59,21 +59,28 @@ Prefer the installed plugin root exposed by the host (`PLUGIN_ROOT`,
 above this skill's `skills/` directory, which is also the proto-kit
 checkout root.)
 
-- `tools/cdp/chrome.mjs`: start (or find) the debug Chrome without
-  taking focus.
+- `tools/cdp/chrome.mjs`: start (or find) the visible Proto window
+  without taking focus. The product page lives there; you read it.
+- `tools/cdp/headless.mjs`: start (or find) the headless Chrome that
+  renders every replica; `headlessPage(url, { width, height, dpr })`
+  from code. Nothing it draws is ever on screen.
 - `tools/cdp/cdp.mjs`: connect to a CDP websocket; `evaluate()` in a page.
-- `tools/cdp/attach.mjs`: find tabs; open background tabs; navigate
-  worker tabs.
-- `tools/serve.mjs`: static server for your work dir. Serve replica
-  and diff pages over http, never file://. This removes canvas taint,
-  base64 embedding, and the stale file:// cache trap in one move.
+- `tools/cdp/attach.mjs`: `findPage(urlSubstring)` on the visible
+  window; `openBackground()` and `navigate()` for tabs the kit opened.
 - `tools/cdp/wireframe.mjs`: the raw layout tree as labeled
   depth-colored boxes with a slider. The map, not the understanding.
 - `tools/cdp/capture.mjs`: `stableShot()`, clip screenshots behind the
-  stability gate (two agreeing probes, then capture, then recheck).
-- `tools/cdp/diff.mjs` + `diff.html`: pixel compare in a browser tab;
-  read `DIFF_NUMBERS` and `CLUSTERS` out of it.
-- `tools/cdp/workspace.mjs`: per-run work folders.
+  stability gate (two agreeing probes, then capture, then recheck);
+  the clip is cut in node, never by Chrome.
+- `tools/verify-replica.mjs <replica> <live-tab-url> <x,y,w,h>`: one
+  verification pass in one call: captures the live element, renders
+  the replica headlessly at the same viewport and ratio, diffs in
+  node, writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` and prints
+  the mismatch and clusters. Nobody writes a diff page.
+- `tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
+  component cropped from the live page at 2x, for a skipped card.
+- `tools/serve.mjs <dir> 0`: static server on a free port, when a
+  replica needs to be reached by URL rather than by path.
 
 ## Where things go
 
@@ -86,25 +93,23 @@ checkout root.)
 
 ## Setup
 
-The user opens the page in their own Chrome, started with a debug port
-(`node tools/cdp/chrome.mjs` starts one without taking focus). They log
-in themselves. You attach and read. Never launch browsers for them,
-never navigate their tabs, never sleep-and-hope. If you need the page
-in a different state, ask them to put it there.
+Two Chromes, one visible and one not:
 
-Find the tab with one GET to /json/list and match on URL. Chrome takes
-a moment after launch to list tabs, so an empty list right after
-startup means try again, not broken.
+- **The Proto window** (`node tools/cdp/chrome.mjs`, port 9333) is
+  where the product page is open and the user is signed in; setup
+  put it there. You attach and read. Never navigate their tab, never
+  open your own pages in this window, never sleep-and-hope. If you
+  need the page in a different state, ask them to put it there. Find
+  the tab with `findPage(urlSubstring)`; an empty tab list right
+  after launch means try again, not broken. Never steal focus: `PUT
+  /json/new` raises the window every time, so it is never used.
+- **The headless Chrome** (`node tools/cdp/headless.mjs`, port 9444)
+  renders every replica and every capture of one. Nothing it draws
+  appears on screen. `verify-replica.mjs` starts it when it is not
+  running; start it yourself once at the beginning so the first pass
+  does not pay for it.
 
-Never steal focus. The user is doing something else while you work.
-`PUT /json/new` activates the tab and raises the Chrome window every
-time: don't use it. Use `tools/cdp/attach.mjs`: `openBackground()`
-creates tabs without raising the window, and `navigate()` on a reused
-worker tab never raises focus. Screenshots and reads work on background
-and occluded tabs (capture forces a frame commit), so the debug window
-can stay minimized the whole session.
-
-The debug port gives full read access to that Chrome: treat it as
+The debug ports give full read access to both Chromes: treat them as
 sensitive. Working artifacts from logged-in apps contain real user
 data; never commit or share them without a check.
 
@@ -225,9 +230,11 @@ from memory; the manifest says what is finished.
 
 ## Reading the page
 
-Work in small reads against the live tab. Each read is a couple of
-lines over the websocket. Print the result. Look at it before deciding
-the next read.
+Work in small reads against the live tab in the Proto window. Each
+read is a couple of lines over the websocket. Print the result. Look
+at it before deciding the next read. Reads and captures work on the
+occluded window (capture forces a frame commit); waiting on anything
+that paints does not, which is one reason replicas render headlessly.
 
 1. Outline first. Tag, classes, rect, leaf text, a few levels deep
    from one selector. This tells you the anatomy.
