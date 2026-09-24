@@ -74,7 +74,7 @@ function States({ component, look, queue }: { component: Component; look: Compon
           {component.states.map((state) => (
             <TabsContent key={state.name} value={state.name}>
               <div className="overflow-hidden rounded-xl bg-white p-5 ring-1 ring-foreground/10">
-                <Rendered component={component} state={state} />
+                <Rendered name={component.name} module={component.module} state={state} />
               </div>
             </TabsContent>
           ))}

@@ -202,7 +202,8 @@ a markup dump.
   `{}` renders the default state. States the product reaches with a
   pointer or focus are also props (`hover`, `focused`, `disabled`) that
   force the same look the native `:hover`, `:focus` and `:disabled`
-  rules give, so a state renders without a pointer.
+  rules give, so a state renders without a pointer; the forced class
+  and the pseudo-class share one rule (`.primary:hover, .primary.hover`).
 - `<Slug>.module.css`: the component's whole look, from the read
   values, with the product's mechanisms. Class names are scoped by the
   module; no global rules, no `:root`, nothing outside the component.
@@ -215,11 +216,16 @@ a markup dump.
   copies it into the manifest.
 - `notes.md`: the unit's working notes; the app never reads it.
 
-The app imports the module lazily and renders it live, no iframe: the
-overview block shows the default state, the component's page one tab
-per state, and `#/render/<slug>/<state>?x=&y=&w=` mounts one state
-alone on the product's surface at those coordinates, which is what the
-fidelity check diffs against the live page. A component that throws
+The app finds modules by a glob over `src/components/*/`, so a new
+component needs no registry edit, imports each lazily and renders it
+live, no iframe. It mounts only the modules of components that are
+`done`, plus the one the render route names: the overview block shows
+the default state, the component's page one tab per state, and
+`#/render/<slug>/<state>?x=&y=&w=` mounts one state alone on the
+product's surface at those coordinates, reading the state from the
+folder's `states.json` rather than the manifest, so a unit verifies
+before anything is landed. That route is what the fidelity check
+diffs against the live page. A component that throws
 shows its error in its own block; nothing else on the page is
 affected.
 

@@ -75,7 +75,7 @@ function Body({ component, view }: { component: Component; view: ComponentView }
     case "preview":
       return (
         <div className="p-5">
-          <Rendered component={component} state={view.state} />
+          <Rendered name={component.name} module={component.module} state={view.state} />
         </div>
       );
     case "shimmer":

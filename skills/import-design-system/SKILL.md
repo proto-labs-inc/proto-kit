@@ -295,7 +295,9 @@ under the run). The loop:
      a pointer or focus are props too (`hover`, `focused`,
      `disabled`) that force the look the native `:hover`, `:focus`
      and `:disabled` rules give, so a state renders without a
-     pointer. Variants the product names (`variant`, `size`, `tone`)
+     pointer. The forced class and the pseudo-class share one rule
+     in the module (`.primary:hover, .primary.hover { … }`), so a tab
+     shows exactly what a pointer would. Variants the product names (`variant`, `size`, `tone`)
      are typed unions from its class names.
    - `<Slug>.module.css`: the whole look, from read values, with
      *their* mechanisms; class names scoped by the module, no global

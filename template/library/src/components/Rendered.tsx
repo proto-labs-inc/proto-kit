@@ -1,18 +1,35 @@
 import { Component as ReactComponent, Suspense, lazy, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import type { Component, ComponentState } from "@/library";
+import type { ComponentState } from "@/library";
 
 /**
  * An imported component, rendered live from its module with a state's
  * props (no iframe: the module's stylesheet is scoped, so the product's
  * styles stay inside it). Modules live at src/components/<slug>/<Slug>.tsx
- * and are loaded lazily, so only the components the page shows are
- * imported: a half-authored one never breaks the page.
+ * and are found by a glob, so a new component needs no registry edit;
+ * each is imported lazily, so only the components the page shows are
+ * loaded and a half-authored one never breaks the page.
  */
+
 // Imported modules are the PascalCase files; the app's own components
 // under ui/ and ai-elements/ are lowercase and never match.
 const MODULES = import.meta.glob<{ default: ComponentType<Record<string, unknown>> }>("/src/components/*/[A-Z]*.tsx");
+const STATES = import.meta.glob<{ default: ComponentState[] }>("/src/components/*/states.json");
 const loaded = new Map<string, ComponentType<Record<string, unknown>>>();
+
+/** The module path of the component in src/components/<slug>/, whether or not the manifest names it yet. */
+export function moduleOf(slug: string): string | null {
+  const key = Object.keys(MODULES).find((k) => k.startsWith(`/src/components/${slug}/`));
+  if (!key) return null;
+  return key.slice(1);
+}
+
+/** The unit's own states.json, so the render route can show a state before it is landed. */
+export async function statesOf(slug: string): Promise<ComponentState[] | null> {
+  const load = STATES[`/src/components/${slug}/states.json`];
+  if (!load) return null;
+  return (await load()).default;
+}
 
 function componentFor(module: string): ComponentType<Record<string, unknown>> | null {
   const key = `/${module}`;
@@ -26,15 +43,15 @@ function componentFor(module: string): ComponentType<Record<string, unknown>> | 
   return component;
 }
 
-type Props = { component: Component; state: ComponentState };
+type Props = { name: string; module: string | undefined; state: ComponentState };
 
-export function Rendered({ component, state }: Props) {
-  if (!component.module) return <Missing what={`${component.name} has no module yet`} />;
-  const Imported = componentFor(component.module);
-  if (!Imported) return <Missing what={`${component.module} is not in the app`} />;
+export function Rendered({ name, module, state }: Props) {
+  if (!module) return <Missing what={`${name} has no module yet`} />;
+  const Imported = componentFor(module);
+  if (!Imported) return <Missing what={`${module} is not in the app`} />;
   return (
-    <Boundary key={`${component.module}:${state.name}`} name={component.name}>
-      <Suspense fallback={<Shimmer className="text-sm">{`Loading ${component.name}`}</Shimmer>}>
+    <Boundary key={`${module}:${state.name}`} name={name}>
+      <Suspense fallback={<span data-loading={module}><Shimmer className="text-sm">{`Loading ${name}`}</Shimmer></span>}>
         <Imported {...state.props} />
       </Suspense>
     </Boundary>

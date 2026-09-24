@@ -95,12 +95,16 @@ const url = `${appUrl.replace(/\/+$/, "")}/#/render/${encodeURIComponent(slug)}/
 step(`rendering ${slug}/${stateName} headlessly at ${width}x${height} @${dpr}x`);
 const replica = await headlessPage(url, { width, height, dpr });
 try {
-  await evaluate(replica.page, "new Promise((done) => { const tick = () => document.querySelector('[data-render]') ? done() : setTimeout(tick, 50); tick(); })");
+  // The route marks its wrapper once it knows the state, and the lazy
+  // module's fallback while the module is still loading: wait for the
+  // first, then for the second to clear, then for the module's fonts.
+  await evaluate(replica.page, "new Promise((done) => { const tick = () => document.querySelector('[data-render]') && !document.querySelector('[data-loading]') ? done() : setTimeout(tick, 50); tick(); })");
   const outcome = await evaluate(replica.page, "document.querySelector('[data-render]').dataset.render");
   if (outcome !== "ok") {
     console.error(`the render route could not show ${slug}/${stateName}: ${outcome}`);
     process.exit(1);
   }
+  await evaluate(replica.page, "document.fonts.ready.then(() => document.fonts.status)");
   await stableShot(replica.page, probe, files.screenshot, clip);
 } finally {
   await replica.close();
