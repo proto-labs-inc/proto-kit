@@ -22,31 +22,42 @@ Cursor. The core stays harness-neutral: markdown protocols + plain scripts.
 
 ## Install
 
-Sign in to Proto and copy the setup prompt from the gallery. Paste it
-into your coding agent, in Claude Code, Codex, or Cursor. It installs
-the Proto plugin for that agent and sets everything up: your account,
-your codebase, your design system.
+Sign in to Proto and copy the setup prompt from the gallery's setup
+steps or its New prototype dialog. Paste it into your coding agent, in
+Claude Code, Codex, or Cursor: one paste. The prompt is two lines, your
+account and a one-time link. Your agent fetches the link and gets the
+setup document: the plugin command for its harness, the app's address,
+the credential, your codebase folder, your product page. It installs
+the Proto plugin and runs its setup skill: your account, your codebase,
+your design system. The link works once and expires after 15 minutes;
+copy the prompt again for a fresh one.
 
-Manual install, if you prefer the commands yourself:
+Manual install, if you prefer the commands yourself. These are the
+words the setup document carries, copied verbatim from the site's
+`web/src/lib/setup-snippet.ts` (`installCommands`), which is the source:
+change them there first. `<app>` and `<provisionSecret>` are the
+document's `app` and `provisionSecret`.
 
 ```sh
 # Claude Code
-claude plugin marketplace add proto-labs-inc/proto-kit
-claude plugin install proto@proto-kit \
-  --config app_url=https://<your proto domain> \
-  --config provision_secret=<your provisioning secret>
+claude plugin marketplace add proto-labs-inc/proto-kit && claude plugin install proto@proto-kit --config app_url="<app>" --config provision_secret="<provisionSecret>"
 # Codex (CLI or the desktop app; trust the hooks when asked)
-codex plugin marketplace add proto-labs-inc/proto-kit
-codex plugin add proto@proto-kit
+codex plugin marketplace add proto-labs-inc/proto-kit && codex plugin add proto@proto-kit
 # Cursor (local plugin folder; see the Cursor section below)
-git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto
+git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto, then run "Developer: Reload Window" in Cursor.
 ```
 
 If the plugin is already installed, update it first so it is on the
-latest version. Claude Code: `claude plugin marketplace update
-proto-kit && claude plugin update proto@proto-kit`. Codex: `codex
-plugin marketplace upgrade proto-kit && codex plugin add
-proto@proto-kit`. Cursor: see the Cursor section below.
+latest version:
+
+```sh
+# Claude Code
+claude plugin marketplace update proto-kit && claude plugin update proto@proto-kit
+# Codex
+codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit
+# Cursor
+git -C ~/.cursor/plugins/local/proto pull, then run "Developer: Reload Window" in Cursor (or Refresh in the Customize panel for a marketplace install).
+```
 
 Then run `/proto:setup` (Claude Code) or `$setup` (Codex) in any
 session; in Cursor, type `/` in the chat and pick the Proto setup
@@ -69,11 +80,9 @@ so either path works.
 choose **From GitHub Repository**, paste
 `https://github.com/proto-labs-inc/proto-kit`, and install **Proto**
 (user scope is the usual choice). The plugin declares two values,
-**Proto app URL** and **Provisioning secret**. If Cursor asks for
-them, enter the `Proto app:` and `Provisioning secret:` lines of the
-setup prompt you copied from the site. If it does not ask, leave
-them: setup writes the same two values to `~/.proto/config.json`, and
-the plugin's Proto MCP server reads them from there.
+**Proto app URL** and **Provisioning secret**. Leave them empty:
+setup writes both to `~/.proto/config.json` from the setup document,
+and the plugin's Proto MCP server reads them from there.
 
 **From a local folder.** Clone the kit into Cursor's local plugin
 folder (the `git clone` line above), then run **Developer: Reload

@@ -38,12 +38,12 @@
       "PROTO_APP_URL": {
         "type": "string",
         "title": "Proto app URL",
-        "description": "Your Proto app's address, for example https://<your proto domain>. It is the Proto app line of the setup prompt you copy from the site. Optional: once setup has run, the plugin reads it from ~/.proto/config.json."
+        "description": "Your Proto app's address, for example https://<your proto domain>. Optional: setup writes it to ~/.proto/config.json from the setup document, and the plugin reads it from there."
       },
       "PROTO_PROVISION_SECRET": {
         "type": "string",
         "title": "Provisioning secret",
-        "description": "The Provisioning secret line of the setup prompt you copy from the site. Optional: once setup has run, the plugin reads it from ~/.proto/config.json."
+        "description": "The provisioning secret. Optional: setup writes it to ~/.proto/config.json from the setup document, and the plugin reads it from there."
       }
     }
   }
