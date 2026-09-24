@@ -1,6 +1,6 @@
 ---
 name: create-prototype
-description: Build a prototype from your product's own code. A prototype is one screen or flow of your product, built in its own workspace with your design system, with preview states, variant sets, and comment markers, ready to review in Proto. Use when the user asks to create or build a prototype, mock up a flow or screen from their product, or explore design directions on a page.
+description: Build a prototype from your product's own code. A prototype is one screen or flow of your product, built in its own workspace with your design system, with preview states, variants, and comment markers, ready to review in Proto. Use when the user asks to create or build a prototype, mock up a flow or screen from their product, or compare design variants on a page.
 ---
 
 # Create a prototype
@@ -18,14 +18,14 @@ You need three things before scaffolding; ask only for what's missing:
 
 - **A short, specific title** — keep prototype names brief and to the
   point, usually 2–5 words that identify the screen or flow. Avoid
-  filler such as "prototype," "concept," or "exploration." Good examples:
+  filler such as "prototype," "concept," or "variant." Good examples:
   "Checkout Review," "Invite Teammates," "Empty Inbox," and "Billing
   Settings." Avoid names like "New Checkout Flow Prototype" or "Settings
-  Page Design Exploration." Kebab-case the title into the slug (lowercase
+  Page Variant." Kebab-case the title into the slug (lowercase
   letters, digits, hyphens; it becomes the subdomain label, so pick
   something a person could read aloud).
 - **What it should show** — the feature, flow, or screen, and what is
-  being explored or decided.
+  being varied or decided.
 - **A live source URL** when the prototype replicates an existing page:
   the page in the user's product it must look like.
 
@@ -72,10 +72,13 @@ isn't one. Then make it this prototype's own:
    for React, `@proto/rig-vue` → `<packages>/rig-vue/src/index.ts` for
    Vue), plus `@proto/rig-core` → `<packages>/rig-core/src/index.ts`
    (the adapters bare-import it) and `@proto/wire` →
-   `<packages>/wire/src/index.ts`. Don't vendor the rig, don't add it
-   to package.json: once the packages publish to npm they become
-   plain dependencies and both the alias block and the paths
-   disappear.
+   `<packages>/wire/src/index.ts`. React workspaces must also keep
+   `resolve.dedupe: ["react", "react-dom"]` in Vite: the source-aliased
+   rig lives outside the standalone workspace, and without deduplication
+   a production build can bundle a second React runtime and crash its
+   hooks before the prototype mounts. Don't vendor the rig, don't add
+   it to package.json: once the packages publish to npm they become
+   plain dependencies and both the alias block and the paths disappear.
 4. `pnpm install` (standalone: never inside a git checkout, never a
    workspace package of one).
 
@@ -189,7 +192,7 @@ state) and a branch in the code via `usePreviewState`.
   the Frame's state picker.
 - Hover and focus are CSS, not states.
 
-## Design explorations
+## Variants
 
 When the brief asks "which direction?", add a variant set under
 `variantSets` in `prototype.json`: the `component` it varies, 2–4
@@ -198,62 +201,19 @@ When the brief asks "which direction?", add a variant set under
 always compare against current reality), and an `overview` framing the
 question being decided. Drive the code with `useVariant`.
 
+New variants always go at the top of the list. When adding variants to
+an existing set, prepend them to the `variants` array; never append them,
+and preserve the existing variants' relative order.
+
 Ground variants in reality: for each direction, find a real product
 that does it well, capture or draw a small reference image into
 `public/references/`, and register it under `references` with a note
 saying what to look at and which variant it informs. A variant without
 a reference is a guess with styling.
 
-### Static variant previews (mandatory)
-
-Every variant, including the baseline, gets a lightweight SVG preview.
-Put it at `public/previews/<variant-id>.svg` and register these fields on
-the variant in `prototype.json`:
-
-```json
-{
-  "id": "compact-card",
-  "title": "Compact card",
-  "preview": "/previews/compact-card.svg",
-  "previewBackground": "#f8f7f3"
-}
-```
-
-The SVG is a review thumbnail of the **varied component only**, not a
-screenshot or illustration of the full page:
-
-- Draw only the component rooted at the variant set's `component`
-  marker. Never include app chrome, the page heading, surrounding
-  sections, decorative page art, or unrelated context.
-- Preserve the component's recognizable hierarchy, copy, color, borders,
-  and major shapes. It may simplify fine detail, but directions must be
-  distinguishable without loading the prototype.
-- Use a `viewBox` around the component with a safe area on every edge.
-  Horizontal padding is mandatory: leave at least 6% of the component
-  width on both sides (and at least 24 viewBox units). Leave at least 16
-  units above and below. Rules, bands, cards, and other full-width shapes
-  must stop inside this safe area, never at the SVG edge.
-- Fill the entire SVG viewBox with the actual page canvas color behind
-  the component. Do not leave the SVG transparent. Set
-  `previewBackground` to that exact resolved color too, so the Frame's
-  `object-contain` letterbox matches the prototype rather than the
-  Frame's light or dark card color.
-- Keep the asset standalone: inline shapes and resolved colors, no
-  scripts, animation, external images, remote fonts, or runtime CSS.
-  Prefer SVG geometry over Unicode symbols; malformed text bytes can
-  invalidate the whole asset.
-- Give each changed asset a new filename or versioned URL while iterating;
-  served prototype assets may be cached.
-
-Open every generated SVG directly once and confirm it renders before
-serving. Visual inspection must prove the component is isolated, padded,
-and on the right background.
-
 ## Verify, then stop
 
 1. `pnpm typecheck` and `node tools/verify-markers.mjs <workspace>` pass.
-   Open every generated preview SVG directly and reject malformed,
-   transparent, unpadded, or full-page assets before serving.
 2. Paired screenshots against the live source URL: the resting page
    plus the 2–3 most important captured interactions. Read the pairs,
    list mismatches, fix the obvious ones, re-shoot once. **Two rounds
@@ -261,15 +221,13 @@ and on the right background.
    user, not iterated on forever.
 3. Reload the app at `?state=<id>` for each registered state and
    confirm the right mode renders.
-4. **Hand off to the serve skill, which registers the prototype and
-   provisions its tunnel, in that order.** Registration
-   (`register_prototype` with `{ codebase, slug, title, owner }`,
-   owner = config.json's `account.user`) happens inside the serve
-   skill, never here: the row must exist before `provision_tunnel`
-   can store the prototype's address on it, and serving is one
-   skill's job. The site never loads a live address before the row
-   has one and a fresh heartbeat, so an early tile shows a waiting
-   state rather than poisoning anyone's resolver. `register_prototype`
+4. **Hand off to the serve skill, which registers the prototype.**
+   Registration (`register_prototype` with `{ codebase, slug, title,
+   owner }`, owner = config.json's `account.user`) happens inside
+   the serve skill, after the tunnel is provisioned and the run is
+   up, never here: a registered prototype is a tile on the site, and
+   opening a tile whose hostname does not exist yet poisons the
+   viewer's resolver for thirty minutes. `register_prototype`
    upserts on (codebase, slug), so re-registering after a title
    change is correct and expected; an unknown-owner error means
    `account.user` is wrong: fix it in setup, not here. Registering

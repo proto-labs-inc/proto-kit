@@ -14,8 +14,12 @@ export default defineConfig({
   // relative paths work at any of them.
   base: "./",
   plugins: [react()],
-  ...(packages && {
-    resolve: {
+  resolve: {
+    // The source-aliased rig resolves from outside this standalone
+    // workspace. Keep its hooks on the prototype's React runtime in both
+    // dev and production builds.
+    dedupe: ["react", "react-dom"],
+    ...(packages && {
       alias: {
         "@proto/rig": `${packages}/rig/src/index.tsx`,
         "@proto/rig-core": `${packages}/rig-core/src/index.ts`,
@@ -26,8 +30,8 @@ export default defineConfig({
           new URL("./node_modules/modern-screenshot/dist/index.mjs", import.meta.url),
         ),
       },
-    },
-  }),
+    }),
+  },
   server: {
     port: 5173, // keep in sync with public/prototype.json
     strictPort: true,

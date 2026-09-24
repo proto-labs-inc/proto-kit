@@ -10,6 +10,8 @@ create-prototype skill: the live page is the visual truth, the
 library's components and tokens are the palette, every coherent
 component root carries its `data-proto-id` marker, every reviewer
 mode is a registered state, and every variant has a component-only,
-padded SVG preview on the prototype's page background. You never
-write outside your workspace, never touch the user's repos, and never
-serve. Report what you built and what verification found.
+padded SVG preview on the prototype's page background. New variants
+always go at the top of the list: prepend them without reordering
+existing variants. You never write outside your workspace, never touch
+the user's repos, and never serve. Report what you built and what
+verification found.
