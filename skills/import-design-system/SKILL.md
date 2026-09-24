@@ -112,6 +112,8 @@ The readers and renderers:
   `{ pass, mismatch, pct, maxDelta, clusters, screenshot, diff }`.
 - `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
   component cropped from the live page at 2x, for a skipped card.
+- `node tools/cdp/measure.mjs <state.html>`: a state file's rendered
+  height, measured headlessly after its fonts load.
 - `node tools/serve.mjs <dir> 0`: a static server on a free port, when
   a replica must be reached by URL rather than by path.
 
@@ -283,9 +285,8 @@ writes only there. The loop:
    `default.html` first, then `hover.html`, `disabled.html`, and any
    other the product shows: inline CSS or same-folder assets, no
    build step, no external requests, real copy, sized to show the
-   state compactly. Measure each file's rendered height in the
-   headless Chrome (`document.documentElement.scrollHeight` after
-   fonts load); never guess it. A generative component (a canvas, a
+   state compactly. `node tools/cdp/measure.mjs <state.html>` gives
+   each file's rendered height; never guess it. A generative component (a canvas, a
    chart, a p5 sketch) shows several variations side by side in its
    default state file rather than one frozen instance.
 5. **Or skip it honestly.** A component you can't isolate cleanly
@@ -322,8 +323,8 @@ this shape:
 > `node <kit>/tools/verify-replica.mjs replica.html <liveUrl> <x,y,w,h> --out passes`
 > (one pass, prints mismatch and clusters, files in `passes/`);
 > `node <kit>/tools/cdp/crop.mjs <liveUrl> <x,y,w,h> screenshot.png`
-> (only if you skip); `node <kit>/tools/cdp/headless.mjs` is already
-> running on 9444 for measuring state heights. Author from read values
+> (only if you skip); `node <kit>/tools/cdp/measure.mjs <state.html>`
+> (the height of each state file). Author from read values
 > only; put every value's source in `notes.md`. Never write outside
 > your folder; never touch the library. Report, as data: status (done
 > or skipped), the states as `name, file, height` in order, each pass
