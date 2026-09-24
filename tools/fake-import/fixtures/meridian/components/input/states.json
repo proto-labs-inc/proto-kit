@@ -1,6 +1,0 @@
-[
-  { "name": "Default", "props": {} },
-  { "name": "Focused", "props": { "focused": true, "value": "Figma In" } },
-  { "name": "Error", "props": { "error": true, "label": "Amount", "value": "forty five", "hint": "Enter an amount, like 45.00" } },
-  { "name": "Disabled", "props": { "disabled": true } }
-]

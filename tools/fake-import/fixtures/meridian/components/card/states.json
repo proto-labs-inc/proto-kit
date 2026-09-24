@@ -1,5 +1,0 @@
-[
-  { "name": "Default", "props": {} },
-  { "name": "Hover", "props": { "hover": true } },
-  { "name": "Selected", "props": { "selected": true } }
-]

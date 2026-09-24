@@ -13,7 +13,7 @@
  * Usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <rect> [--out <dir>] [--pass <n>] [--port <visible-cdp-port>]
  *   <app-url>       the library app's dev server, http://localhost:5210.
  *   <slug> <state>  the component and the name of the state to render,
- *                   from its src/components/<slug>/states.json.
+ *                   from its src/components/<slug>/component.json.
  *   <live-tab-url>  a substring of the live tab's URL in the Proto window.
  *   <rect>          x,y,w,h in CSS px of the element in the live viewport
  *                   (from getBoundingClientRect); the component is placed

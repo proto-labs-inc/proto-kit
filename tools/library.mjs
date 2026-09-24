@@ -22,20 +22,27 @@
  *   type <library> <json>             one { name, family, size, weight, lineHeight, sample }
  *   inventory <library> <json>        every component at once, [{ slug, name }], all "found"
  *   component <library> <slug> status <found|extracting|done|skipped|queued>
- *       [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
+ *       [--kind <could-not-isolate|did-not-match|not-tried>] [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
  *       done reads the component the unit authored in
  *       src/components/<slug>/ (one <Slug>.tsx with a default export,
- *       its <Slug>.module.css, and states.json listing every state the
- *       product shows as prop sets, the first being the default) and
- *       records its module path and states. skipped needs both: the reason, one plain sentence of at most
- *       140 characters in the product's terms, and the product crop
- *       (copied to components/<slug>/screenshot.png); queued clears both.
+ *       its <Slug>.module.css, and component.json holding every state
+ *       the product shows as a prop set, the first being the default,
+ *       and the names of the manifest tokens the component uses) and
+ *       records its module path, states and tokens; a token the
+ *       manifest does not hold is refused. skipped needs all three:
+ *       the kind, the reason (one plain sentence of at most 140
+ *       characters in the product's terms) and the product crop
+ *       (copied to components/<slug>/screenshot.png). The crop stays
+ *       on the entry from then on; the kind and reason stay while
+ *       queued and go when the component is read again.
  *   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
  *       Moves both images into components/<slug>/history/ and appends
  *       the pass. Every pass a component made is kept.
  *   event <library> [slug] <activity>  one activity line, about a component or the whole import
  *   take-queued <library>             pops queue.json: prints the slug it took (now "queued",
- *                                     completedAt cleared) or nothing
+ *                                     completedAt cleared), "*" for a request to import
+ *                                     everything again (the manifest is untouched; run init),
+ *                                     or nothing
  *   complete <library>                sets completedAt; refuses while a component is still moving
  */
 import {
@@ -58,13 +65,20 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
   token <library> <json>
   type <library> <json>
   inventory <library> <json array>
-  component <library> <slug> status <found|extracting|done|skipped|queued> [--reason ...] [--screenshot ...] [--activity ...]
+  component <library> <slug> status <found|extracting|done|skipped|queued> [--kind ...] [--reason ...] [--screenshot ...] [--activity ...]
   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity <line>
   event <library> [slug] <activity>
   take-queued <library>
   complete <library>`;
 const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
+// Why a component was skipped, as the app groups them: it could not be
+// lifted out of the page on its own, it was rebuilt but never matched
+// the product closely enough, or the import never got to it.
+const SKIP_KINDS = ["could-not-isolate", "did-not-match", "not-tried"];
 const REASON_CAP = 140;
+// The whole import, asked for again from the app: a request whose slug
+// is this, rather than a component's.
+const EVERYTHING = "*";
 
 // Thrown, not exited: a failure inside the lock must still release
 // it, so the lock's finally runs before the process ends.
@@ -277,7 +291,7 @@ const commands = {
       const existing = manifest.tokens.findIndex((t) => t.name === token.name);
       if (existing === -1) manifest.tokens.push(token);
       else manifest.tokens[existing] = token;
-      return { activity: `Extracting color tokens (${token.name})` };
+      return { activity: `Reading colours (${token.name})` };
     });
   },
 
@@ -293,7 +307,7 @@ const commands = {
       const existing = manifest.type.findIndex((t) => t.name === style.name);
       if (existing === -1) manifest.type.push(style);
       else manifest.type[existing] = style;
-      return { activity: `Extracting type styles (${style.name})` };
+      return { activity: `Reading type styles (${style.name})` };
     });
   },
 
@@ -308,7 +322,7 @@ const commands = {
     change((manifest) => {
       for (const item of list) {
         if (manifest.components.some((c) => c.slug === item.slug)) continue;
-        manifest.components.push({ slug: item.slug, name: item.name, status: "found", states: [], history: [] });
+        manifest.components.push({ slug: item.slug, name: item.name, status: "found", states: [], tokens: [], history: [] });
         mkdirSync(folderOf(item.slug), { recursive: true });
       }
       return { activity: `Found ${manifest.components.length} components` };
@@ -318,23 +332,39 @@ const commands = {
   component() {
     const [slug, keyword, status] = positional;
     if (!slug || keyword !== "status" || !STATUSES.includes(status)) fail(USAGE);
-    if (status === "skipped") requireReason(options.reason);
-    if (status === "skipped" && !options.screenshot) fail("skipped needs --screenshot, the component cropped to its own rect from the live page at 2x (tools/cdp/crop.mjs)");
+    if (status === "skipped") {
+      if (!SKIP_KINDS.includes(options.kind)) fail(`skipped needs --kind, one of ${SKIP_KINDS.join(", ")}`);
+      requireReason(options.reason);
+      if (!options.screenshot) fail("skipped needs --screenshot, the component cropped to its own rect from the live page at 2x (tools/cdp/crop.mjs)");
+    }
     change((manifest) => {
       const entry = componentIn(manifest, slug);
       const folder = folderOf(slug);
       mkdirSync(folder, { recursive: true });
       entry.status = status;
-      if (status === "skipped") {
-        if (!existsSync(options.screenshot)) fail(`${options.screenshot} does not exist`);
-        copyFileSync(options.screenshot, join(folder, "screenshot.png"));
-        entry.reason = options.reason;
-        entry.screenshot = relative(slug, "screenshot.png");
-      } else {
-        unskip(entry);
+      switch (status) {
+        case "skipped":
+          if (!existsSync(options.screenshot)) fail(`${options.screenshot} does not exist`);
+          copyFileSync(options.screenshot, join(folder, "screenshot.png"));
+          entry.skipKind = options.kind;
+          entry.reason = options.reason;
+          entry.screenshot = relative(slug, "screenshot.png");
+          unbuild(entry);
+          break;
+        case "queued":
+          unbuild(entry);
+          manifest.completedAt = null;
+          break;
+        case "found":
+        case "extracting":
+          unbuild(entry);
+          forget(entry);
+          break;
+        case "done":
+          forget(entry);
+          Object.assign(entry, authored(slug, manifest.tokens));
+          break;
       }
-      if (status === "done") Object.assign(entry, authored(slug));
-      if (status === "queued") manifest.completedAt = null;
       return { activity: options.activity ?? statusActivity(status, entry.name), slug };
     });
   },
@@ -358,7 +388,7 @@ const commands = {
         diff: relative(slug, "history", `${n}-diff.png`),
         mismatch,
       });
-      return { activity: `${options.activity} (${mismatch.toLocaleString()} pixels off)`, slug };
+      return { activity: `${options.activity} (${pixelsOff(mismatch)})`, slug };
     });
   },
 
@@ -380,14 +410,15 @@ const commands = {
       try {
         queue = JSON.parse(readFileSync(paths.queue, "utf8"));
       } catch {}
-      const request = queue.requests.find((r) => manifest.components.some((c) => c.slug === r.slug));
+      const request = queue.requests.find((r) => r.slug === EVERYTHING || manifest.components.some((c) => c.slug === r.slug));
       if (!request) return { slug: null };
       writeJsonAtomic(paths.queue, { requests: queue.requests.filter((r) => r.slug !== request.slug) });
+      if (request.slug === EVERYTHING) return { slug: EVERYTHING };
       const entry = componentIn(manifest, request.slug);
       entry.status = "queued";
-      unskip(entry);
+      unbuild(entry);
       manifest.completedAt = null;
-      return { activity: `Queued ${entry.name}`, slug: request.slug };
+      return { activity: `Queued ${entry.name}; the import builds it next`, slug: request.slug };
     });
     if (taken.slug !== null) console.log(taken.slug);
   },
@@ -397,14 +428,30 @@ const commands = {
       const moving = manifest.components.filter((c) => c.status !== "done" && c.status !== "skipped");
       if (moving.length > 0) fail(`still moving: ${moving.map((c) => `${c.slug} (${c.status})`).join(", ")}; finish or skip them first`);
       manifest.completedAt = now();
-      return { activity: "Import complete" };
+      return { activity: `Finished: ${coverage(manifest.components)}` };
     });
   },
 };
 
-// What the unit authored in src/components/<slug>/: the module and its
-// states, checked here so a done component always renders.
-function authored(slug) {
+// The one line that says how far the import got, in the shape the app
+// reads it everywhere: "5 of 6 built, 1 skipped".
+function coverage(components) {
+  const built = components.filter((c) => c.status === "done").length;
+  const skipped = components.filter((c) => c.status === "skipped").length;
+  const parts = [`${built} of ${components.length} built`];
+  if (skipped > 0) parts.push(`${skipped} skipped`);
+  return parts.join(", ");
+}
+
+function pixelsOff(mismatch) {
+  if (mismatch === 0) return "no difference";
+  return `${mismatch.toLocaleString("en-GB")} pixels differ`;
+}
+
+// What the unit authored in src/components/<slug>/: the module, its
+// states and the tokens it uses, checked here so a done component
+// always renders and never names a colour the palette lacks.
+function authored(slug, tokens) {
   const folder = join(paths.modules, slug);
   if (!existsSync(folder)) fail(`${folder} does not exist; the unit authors the component there before it is done`);
   const modules = readdirSync(folder).filter((name) => /^[A-Z][A-Za-z0-9]*\.tsx$/.test(name));
@@ -412,38 +459,59 @@ function authored(slug) {
   const source = readFileSync(join(folder, modules[0]), "utf8");
   if (!/export default /.test(source)) fail(`${modules[0]} needs a default export: the component`);
   if (!/\.module\.css/.test(source)) fail(`${modules[0]} must style itself from a scoped <Slug>.module.css beside it`);
-  let states;
+  const shape = `{ "states": [{ "name": "Default", "props": {} }, …], "tokens": ["slate-900", …] }`;
+  let unit;
   try {
-    states = JSON.parse(readFileSync(join(folder, "states.json"), "utf8"));
+    unit = JSON.parse(readFileSync(join(folder, "component.json"), "utf8"));
   } catch {
-    fail(`${folder}/states.json is missing or not JSON: [{ "name": "Default", "props": {} }, …]`);
+    fail(`${folder}/component.json is missing or not JSON: ${shape}`);
   }
-  if (!Array.isArray(states) || states.length === 0) fail(`${folder}/states.json must list at least the default state`);
+  if (typeof unit !== "object" || unit === null || Array.isArray(unit)) fail(`${folder}/component.json must be an object: ${shape}`);
+  const { states } = unit;
+  if (!Array.isArray(states) || states.length === 0) fail(`${folder}/component.json must list at least the default state under "states"`);
   for (const state of states) {
     requireString(state.name, "state.name");
     if (typeof state.props !== "object" || state.props === null || Array.isArray(state.props)) fail(`state "${state.name}" needs a props object`);
   }
   if (new Set(states.map((s) => s.name)).size !== states.length) fail("state names must be unique");
-  return { module: ["src", "components", slug, modules[0]].join("/"), states };
+  if (!Array.isArray(unit.tokens)) fail(`${folder}/component.json must list the manifest tokens the component uses under "tokens" (an array of names, empty if none)`);
+  for (const name of unit.tokens) {
+    requireString(name, "tokens[]");
+    if (!tokens.some((t) => t.name === name)) fail(`component.json names the token "${name}", which the manifest does not hold; push it with \`token\` first`);
+  }
+  const record = { module: ["src", "components", slug, modules[0]].join("/"), states, tokens: [...new Set(unit.tokens)] };
+  if (unit.unverified !== undefined) {
+    requireString(unit.unverified, "unverified");
+    if (unit.unverified.length > REASON_CAP) fail(`unverified is ${unit.unverified.length} characters; the cap is ${REASON_CAP}: one plain sentence for the user`);
+    record.unverified = unit.unverified;
+  }
+  return record;
 }
 
 // The folders under src/components/ that an import wrote: the ones
-// carrying states.json. The app's own components never do.
+// carrying component.json. The app's own components never do.
 function importedModules() {
   try {
-    return readdirSync(paths.modules).filter((name) => existsSync(join(paths.modules, name, "states.json")));
+    return readdirSync(paths.modules).filter((name) => existsSync(join(paths.modules, name, "component.json")));
   } catch {
     return [];
   }
 }
 
-// A component leaving "skipped" loses the reason and the product crop.
-function unskip(entry) {
-  delete entry.reason;
+// A component that is not built right now has no module, states or
+// tokens; the product crop, if it has one, stays: it is the product's
+// own picture of the component and outlives every retry.
+function unbuild(entry) {
   delete entry.module;
+  delete entry.unverified;
   entry.states = [];
-  if (entry.screenshot) rmSync(join(publicDir, entry.screenshot), { force: true });
-  delete entry.screenshot;
+  entry.tokens = [];
+}
+
+// A component being read again, or built, is no longer skipped.
+function forget(entry) {
+  delete entry.reason;
+  delete entry.skipKind;
 }
 
 function statusActivity(status, name) {
@@ -453,11 +521,11 @@ function statusActivity(status, name) {
     case "extracting":
       return `Reading ${name} on the live page`;
     case "done":
-      return `Extracted ${name}`;
+      return `Built ${name}`;
     case "skipped":
-      return `Skipping ${name}`;
+      return `Could not build ${name}`;
     case "queued":
-      return `Queued ${name}`;
+      return `Queued ${name}; the import builds it next`;
   }
 }
 

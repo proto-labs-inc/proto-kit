@@ -1,11 +1,11 @@
 ---
 name: import-design-system
-description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
+description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colours, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
 ---
 
 # Import a design system
 
-You are turning a real product into its design system: the colors,
+You are turning a real product into its design system: the colours,
 the type styles, the fonts, and the notable components: buttons,
 inputs, badges, the handful of composites the product leans on, each
 type appearing **once**, as a React component with typed props whose
@@ -80,7 +80,7 @@ node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button"}, 
 node tools/library.mjs component <library> <slug> status extracting
 node tools/library.mjs history <library> <slug> --screenshot <n>.png --diff <n>-diff.png --mismatch <n> --activity "Padding is 2px short on the right; widening"
 node tools/library.mjs component <library> <slug> status done
-node tools/library.mjs component <library> <slug> status skipped --reason "<one plain sentence, at most 140 characters>" --screenshot <crop.png>
+node tools/library.mjs component <library> <slug> status skipped --kind <could-not-isolate|did-not-match|not-tried> --reason "<one plain sentence, at most 140 characters>" --screenshot <crop.png>
 node tools/library.mjs event <library> [slug] "<activity>"
 node tools/library.mjs take-queued <library>
 node tools/library.mjs complete <library>
@@ -89,9 +89,14 @@ node tools/library.mjs complete <library>
 Each call flushes the manifest and appends its own event line, so the
 app moves on every call; add an `event` only for something the
 default lines do not say. `status done` reads the unit's folder in
-`src/components/<slug>/` (the module, its stylesheet, `states.json`)
-and copies the module path and the states into the manifest. A call
-that cannot apply refuses in one sentence and writes nothing.
+`src/components/<slug>/` (the module, its stylesheet,
+`component.json`) and copies the module path, the states and the
+tokens into the manifest; it refuses a token the manifest does not
+hold yet, so the tokens land before any unit does. A call that
+cannot apply refuses in one sentence and writes nothing.
+
+Every activity line is read by the person whose product it is, in
+the app: write it in the product's terms (see **Activity voice**).
 
 The readers and renderers:
 
@@ -115,8 +120,9 @@ The readers and renderers:
   those coordinates) headlessly at the same viewport and ratio, diffs
   in node, writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` into
   `--out`, prints `{ pass, mismatch, pct, maxDelta, clusters,
-  screenshot, diff }`. The state comes from the unit's `states.json`
-  through the app, so it renders before anything is landed.
+  screenshot, diff }`. The state comes from the unit's
+  `component.json` through the app, so it renders before anything is
+  landed.
 - `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
   component cropped from the live page at 2x, for a skipped card.
 - `node tools/publish-library.mjs <library>`: build the library app and
@@ -132,7 +138,7 @@ The readers and renderers:
   `library.mjs` only. Nothing else lands there.
 - `~/.proto/<codebase>/library/src/components/<slug>/`: the unit's
   folder, and the only place a unit writes: `<Slug>.tsx`,
-  `<Slug>.module.css`, the font files, `states.json`, and `notes.md`
+  `<Slug>.module.css`, the font files, `component.json`, and `notes.md`
   (every value with its source). The app imports it from here, live,
   which is how the render route can show a state before it is landed.
 - `~/.proto/<codebase>/imports/<run>/units/<slug>/passes/`: what
@@ -212,7 +218,9 @@ call; chain the short ones in one shell line.
    values, and a disagreement goes in your run notes with the live
    value winning. `role: "surface"` on the page background token and
    `role: "text"` on the page text token, once each. Use real product
-   copy for every `sample`.
+   copy for every `sample`. Every token a unit will name in its
+   `component.json` must be in the manifest before that unit lands:
+   push the palette first, then land units.
 7. **The courier, while the units run.** If
    `~/.proto/<codebase>/run/courier/` has no `courier.json`, bring
    the courier up now, per the serve skill's "The courier" section.
@@ -312,10 +320,16 @@ under the run). The loop:
      Webfonts the product uses are copied beside it and declared with
      `@font-face` in the module, with a real fallback stack: a
      component that silently falls back to Helvetica fails the bar.
-   - `states.json`: `[{ "name": "Default", "props": {} }, …]`, the
-     default first, then hover, focus, disabled, open, empty and
-     loading where the product has them, then every other state it
-     shows. As many as the product has, each name used once.
+   - `component.json`: `{ "states": [{ "name": "Default", "props": {} },
+     …], "tokens": ["slate-900", …] }`. The states: the default first,
+     then hover, focus, disabled, open, empty and loading where the
+     product has them, then every other state it shows, as many as the
+     product has, each name used once. The tokens: the names of the
+     manifest tokens the component's values come from (the app lists
+     them on the component's page and the components on each swatch).
+     A component that made no pass (a state with no live instance and
+     nothing to diff against) adds `"unverified"`: one sentence, in the
+     product's terms, on why; the app shows it where the passes would be.
    A generative component (a canvas, a chart, a p5 sketch) renders
    several variations side by side in its default state rather than
    one frozen instance.
@@ -332,9 +346,10 @@ under the run). The loop:
    is the two Chromes choosing different faces (the traps doc), not
    your component. Every pass's files stay in `passes/`; the
    orchestrator moves them into the library's history, where the
-   user watches the red drain: every pass is kept, so the whole climb
-   stays on the page. Ten is a reasonable number of passes to spend on
-   one component: past it, skip with what you learned as the reason.
+   user sees how the match was reached: every pass is kept, and the
+   reveal opens on the finished one with the earlier ones a step back.
+   Ten is a reasonable number of passes to spend on one component: past
+   it, skip with kind `did-not-match` and what you learned as the reason.
 4. **Verify the other states** the same way against their live
    instances where the page shows them (a hovered row, a focused
    field: ask the orchestrator to ask the user only when the state
@@ -344,14 +359,18 @@ under the run). The loop:
 5. **Or skip it honestly.** A component you can't isolate cleanly
    (portals, canvas you cannot reproduce, a state you can't reach)
    is skipped: `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h>
-   screenshot.png` for the card, cropped to the component's own rect
-   (never the viewport: a page-tall screenshot is not a card), and
-   one plain sentence for the user in the product's own terms, at
-   most 140 characters, no import voice: "The flowers are drawn with
-   p5 on a canvas, which the library cannot rebuild yet", not "could
-   not be measured or pixel-verified". `library.mjs` refuses both a
-   longer reason and a skip without the crop. Never silently dropped,
-   never faked.
+   screenshot.png` for the block, cropped to the component's own rect
+   (never the viewport: a page-tall screenshot is not a block), a
+   kind (`could-not-isolate` when it could not be lifted out on its
+   own, `did-not-match` when the passes never got close enough,
+   `not-tried` when the import never got to it), and one plain
+   sentence for the user in the product's own terms, at most 140
+   characters, no import voice: "The flowers are drawn with p5 on a
+   canvas, which the library cannot rebuild yet", not "could not be
+   measured or pixel-verified", and not "rendered inside a portal":
+   a portal is not a thing the user has. `library.mjs` refuses a
+   longer reason, a skip without the kind and a skip without the
+   crop. Never silently dropped, never faked.
 
 The component renders inside the library's own page, no iframe: the
 module's scoping is what keeps the product's styles from leaking, so
@@ -376,7 +395,9 @@ this shape:
 > Extract `<Name>` (`<slug>`) into
 > `~/.proto/<codebase>/library/src/components/<slug>/`: `<Slug>.tsx`
 > (default export, exported `<Slug>Props`), `<Slug>.module.css`,
-> `states.json`, `notes.md`; passes go to `<run>/units/<slug>/passes/`.
+> `component.json` (states, and the palette tokens it uses, from this
+> list: `<token names>`), `notes.md`; passes go to
+> `<run>/units/<slug>/passes/`.
 > This skill, `docs/cdp-traps.md` and the source files are already in
 > your context: do not search for them or read them again. Live tab:
 > `<liveUrl>` in the Proto window on port 9333, read only; the
@@ -389,8 +410,10 @@ this shape:
 > values only; put every value's source in `notes.md`. Never write
 > outside your two folders; never touch `public/` or the manifest.
 > Report, as data: status (done or skipped), the states in
-> `states.json` order with which were verified, each pass as `n,
-> mismatch, one activity line` in order, and for a skip the reason
+> `component.json` order with which were verified, each pass as `n,
+> mismatch, one activity line` in order, written for the product's
+> owner ("The corners are 2px too round; tightening", never "matched
+> rules" or "threshold"), and for a skip the kind, the reason
 > sentence (one line, at most 140 characters, in the product's terms)
 > and the screenshot path.
 
@@ -411,10 +434,11 @@ node tools/library.mjs history <library> <slug> --screenshot passes/1.png --diff
 ```
 
 `done` reads the unit's folder itself and refuses if the module, its
-stylesheet or `states.json` is not what the contract says; a refusal
-goes back to the unit as one line. A skip is `component <slug> status
-skipped --reason "…" --screenshot passes/screenshot.png`, after its
-`history` lines if it made passes, and it publishes too.
+stylesheet or `component.json` is not what the contract says, or if
+it names a token the manifest lacks; a refusal goes back to the unit
+as one line. A skip is `component <slug> status skipped --kind <kind>
+--reason "…" --screenshot passes/screenshot.png`, after its `history`
+lines if it made passes, and it publishes too.
 
 Every landing ends in that publish line, `done` or `skipped`.
 Publishing is cheap and the published library is what outlives the
@@ -426,16 +450,18 @@ everything landed by the time it builds.
 ## The queue
 
 While the session lasts, the library's "Queue it" button is a request
-to extract a skipped component. `node tools/library.mjs take-queued
+to extract a skipped component, and its "Import again" a request to
+run the whole import again. `node tools/library.mjs take-queued
 <library>` pops one request and prints its slug (nothing printed
-means nothing queued); the component is now `queued` and
-`completedAt` is cleared, so the app is watching again. Extract it
-like any other unit (a fresh unit folder; the reason it was skipped
-is your first clue), land it (the landing publishes), then `complete`
-and publish once more. Check the queue after each landing, at the finish, and on
-every wake while you listen. A request nothing takes stays in the
-file: the card says the agent picks it up next time an import runs,
-which is the resumed run's job.
+means nothing queued). A component's slug: the component is now
+`queued` and `completedAt` is cleared, so the app is watching again;
+extract it like any other unit (a fresh unit folder; the reason it
+was skipped is your first clue), land it (the landing publishes),
+then `complete` and publish once more. `*`: start this skill over
+from step 1 (`init` on a completed run starts fresh). Check the queue
+after each landing, at the finish, and on every wake while you
+listen. A request nothing takes stays in the file: the block says the
+agent picks it up next time it runs, which is the resumed run's job.
 
 ## Finish
 
@@ -456,6 +482,28 @@ Every line, in order, before you say the import is done:
   viewable after this laptop closes;
 - then listen: continue into the next thing setup asked for (a
   prototype brief, or the listen skill), and keep taking the queue.
+
+## Activity voice
+
+Every activity line, every pass line and every skip reason is read in
+the library by the person whose product it is, so it says what
+happened in the product's terms: short, present tense, naming the
+concrete thing.
+
+- `Reading colours (slate-900)`, `Reading Button on the live page`,
+  `Found 6 components`: what is being done, named.
+- `The corners are 2px too round; tightening`, `The right padding is
+  2px short; widening`, `Matches the product`: a pass says what was
+  off and what changes, or that nothing differs.
+- `The calendar only exists while it is open over the page, so the
+  import could not capture it on its own`: a skip says what about the
+  product stopped it.
+
+Never `matched rules`, `threshold`, `extracted`, `replica`, `CDP`,
+`pixel-verified`, `portal`, a file path or a percentage: those are
+your words, not theirs. The headings in the library are "Type
+styles", "Colours" and "Components"; use the same words ("colours",
+never "color tokens").
 
 ## Working style
 

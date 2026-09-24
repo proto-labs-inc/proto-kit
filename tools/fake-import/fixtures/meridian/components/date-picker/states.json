@@ -1,4 +1,0 @@
-[
-  { "name": "Default", "props": {} },
-  { "name": "Nothing picked", "props": { "picked": 0 } }
-]

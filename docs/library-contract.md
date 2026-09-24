@@ -28,14 +28,14 @@ library/                          the app, scaffolded from template/library/
 │   ├── <Slug>.tsx                a React component with a typed props interface, default export
 │   ├── <Slug>.module.css         its scoped stylesheet, from the read values; @font-face here
 │   ├── *.woff2                   the product's font files, beside the stylesheet
-│   ├── states.json               every state the product shows as a prop set, the default first
+│   ├── component.json            its states as prop sets, the default first, and the tokens it uses
 │   └── notes.md                  every value with its source (the unit's working notes)
 ├── public/
 │   ├── manifest.json             everything extracted so far
 │   ├── events.jsonl              append-only activity stream; the app tails it
-│   ├── queue.json                components the user asked for from the app
+│   ├── queue.json                what the user asked for from the app
 │   └── components/<slug>/
-│       ├── screenshot.png        when skipped: the component cropped from the live page at 2x
+│       ├── screenshot.png        once skipped: the component cropped from the live page at 2x
 │       └── history/<n>.png, <n>-diff.png   every pass's replica capture and diff
 └── dist/                         the build; what publish uploads
 ```
@@ -47,7 +47,7 @@ node tools/library.mjs init <library> <codebase> <source> --page-url <url> --pag
 node tools/library.mjs token <library> '<json>'
 node tools/library.mjs type <library> '<json>'
 node tools/library.mjs inventory <library> '<json array>'
-node tools/library.mjs component <library> <slug> status <found|extracting|done|skipped|queued> [--reason "…"] [--screenshot <png>]
+node tools/library.mjs component <library> <slug> status <found|extracting|done|skipped|queued> [--kind <skipKind>] [--reason "…"] [--screenshot <png>]
 node tools/library.mjs history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "…"
 node tools/library.mjs event <library> [slug] "<activity>"
 node tools/library.mjs take-queued <library>
@@ -60,15 +60,16 @@ atomically (temp file, then rename), appends one event line, and
 holds a lock across the four steps, so two lanes calling at once
 never interleave. Each call is one short shell line and prints the
 event it appended; a call that cannot apply (a `done` whose component
-folder is missing a module or `states.json`, a `complete` with a
-component still moving, an unknown slug) refuses in one sentence and
-writes nothing. `status done` is the one call that reads `src/`: it
-checks the unit's folder and copies its module path and states into
-the manifest, so the manifest never names a state the app cannot
-render.
+folder is missing a module or `component.json`, a `done` naming a
+token the manifest lacks, a `complete` with a component still moving,
+an unknown slug) refuses in one sentence and writes nothing. `status
+done` is the one call that reads `src/`: it checks the unit's folder
+and copies its module path, states and tokens into the manifest, so
+the manifest never names a state the app cannot render or a token the
+palette lacks.
 
 Every path inside `manifest.json` is relative to `public/`, which is the
-app's root: `components/button/default.html`, never `public/…` or `/…`.
+app's root: `components/button/screenshot.png`, never `public/…` or `/…`.
 
 ## manifest.json
 
@@ -86,7 +87,8 @@ import, never rewritten from scratch mid-run.
     "pageTitle": "Expenses · Meridian"                   // that page's <title>, verbatim
   },
   "startedAt": "…ISO…",           // null until start
-  "completedAt": "…ISO…",         // null while anything is still being extracted: this is the done bit
+  "completedAt": "…ISO…",         // null while anything is still being extracted: this is the done bit;
+                                  //   the app dates the import by it
   "tokens": [
     { "name": "slate-50", "value": "#f8fafc", "group": "gray", "role": "surface" },
     { "name": "slate-900", "value": "#0f172a", "group": "gray", "role": "text" },
@@ -114,6 +116,9 @@ import, never rewritten from scratch mid-run.
         { "name": "Hover", "props": { "hover": true } },
         { "name": "Disabled", "props": { "disabled": true } }
       ],
+      "tokens": ["indigo-600", "slate-50", "slate-900"],   // the manifest tokens the component uses,
+                                                           //   from its component.json; empty until done
+      "unverified": "…",              // only when done with no passes: one sentence on why, from component.json
       "history": [                    // every verification pass, in order; may be empty
         {
           "at": "…ISO…",
@@ -123,8 +128,10 @@ import, never rewritten from scratch mid-run.
           "mismatch": 388                                    // differing pixels
         }
       ],
-      "reason": "…",                  // only when skipped: one plain sentence for the user, at most 140 characters
-      "screenshot": "components/date-picker/screenshot.png"  // only when skipped: the component cropped from the product at 2x
+      "skipKind": "could-not-isolate", // only while skipped or queued: why, one of the kinds below
+      "reason": "…",                  // only while skipped or queued: one plain sentence for the user, at most 140 characters
+      "screenshot": "components/date-picker/screenshot.png"  // once skipped: the component cropped from the product at 2x;
+                                                             //   kept through queued and done, since it is the product's own crop
     }
   ]
 }
@@ -134,23 +141,39 @@ import, never rewritten from scratch mid-run.
 
 `status` is one of:
 
-- `found`: listed in the inventory, not started. `states` and `history` are empty.
+- `found`: listed in the inventory, not started. `states`, `tokens` and `history` are empty.
 - `extracting`: being read, authored and verified. `history` grows as passes land.
-- `done`: `module` names the component and `states` holds one prop set
-  per state, copied from its `states.json`: the default first, then the
-  hover and disabled states where the product has them, then every
+- `done`: `module` names the component, `states` holds one prop set
+  per state and `tokens` the names of the manifest tokens it uses,
+  all copied from its `component.json`: the default state first, then
+  the hover and disabled states where the product has them, then every
   other state the product shows. A component lists as many states as
   the product has, each name used once; a single-state component still
-  lists that one state.
-- `skipped`: could not be rebuilt. `reason` says why in one plain sentence
-  in the product's own terms (at most 140 characters, no import voice; the
+  lists that one state. A done component with no passes carries
+  `unverified`, one sentence on why the import made none.
+- `skipped`: could not be rebuilt. `skipKind` says which kind of
+  failure it was, `reason` says why in one plain sentence in the
+  product's own terms (at most 140 characters, no import voice; the
   writer refuses longer) and `screenshot` shows the component cropped to
   its own rect from the live product at 2x (never a viewport shot; the
-  writer refuses a skip without it), so the card is not an absence.
-  `states` is empty.
+  writer refuses a skip without it), so the block is not an absence.
+  `states` and `tokens` are empty.
 - `queued`: the user pressed "Queue it" and the import has taken the request
-  (`take-queued`; see queue.json). `reason` and `screenshot` are removed;
-  the component goes on to `extracting` and then `done` or `skipped` again.
+  (`take-queued`; see queue.json). `skipKind`, `reason` and
+  `screenshot` stay, so the block keeps showing what it showed; the
+  component goes on to `extracting` (which drops the kind and the
+  reason) and then `done` or `skipped` again.
+
+`skipKind` is one of:
+
+- `could-not-isolate`: the component could not be lifted out of the
+  page on its own (a portal, a canvas, a state the page never showed).
+- `did-not-match`: it was rebuilt but never matched the product
+  closely enough in the passes the import spent on it.
+- `not-tried`: the import never got to it.
+
+The app groups the not-built strip by kind: the kind is the strip's
+heading, the reason its sentence.
 
 A component with many natural variations (a generated illustration, a chart)
 renders several variations at once in its default state rather than one
@@ -167,30 +190,47 @@ One JSON object per line, appended only, never rewritten:
 
 `component` is the slug the line is about; lines without it are about the
 import as a whole. The app shows the last line overall as the page's status,
-the last line per component inside that component's card while it moves, and
-the whole per-component stream in the "Underneath" reveal on the component's page.
+the last line per component inside that component's block while it moves, and
+the whole per-component stream in the "How this was matched" reveal on the
+component's page.
 
 ### Activity voice
 
-Short present-tense phrases naming the concrete thing: `Extracting color
-tokens (slate-900)`, `Reading Button on the live page`, `Skipping Date
-picker`, `Found 6 components`. No jargon, no file paths, no percentages.
+Short present-tense phrases naming the concrete thing, written for
+the person whose product it is: `Reading colours (slate-900)`,
+`Reading Button on the live page`, `The corners are 2px too round;
+tightening`, `Matches the product`, `Found 6 components`. What happened,
+in the product's terms; no jargon (no "matched rules", "threshold",
+"extracted", "replica", "verified"), no file paths, no percentages.
+The writer's own lines follow this too; a `complete` writes
+`Finished: 5 of 6 built, 1 skipped`, the one shape the app reads
+coverage in everywhere.
 
 ## queue.json
 
 ```jsonc
-{ "requests": [ { "slug": "date-picker", "at": "…ISO…" } ] }
+{ "requests": [ { "slug": "date-picker", "at": "…ISO…" }, { "slug": "*", "at": "…ISO…" } ] }
 ```
 
-The app appends a request when the user presses "Queue it" on a skipped
-component (through the dev server; a published build cannot). A running
-import polls the file with `take-queued`, which, for the first request
-whose slug it knows, removes the request from `requests`, sets the
-component's `status` to `queued`, clears `completedAt` and prints the
-slug; the import then extracts it like any other component and runs
-`complete` again when nothing is left in motion. A request nothing takes
-stays in the file, and the app keeps showing that component as queued
-and says the agent picks it up next time an import runs.
+The app adds a request when the user presses "Queue it" on a skipped
+component, and takes it out again when the user cancels before anything
+has picked it up. The slug `*` is a request to import everything again,
+added by the page's "Import again". The app sends both through one
+transport module (`src/courier.ts`); today that is a POST to
+`queue.json` on the dev server of `{ "action": "add" | "remove", "slug":
+"…" }`, which the site's courier replaces later (MAA-173). A published
+build has no server behind it, so there the request fails and the app
+says only the live library can ask.
+
+A running import polls the file with `take-queued`, which, for the
+first request it can act on, removes the request from `requests` and
+prints the slug: for a component's slug it sets the component's `status`
+to `queued` and clears `completedAt`; the import then extracts it like
+any other component and runs `complete` again when nothing is left in
+motion. For `*` it touches nothing else: the import runs `init` again,
+which on a completed run starts fresh. A request nothing takes stays in
+the file, and the app keeps showing that component as queued (or the
+re-import as requested) and says the agent picks it up next time it runs.
 
 ## src/components/<slug>/
 
@@ -212,20 +252,30 @@ a markup dump.
   every property the product's base sets differently (box-sizing,
   font, line-height, borders). Webfonts are copied beside it and
   declared with `@font-face` in the module.
-- `states.json`: `[{ "name": "Default", "props": {} }, …]`, every state
-  the product shows as a prop set, the default first, each name used
-  once. `status done` copies it into the manifest.
+- `component.json`:
+
+  ```jsonc
+  {
+    "states": [ { "name": "Default", "props": {} }, … ],  // every state the product shows, the default first, each name once
+    "tokens": ["indigo-600", "slate-50", "slate-900"],     // the manifest tokens the component's values come from
+    "unverified": "…"                                       // only when no pass was made: one sentence on why
+  }
+  ```
+
+  `status done` copies it into the manifest, and refuses a token the
+  manifest does not hold, so push the tokens before landing the unit.
 - `notes.md`: the unit's working notes; the app never reads it.
 
 The app finds modules by a glob over `src/components/*/`, so a new
 component needs no registry edit, imports each lazily and renders it
 live, no iframe. It mounts only the modules of components that are
 `done`, plus the one the render route names: the overview block shows
-the default state, the component's page one tab per state, and
-`#/render/<slug>/<state>?x=&y=&w=` (the state's name as `states.json`
-spells it, URL-encoded) mounts one state alone on the product's
-surface at those coordinates, reading the state from the folder's
-`states.json` rather than the manifest, so a unit verifies
+the default state, the component's page one tab per state (with the
+state's name in the address, `#/c/<slug>/<state>`, so a state can be
+sent), and `#/render/<slug>/<state>?x=&y=&w=` (the state's name as
+`component.json` spells it, URL-encoded) mounts one state alone on the
+product's surface at those coordinates, reading the state from the
+folder's `component.json` rather than the manifest, so a unit verifies
 before anything is landed. That route is what the fidelity check
 diffs against the live page. A component that throws
 shows its error in its own block; nothing else on the page is
@@ -236,8 +286,9 @@ affected.
 The replica screenshot and diff image of every verification pass,
 `<n>.png` and `<n>-diff.png`, `n` counting passes from 1 and never
 reused. Every pass a component made is kept, however many it took, for
-every component, done or skipped: the "Underneath" reveal on the
-component's page plays them in order so the mismatch visibly falls.
+every component, done or skipped: the "How this was matched" reveal on
+the component's page opens on the finished pass and steps back through
+the earlier ones.
 
 ## The choreography
 
@@ -254,9 +305,11 @@ experience:
 3. List all components as `found` as soon as the inventory exists, before
    extracting any: the user sees the full queue up front.
 4. Each component walks `found → extracting → done | skipped`, every
-   transition flushed. Components may move in parallel.
-5. A component that cannot be extracted cleanly is `skipped` with a `reason`
-   and a `screenshot`: never silently dropped, never faked.
+   transition flushed. Components may move in parallel. The tokens a
+   unit names land before the unit does.
+5. A component that cannot be extracted cleanly is `skipped` with a
+   `skipKind`, a `reason` and a `screenshot`: never silently dropped,
+   never faked.
 6. Publish after every landing, `done` or `skipped`: `node
    tools/publish-library.mjs <library>` builds the app and uploads
    `dist/`, so the published library is never more than one component
@@ -264,9 +317,9 @@ experience:
    own, so two units landing at the same moment produce one build after
    the other and never two into the same `dist/`; the writer's lock is
    untouched, so a unit's own lines stay instant while a build runs.
-7. Finish by setting `completedAt`, appending "Import complete" and
-   publishing once more. Then watch `queue.json` for as long as the
-   session lasts.
+7. Finish by running `complete`, which sets `completedAt` and appends
+   the coverage line, and publishing once more. Then watch `queue.json`
+   for as long as the session lasts.
 
 ## What the app tolerates
 
