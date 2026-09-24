@@ -5,7 +5,6 @@ import { ImportLine } from "@/components/ImportLine";
 import { ImportQueue } from "@/components/ImportQueue";
 import { TokenSwatches } from "@/components/TokenSwatches";
 import { TypeSpecimens } from "@/components/TypeSpecimens";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { componentView, headingStyle, importInProgress, type Component, type Courier, type Library } from "@/library";
 import { galleryUrl } from "@/route";
 
@@ -81,12 +80,12 @@ type SectionProps = {
   children: React.ReactNode;
 };
 
-/** A section with its heading in place from the start, and the import's line in it until it fills. */
+/** A section with its heading in place from the start, and one quiet line in it until it fills. */
 function Section({ title, filled, reading, reserve, gap = "gap-4", children }: SectionProps) {
   return (
     <section className={`flex flex-col ${gap}`}>
       <h2 className="text-sm font-medium text-muted-foreground">{title}</h2>
-      {filled ? children : <Shimmer className={`${reserve} text-sm`}>{reading}</Shimmer>}
+      {filled ? children : <p className={`m-0 ${reserve} text-sm text-muted-foreground`}>{reading}</p>}
     </section>
   );
 }

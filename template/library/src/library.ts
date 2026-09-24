@@ -135,28 +135,6 @@ export const requested = (requests: QueueRequest[], slug: string) => requests.so
 /** Whether the user asked for the whole import again and nothing has taken it yet. */
 export const importRequested = (requests: QueueRequest[]) => requested(requests, EVERYTHING);
 
-/**
- * How far the import got, in the one shape every line reads it:
- * "5 of 7 built, 1 skipped, 1 waiting". Built is done; skipped is
- * skipped and not asked for again; waiting is everything else.
- */
-export function coverage({ manifest, requests }: Library): string {
-  const { components } = manifest;
-  const built = components.filter((c) => c.status === "done").length;
-  const skipped = components.filter((c) => c.status === "skipped" && !requested(requests, c.slug)).length;
-  const waiting = components.length - built - skipped;
-  const parts = [`${built} of ${components.length} built`];
-  if (skipped > 0) parts.push(`${skipped} skipped`);
-  if (waiting > 0) parts.push(`${waiting} waiting`);
-  return parts.join(", ");
-}
-
-/** The ring's fraction: components that are built or skipped, over all of them. */
-export function progress({ manifest, requests }: Library): { done: number; total: number } {
-  const done = manifest.components.filter((c) => settled(c) && !requested(requests, c.slug)).length;
-  return { done, total: manifest.components.length };
-}
-
 type Load =
   | { kind: "loading" }
   | { kind: "unreachable" }
