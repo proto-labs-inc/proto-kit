@@ -221,9 +221,10 @@ component needs no registry edit, imports each lazily and renders it
 live, no iframe. It mounts only the modules of components that are
 `done`, plus the one the render route names: the overview block shows
 the default state, the component's page one tab per state, and
-`#/render/<slug>/<state>?x=&y=&w=` mounts one state alone on the
-product's surface at those coordinates, reading the state from the
-folder's `states.json` rather than the manifest, so a unit verifies
+`#/render/<slug>/<state>?x=&y=&w=` (the state's name as `states.json`
+spells it, URL-encoded) mounts one state alone on the product's
+surface at those coordinates, reading the state from the folder's
+`states.json` rather than the manifest, so a unit verifies
 before anything is landed. That route is what the fidelity check
 diffs against the live page. A component that throws
 shows its error in its own block; nothing else on the page is
