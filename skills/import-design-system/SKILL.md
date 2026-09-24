@@ -281,11 +281,13 @@ under the run). The loop:
 
 1. **Find it live.** Locate an instance on the page. Read its
    anatomy: outline, rect, matched rules, the source component file,
-   the resolved font (`CSS.getPlatformFontsForNode`). Note which
-   states the product shows: the default, and hover and disabled
-   where they exist, and anything else visible (selected, error,
-   loading, empty). At most six. The rect is the `x,y,w,h` every pass
-   uses.
+   the resolved font (`CSS.getPlatformFontsForNode`). Note every state
+   the product shows: the default, then hover, focus, disabled, open,
+   empty and loading where they exist, then everything else it shows
+   (selected, error, each named variant and size). List all of them;
+   a state the product has and the library lacks is the thing a
+   prototype later reaches for and cannot find. The rect is the
+   `x,y,w,h` every pass uses.
 2. **Author the component.** Three files, the shape a prototype will
    import later:
    - `<Slug>.tsx`: one React component, the default export, with an
@@ -308,8 +310,9 @@ under the run). The loop:
      `@font-face` in the module, with a real fallback stack: a
      component that silently falls back to Helvetica fails the bar.
    - `states.json`: `[{ "name": "Default", "props": {} }, …]`, the
-     default first, then hover and disabled where the product has
-     them, then anything else it shows, at most six.
+     default first, then hover, focus, disabled, open, empty and
+     loading where the product has them, then every other state it
+     shows. As many as the product has, each name used once.
    A generative component (a canvas, a chart, a p5 sketch) renders
    several variations side by side in its default state rather than
    one frozen instance.

@@ -4,5 +4,7 @@
   { "name": "Disabled", "props": { "disabled": true } },
   { "name": "Loading", "props": { "loading": true } },
   { "name": "Secondary", "props": { "variant": "secondary", "children": "Request changes" } },
-  { "name": "Danger", "props": { "variant": "danger", "children": "Reject" } }
+  { "name": "Ghost", "props": { "variant": "ghost", "children": "Cancel" } },
+  { "name": "Danger", "props": { "variant": "danger", "children": "Reject" } },
+  { "name": "Small", "props": { "size": "sm", "children": "Add receipt" } }
 ]

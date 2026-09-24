@@ -25,9 +25,9 @@
  *       [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
  *       done reads the component the unit authored in
  *       src/components/<slug>/ (one <Slug>.tsx with a default export,
- *       its <Slug>.module.css, and states.json listing the named states
- *       as prop sets, the first being the default) and records its
- *       module path and states. skipped needs both: the reason, one plain sentence of at most
+ *       its <Slug>.module.css, and states.json listing every state the
+ *       product shows as prop sets, the first being the default) and
+ *       records its module path and states. skipped needs both: the reason, one plain sentence of at most
  *       140 characters in the product's terms, and the product crop
  *       (copied to components/<slug>/screenshot.png); queued clears both.
  *   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
@@ -66,7 +66,6 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
 const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
 const HISTORY_CAP = 10;
 const REASON_CAP = 140;
-const STATE_CAP = 6;
 
 // Thrown, not exited: a failure inside the lock must still release
 // it, so the lock's finally runs before the process ends.
@@ -425,7 +424,6 @@ function authored(slug) {
     fail(`${folder}/states.json is missing or not JSON: [{ "name": "Default", "props": {} }, …]`);
   }
   if (!Array.isArray(states) || states.length === 0) fail(`${folder}/states.json must list at least the default state`);
-  if (states.length > STATE_CAP) fail(`${folder}/states.json lists ${states.length} states; the cap is ${STATE_CAP}`);
   for (const state of states) {
     requireString(state.name, "state.name");
     if (typeof state.props !== "object" || state.props === null || Array.isArray(state.props)) fail(`state "${state.name}" needs a props object`);

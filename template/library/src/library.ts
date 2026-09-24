@@ -33,6 +33,7 @@ export type Component = {
   status: ComponentStatus;
   /** The component's module, relative to the app root: src/components/<slug>/<Slug>.tsx; set once done. */
   module?: string;
+  /** Every state the product shows, the default first, each name used once; as many as it has. */
   states: ComponentState[];
   reason?: string;
   screenshot?: string;

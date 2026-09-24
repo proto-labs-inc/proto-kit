@@ -28,7 +28,7 @@ library/                          the app, scaffolded from template/library/
 │   ├── <Slug>.tsx                a React component with a typed props interface, default export
 │   ├── <Slug>.module.css         its scoped stylesheet, from the read values; @font-face here
 │   ├── *.woff2                   the product's font files, beside the stylesheet
-│   ├── states.json               the named states as prop sets, the default first, at most six
+│   ├── states.json               every state the product shows as a prop set, the default first
 │   └── notes.md                  every value with its source (the unit's working notes)
 ├── public/
 │   ├── manifest.json             everything extracted so far
@@ -109,7 +109,7 @@ import, never rewritten from scratch mid-run.
       "name": "Button",
       "status": "done",               // see the lifecycle below
       "module": "src/components/button/Button.tsx",   // the component; only once done
-      "states": [                     // the first is the default; empty until done; at most six
+      "states": [                     // every state the product shows; the first is the default; empty until done
         { "name": "Default", "props": {} },
         { "name": "Hover", "props": { "hover": true } },
         { "name": "Disabled", "props": { "disabled": true } }
@@ -138,8 +138,9 @@ import, never rewritten from scratch mid-run.
 - `extracting`: being read, authored and verified. `history` grows as passes land.
 - `done`: `module` names the component and `states` holds one prop set
   per state, copied from its `states.json`: the default first, then the
-  hover and disabled states where the product has them, then any other
-  state the product shows, at most six. A single-state component still
+  hover and disabled states where the product has them, then every
+  other state the product shows. A component lists as many states as
+  the product has, each name used once; a single-state component still
   lists that one state.
 - `skipped`: could not be rebuilt. `reason` says why in one plain sentence
   in the product's own terms (at most 140 characters, no import voice; the
@@ -211,9 +212,9 @@ a markup dump.
   every property the product's base sets differently (box-sizing,
   font, line-height, borders). Webfonts are copied beside it and
   declared with `@font-face` in the module.
-- `states.json`: `[{ "name": "Default", "props": {} }, …]`, the named
-  states as prop sets, the default first, at most six. `status done`
-  copies it into the manifest.
+- `states.json`: `[{ "name": "Default", "props": {} }, …]`, every state
+  the product shows as a prop set, the default first, each name used
+  once. `status done` copies it into the manifest.
 - `notes.md`: the unit's working notes; the app never reads it.
 
 The app finds modules by a glob over `src/components/*/`, so a new
