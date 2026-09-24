@@ -1,11 +1,10 @@
 import { ArrowLeftIcon, ChevronDownIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { HistoryView } from "@/components/HistoryView";
+import { SkippedNotice } from "@/components/SkippedNotice";
 import { StateFrame } from "@/components/StateFrame";
 import { componentView, type ActivityEvent, type Component, type ComponentView, type Library, type QueueOutcome } from "@/library";
 import { href } from "@/route";
@@ -35,10 +34,7 @@ export function ComponentPage({ slug, library, queue }: Props) {
           <a href={href.overview()} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeftIcon className="size-4" /> Library
           </a>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-medium">{component.name}</h1>
-            <Badge variant="outline" className="text-muted-foreground">{component.category}</Badge>
-          </div>
+          <h1 className="text-2xl font-medium">{component.name}</h1>
         </header>
         <States component={component} look={look} queue={queue} />
         <Underneath component={component} events={events} moving={moving} />
@@ -58,12 +54,13 @@ function States({ component, look, queue }: { component: Component; look: Compon
       );
     case "skipped":
       return (
-        <div className="flex flex-col gap-3">
-          {look.screenshot && <img src={look.screenshot} alt={`${component.name} in the product`} className="w-full rounded-xl ring-1 ring-foreground/10" />}
-          <p className="text-sm text-muted-foreground">{look.reason}</p>
-          <Button size="sm" variant="outline" className="self-start" onClick={() => queue(component.slug)}>
-            Queue it
-          </Button>
+        <div className="flex flex-col gap-2">
+          {look.screenshot && (
+            <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">
+              <img src={look.screenshot} alt={`${component.name} in the product`} className="mx-auto block max-w-full" />
+            </div>
+          )}
+          <SkippedNotice component={component} reason={look.reason} queue={queue} />
         </div>
       );
     case "preview":

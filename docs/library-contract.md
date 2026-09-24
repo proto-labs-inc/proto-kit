@@ -39,6 +39,11 @@ import, never rewritten from scratch mid-run.
 {
   "codebase": "meridian",          // codebase slug; null until the import starts
   "source": "meridian-web",       // where it came from (repo name / host); null until start
+  "product": {                    // the product as the live page presents it; null until start
+    "name": "Meridian",           // the page title's product name: the app's page heading
+    "pageUrl": "https://app.meridian.example/expenses",  // the live page the import read
+    "pageTitle": "Expenses · Meridian"                   // that page's <title>, verbatim
+  },
   "startedAt": "…ISO…",           // null until start
   "completedAt": "…ISO…",         // null while anything is still being extracted: this is the done bit
   "tokens": [

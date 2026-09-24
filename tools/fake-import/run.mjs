@@ -109,6 +109,11 @@ const COMPONENTS = [
 const manifest = {
   codebase: "meridian",
   source: "meridian-web",
+  product: {
+    name: "Meridian",
+    pageUrl: "https://app.meridian.example/expenses",
+    pageTitle: "Expenses · Meridian",
+  },
   startedAt: now(),
   completedAt: null,
   tokens: [],
