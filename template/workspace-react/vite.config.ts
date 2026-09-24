@@ -10,6 +10,9 @@ const packages = process.env.PROTO_PACKAGES;
 const tunnel = process.env.PROTO_TUNNEL === "1";
 
 export default defineConfig({
+  // Relative asset paths: a published build lives under a path, and
+  // relative paths work at any of them.
+  base: "./",
   plugins: [react()],
   ...(packages && {
     resolve: {

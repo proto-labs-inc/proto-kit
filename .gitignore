@@ -1,0 +1,4 @@
+node_modules/
+
+# Playwright MCP scratch output (screenshots, snapshots, console logs)
+.playwright-mcp/

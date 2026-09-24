@@ -1,21 +1,28 @@
 {
   "name": "proto",
-  "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs — driven by your coding agent.",
+  "description": "Proto makes prototypes from your product's own code. This plugin runs on your laptop and is driven by your coding agent: it connects your account, imports your product's design system, builds prototypes, serves them at public addresses, and listens for work sent from the Proto site.",
   "author": {
     "name": "Proto Labs"
   },
+  "homepage": "https://github.com/proto-labs-inc/proto-kit",
   "repository": "https://github.com/proto-labs-inc/proto-kit",
+  "keywords": [
+    "prototyping",
+    "design-systems",
+    "frontend",
+    "claude-code"
+  ],
   "userConfig": {
     "app_url": {
       "type": "string",
       "title": "Proto app URL",
-      "description": "Your Proto app's origin, e.g. https://<your proto domain> — shown in the setup snippet",
+      "description": "Your Proto app's address, for example https://<your proto domain>. It is shown in the setup prompt you copy from the site.",
       "required": true
     },
     "provision_secret": {
       "type": "string",
       "title": "Provisioning secret",
-      "description": "The shared provisioning secret from your Proto operator",
+      "description": "The provisioning secret shown in the setup prompt you copy from the site.",
       "sensitive": true,
       "required": true
     }

@@ -10,7 +10,7 @@
  * supervise.mjs: reads <run-dir>/session.json, starts the agent fresh
  * or with --resume <id>, captures the session id from the agent's own
  * JSON stream (the first stream event already carries session_id —
- * docs/claude-code-mechanics.md, "Session identity in headless runs"),
+ * docs/harness-mechanics.md, "Session identity in headless runs"),
  * and persists it for the next launch. Exits with the agent's code, so
  * supervise's crash-restart gives resume-across-crashes for free.
  *
@@ -43,13 +43,20 @@ try {
   session = JSON.parse(readFileSync(sessionPath, "utf8"));
 } catch {}
 
-const resuming = Boolean(session.sessionId);
-const argv = [
-  ...config.args,
-  ...(resuming ? config.resumeArgs.map((a) => a.replaceAll("{sessionId}", session.sessionId)) : []),
-  resuming ? (config.resumeInstruction ?? config.instruction) : config.instruction,
-];
-console.log(`agent ${resuming ? `resuming ${session.sessionId}` : "starting fresh"}`);
+let argv;
+let launch;
+if (session.sessionId) {
+  argv = [
+    ...config.args,
+    ...config.resumeArgs.map((a) => a.replaceAll("{sessionId}", session.sessionId)),
+    config.resumeInstruction ?? config.instruction,
+  ];
+  launch = `resuming ${session.sessionId}`;
+} else {
+  argv = [...config.args, config.instruction];
+  launch = "starting fresh";
+}
+console.log(`agent ${launch}`);
 
 const child = spawn(config.bin, argv, { stdio: ["ignore", "pipe", "inherit"] });
 let buffer = "";

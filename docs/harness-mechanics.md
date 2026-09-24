@@ -3,26 +3,26 @@
 ## Codex facts (verified live, 2026-09-20)
 
 - Codex reads the SAME `skills/<name>/SKILL.md` folders (the open
-  agentskills spec) — all five kit skills were auto-discovered from
+  agentskills spec): all five kit skills were auto-discovered from
   the installed plugin unchanged, namespaced `proto:*` there too.
 - Plugin + marketplace: root `plugin.json` (agent-plugins.org
   schema, hooks path under `extensions."com.openai"`) +
   `.agents/plugins/marketplace.json`; `codex plugin marketplace add
-  <path|repo>` then `codex plugin add proto@proto-kit` — verified
+  <path|repo>` then `codex plugin add proto@proto-kit`: verified
   from the local path; cache at `~/.codex/plugins/cache/`.
-- Hooks: same JSON shape as Claude's, `$PLUGIN_ROOT` env — but they
+- Hooks: same JSON shape as Claude's, `$PLUGIN_ROOT` env, but they
   run ONLY after the user passes the one-time "Hooks need review"
   trust prompt (interactive; untrusted hooks are silently skipped,
   headless included), and the `[features] hooks = true` gate must be
   on. Verified: the SessionStart health line printed in an
   interactive session after trusting.
 - Agent roles are TOML in `~/.codex/agents/` (plugins don't ship
-  them; setup installs `codex-agents/*.toml`) — all four proto roles
+  them; setup installs `codex-agents/*.toml`): all four proto roles
   listed by the session for `spawn_agent` after install.
 - MCP: `[mcp_servers.<name>]` in `~/.codex/config.toml` with `url` +
   `http_headers_helper` (the kit's `tools/mcp-headers.mjs` reads
-  `~/.proto/config.json`) — verified: a Codex session called the
-  cloud `whoami` through it. Headless `codex exec` denies MCP calls
+  `~/.proto/config.json`). Verified: a Codex session called the
+  proto server's `whoami` through it. Headless `codex exec` denies MCP calls
   under its default approval policy; `--sandbox
   danger-full-access` (or interactive approval) permits them.
 - NO push wake exists (nothing like the Monitor tool): an idle Codex
@@ -30,21 +30,93 @@
   running the listen skill polls `feed-tail` in a background terminal (`--once` for
   spot checks); unattended operation uses `tools/feed-drive.mjs`,
   which resumes the saved conversation per command
-  (`codex exec resume <session-id>` — verified fresh→resume with
+  (`codex exec resume <session-id>`: verified fresh→resume with
   offset commits against a stub).
+
+## Cursor facts (2026-09-22)
+
+Read from Cursor's docs (cursor.com/docs/reference/plugins, /docs/plugins,
+/docs/hooks, /docs/subagents, /docs/skills, /docs/mcp) and the
+cursor/plugins and cursor/plugin-template repos; "verified" below means
+run on this machine without the Cursor app, which nobody has driven
+against this plugin yet.
+
+- Manifest `.cursor-plugin/plugin.json`; only `name` is required.
+  Cursor publishes a JSON schema (cursor/plugins, schemas/) with
+  additionalProperties false; `hooks` is a string path or an object,
+  `agents`/`skills` a path or list, and an explicit path REPLACES
+  folder discovery for that component (so `"hooks":
+  "./cursor-hooks/hooks.json"` keeps Cursor off the Claude-format
+  `hooks/hooks.json`). Verified: the schema validator from
+  cursor/plugins and the template validator from cursor/plugin-template
+  both pass on this repo; before the fix `"hooks": []` failed the
+  schema and the marketplace entry carried seven forbidden fields.
+- `.cursor-plugin/marketplace.json` entries allow only `name`,
+  `source`, `description`, `minClientVersions`; everything else
+  belongs in plugin.json. The repo being its own marketplace is what
+  the Customize panel's "From GitHub Repository" import needs.
+- Hooks: `{"version": 1, "hooks": {...}}`, camelCase events
+  (`sessionStart`, `postToolUse`, `afterFileEdit`, ...), JSON on stdin
+  and stdout. sessionStart returns `{"additional_context"}` (added to
+  the conversation's initial context; fire-and-forget); postToolUse
+  returns `{"additional_context"}` (injected after the tool result);
+  afterFileEdit has no output. `${CURSOR_PLUGIN_ROOT}` expands in hook
+  commands (Cursor's own Advisor plugin relies on it). postToolUse
+  matchers run against tool types (`Shell`, `Read`, `Write`, ...);
+  the kit's post-edit hook uses no matcher and reads the edited path
+  from whichever key the tool sent. Verified offline: both adapters
+  answer the documented input shapes with the documented output
+  (`tools/hooks/cursor-session-start.mjs`,
+  `tools/hooks/cursor-post-tool-use.mjs`).
+- Plugin variables: a JSON Schema under `variables` declares names;
+  users enter values in the plugin's Configure panel; `${VAR}` is
+  substituted in MCP `command`, `args`, `env`, `cwd` and `headers`.
+  Substitution in `url` is not documented, and every official plugin
+  uses a fixed url, so the kit ships its server as a stdio bridge
+  (`tools/mcp-stdio.mjs`) whose endpoint and bearer come from env
+  (the variables) or `~/.proto/config.json`. Verified: the bridge
+  completes initialize, tools/list and a `whoami` call against the
+  real app over stdio; started unconfigured it answers initialize and
+  an empty tools/list, then emits `notifications/tools/list_changed`
+  once config.json appears and serves the real tools; a literal
+  `${VAR}` left in env is treated as unset.
+- Agents: markdown with `name` and `description`, optional `model`
+  (`inherit` or a Cursor model id), `readonly`, `is_background`;
+  invoked as `/name`. Claude's `agents/*.md` carry Claude-only keys
+  (`model: haiku`, `skills`, `disallowedTools`), so Cursor gets its
+  own `cursor-agents/`.
+- Install paths: the official marketplace (submission and review),
+  Customize -> From GitHub Repository (needs the marketplace manifest),
+  a local folder `~/.cursor/plugins/local/<name>` loaded after
+  Developer: Reload Window (symlinks to elsewhere are skipped; on
+  Enterprise an admin allows local imports), and team marketplaces
+  (Dashboard, Teams/Enterprise plans). Updates: refresh in Customize
+  or `git pull` in the local folder, then reload.
+- Wake: no push wake and no plugin monitor; the listen skill polls
+  feed-tail in a background terminal, as on Codex. Cursor's `stop`
+  hook can auto-submit a follow-up message (loop_limit, null for no
+  cap), which is a loop, not a watch. The Cursor CLI (`cursor-agent`)
+  has `-p`, `--resume <chatId>` and `--plugin-dir`, so a feed-drive
+  adapter is possible later; not built.
+- Not provable without the app, left for the from-scratch run: that
+  Customize lists the plugin's skills, hooks and subagents; whether a
+  local-folder install shows the Configure panel for variables;
+  that Cursor honors `tools/list_changed` from the bridge (else the
+  server is toggled off and on); the tool_input key Cursor's edit
+  tools send to postToolUse.
 
 # Claude Code mechanics
 
 Verified facts about the harness, so skills stand on stated ground
 instead of re-deriving it. One heading per mechanism; each carries how
 and when it was verified. Re-verify against the installed binary when a
-skill starts behaving oddly after a CLI update — these are empirical
+skill starts behaving oddly after a CLI update: these are empirical
 facts about a moving target, not API contracts.
 
 ## Background Bash wakes the agent on EXIT only
 
 A `run_in_background` Bash task re-invokes the agent when the command
-exits — not on interim output. In `-p` runs, background Bash tasks are
+exits, not on interim output. In `-p` runs, background Bash tasks are
 terminated ~5s after the final result; they do not hold the session
 open.
 
@@ -54,13 +126,13 @@ Verified: official docs (code.claude.com/docs/en/tools-reference.md,
 ## The Monitor tool wakes the agent per OUTPUT LINE
 
 `Monitor` streams a command's stdout: each line arrives as an
-in-session notification that wakes the agent between turns — no
+in-session notification that wakes the agent between turns: no
 polling. Lines within ~200ms batch into one notification.
 `persistent: true` gives session-length watches (interactive).
 
 Verified empirically, 2026-09-20: a headless agent monitored an
 emitter that logged its own emission epochs and appended a timestamp on
-each notification — emissions 666/670/674 → reactions 670/674/677
+each notification: emissions 666/670/674 → reactions 670/674/677
 (reaction N landed seconds after emission N and before the emitter
 exited). Batch-at-exit would have clustered all reactions after 678.
 
@@ -83,7 +155,7 @@ fresh watch.
 
 Verified empirically, 2026-09-20: three consecutive 18s watches in one
 `claude -p` session; events emitted at 788/808/828 were reacted to at
-811/832 — the 828 event was caught by a re-armed watch after the first
+811/832: the 828 event was caught by a re-armed watch after the first
 had expired (~813), and the session outlived every individual watch,
 finishing its protocol. Caps: official docs (…/tools-reference.md,
 …/headless.md).
@@ -91,8 +163,8 @@ finishing its protocol. Caps: official docs (…/tools-reference.md,
 ## Lines emitted while no watch is armed are LOST to the watch
 
 `tail -n0 -f` (and any monitor command) only sees output produced
-after it starts. In the re-arm experiment, the event emitted ~6s in —
-before the agent finished arming the first watch — was never
+after it starts. In the re-arm experiment, the event emitted ~6s in,
+before the agent finished arming the first watch, was never
 delivered.
 
 Consequence: a durable command feed must be an append-only file with
@@ -104,7 +176,7 @@ Verified empirically (the missed first event above), 2026-09-20.
 ## The monitored command is KILLED when its watch ends
 
 Monitor kills its command at timeout. A process that must outlive
-watches (anything holding a port) must not be the monitored command —
+watches (anything holding a port) must not be the monitored command:
 run it under `tools/supervise.mjs` and monitor a file it writes.
 
 Verified: documented Monitor semantics ("Timeout → killed"),
@@ -115,7 +187,7 @@ Verified: documented Monitor semantics ("Timeout → killed"),
 - `claude -p --output-format json` returns one result object carrying
   `session_id` (observed live: a trivial prompt returned
   `"session_id":"2f2fe70b-…"`).
-- `--output-format stream-json` events carry `session_id` too — the
+- `--output-format stream-json` events carry `session_id` too: the
   very first stream event of a run already has it.
 - `-r/--resume <session-id>` continues that conversation, headless or
   interactive.
@@ -123,20 +195,20 @@ Verified: documented Monitor semantics ("Timeout → killed"),
 Verified empirically, 2026-09-20, capped by the cross-run memory pair:
 run A (`claude -p`) was told "Remember the word pineapple"; run B
 (`claude -p --resume <captured id>`) asked what the word was and
-answered `"result":"pineapple"` — content that only exists if run B
+answered `"result":"pineapple"`: content that only exists if run B
 truly continued run A's conversation.
 
 ## Broken-session heuristic for resumed runs
 
 A resumed run that dies with a non-zero exit and ZERO parsed stream
-events did not run — treat the session as corrupt/gone: record the
+events did not run. Treat the session as corrupt/gone: record the
 break, retry once on a fresh session, keep the queue moving. A run
 that produced events and then failed is an ordinary failure, not a
 session break.
 
 Verified with a stub agent emulating both behaviors, 2026-09-20.
 
-## What the proto plugin runs — and what it never does
+## What the proto plugin runs, and what it never does
 
 A plugin's skills and hooks run **inside a session**; nothing a
 plugin ships keeps running on its own. In this kit: the session-start
@@ -146,14 +218,14 @@ alive); the listening session, in fallback mode, is a separate
 persistent `claude` session the launcher starts under that
 supervisor. Uninstalling the
 plugin stops none of them; a reboot stops all of them (no boot
-persistence, by decision — MAA-130).
+persistence, by decision, MAA-130).
 
 Verified: plugin docs (hooks/skills are session-scoped; monitors are
 interactive-session-only) + this kit's own architecture, 2026-09-20.
 
 ## Plugin packaging facts
 
-- Skills at `skills/<name>/SKILL.md` are auto-discovered — no
+- Skills at `skills/<name>/SKILL.md` are auto-discovered: no
   `skills` field needed in plugin.json; minimal manifest is
   `{name, version, description}` at `.claude-plugin/plugin.json`.
 - Installed skills are namespaced `/proto:<skill>`; `/plugin list`
@@ -166,19 +238,19 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
 - A bundled `.mcp.json` substitutes `${user_config.<key>}` in
   url/headers/env from the plugin's `userConfig` (declared in
   plugin.json; the user is prompted at enable time, `sensitive`
-  fields masked) — this is how the kit ships its `cloud` server
+  fields masked): this is how the kit ships its `proto` server
   without a domain in code. Plugin MCP tools are scoped
   `mcp__plugin_<plugin>_<server>__<tool>`. `${VAR}` shell-env
   expansion also works, with a denylist of credential vars
   (ANTHROPIC_API_KEY etc.) that read as empty in remote
   urls/headers.
 - Plugin monitors, empirically (2026-09-20): `when: "always"` works
-  end to end — the monitor process auto-started in a fresh
+  end to end: the monitor process auto-started in a fresh
   interactive session from the installed cache, and an appended feed
   line arrived as a Monitor event the session acted on.
   `when: "on-skill-invoke:<skill>"` did NOT start the monitor
   when the skill (then named product-agent, now `listen`) was
-  invoked as /proto:product-agent — verified on
+  invoked as /proto:product-agent: verified on
   BOTH the CLI build (2.1.267) and the Desktop app's embedded engine
   (2.1.274), with the skill's invocation confirmed in-pane.
   The kit ships on-skill-invoke (correct semantics; `always` would
@@ -191,22 +263,22 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   recommend exec-form arrays, but on 2026-09-20 an array-form
   SessionStart hook silently did not fire on CLI 2.1.267 while the
   identical string form did (A/B, one field flipped). On the Desktop
-  app's embedded engine (2.1.274) BOTH forms fire — the array bug is
+  app's embedded engine (2.1.274) BOTH forms fire: the array bug is
   fixed upstream; string works everywhere, so string ships.
 - The Desktop app embeds its own Claude Code build (found under
   ~/Library/Application Support/Claude/claude-code/<version>/) and
-  shares ~/.claude state — user-scope plugins, hooks, and skills all
+  shares ~/.claude state: user-scope plugins, hooks, and skills all
   load in it. Verified live against 2.1.274: SessionStart health
   hook fires; the listen skill (then /proto:product-agent) invokes. Plugin monitors (`monitors/monitors.json`, `when:
   "always" | "on-skill-invoke:<skill>"`) deliver stdout lines as
-  notifications but run in INTERACTIVE sessions only — headless
+  notifications but run in INTERACTIVE sessions only: headless
   flows must arm the Monitor tool themselves.
 - Plugin agents (`agents/<name>.md`) are namespaced
   `<plugin>:<name>`; `claude --agent <plugin>:<name>` runs a session
   as that agent. Plugin agents may not declare hooks, mcpServers, or
   permissionMode.
 - Omitting `version` from plugin.json makes the git SHA drive
-  updates — every push is an update; a `version` field pins users
+  updates: every push is an update; a `version` field pins users
   until it's bumped.
 - `${CLAUDE_PLUGIN_DATA}` (~/.claude/plugins/data/<id>/) persists
   across plugin updates; the cache copy does not.
@@ -215,7 +287,7 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   "./"}]`); add with `claude plugin marketplace add <path|owner/repo>`,
   install with `claude plugin install <plugin>@<marketplace>`,
   validate with `claude plugin validate <dir>`.
-- Trust is per plugin source, one unit — no per-server approval
+- Trust is per plugin source, one unit: no per-server approval
   gates on install.
 
 Verified: official plugin/marketplace docs + the live install of this
