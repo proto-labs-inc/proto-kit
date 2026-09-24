@@ -18,7 +18,8 @@ export type TypeStyle = {
 };
 
 export type ComponentStatus = "found" | "extracting" | "done" | "skipped" | "queued";
-export type ComponentState = { name: string; file: string; height: number };
+/** One named look of a component: the props that produce it. The first is the default. */
+export type ComponentState = { name: string; props: Record<string, unknown> };
 export type Iteration = {
   at: string;
   activity: string;
@@ -30,6 +31,8 @@ export type Component = {
   slug: string;
   name: string;
   status: ComponentStatus;
+  /** The component's module, relative to the app root: src/components/<slug>/<Slug>.tsx; set once done. */
+  module?: string;
   states: ComponentState[];
   reason?: string;
   screenshot?: string;

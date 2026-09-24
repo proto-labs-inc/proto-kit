@@ -8,13 +8,16 @@ description: Import your product's design system into Proto. Reads your codebase
 You are turning a real product into its design system: the colors,
 the type styles, the fonts, and the notable components: buttons,
 inputs, badges, the handful of composites the product leans on, each
-type appearing **once**, with its states, on a neutral canvas with a
-line of realistic sample copy. The page you read is a specimen
-catalog of living instances; matching a whole page is
-create-prototype's job. The output is the **library contract**
-(`docs/library-contract.md`) inside the library app at
-`~/.proto/<codebase>/library/`: the user is watching that app fill
-in as you write, so the write rhythm is the product, not polish.
+type appearing **once**, as a React component with typed props whose
+states are prop sets, with a line of realistic sample copy. The page
+you read is a specimen catalog of living instances; matching a whole
+page is create-prototype's job. The output is the **library
+contract** (`docs/library-contract.md`) inside the library app at
+`~/.proto/<codebase>/library/`: components in `src/components/`,
+everything else in `public/`. The user is watching that app fill in
+as you write, so the write rhythm is the product, not polish, and
+prototypes will import these components later, so they are clean and
+typed, not markup dumps.
 
 Speed is a feature. The first component should be visible in the
 library within a minute of the prompt; the whole run for a small page
@@ -76,7 +79,6 @@ node tools/library.mjs type <library> '{"name":"Heading L","family":"Inter","siz
 node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button"}, …]'
 node tools/library.mjs component <library> <slug> status extracting
 node tools/library.mjs history <library> <slug> --screenshot <n>.png --diff <n>-diff.png --mismatch <n> --activity "Padding is 2px short on the right; widening"
-node tools/library.mjs state <library> <slug> "Default" <file.html> <height>
 node tools/library.mjs component <library> <slug> status done
 node tools/library.mjs component <library> <slug> status skipped --reason "<one plain sentence, at most 140 characters>" --screenshot <crop.png>
 node tools/library.mjs event <library> [slug] "<activity>"
@@ -86,8 +88,10 @@ node tools/library.mjs complete <library>
 
 Each call flushes the manifest and appends its own event line, so the
 app moves on every call; add an `event` only for something the
-default lines do not say. A call that cannot apply refuses in one
-sentence and writes nothing.
+default lines do not say. `status done` reads the unit's folder in
+`src/components/<slug>/` (the module, its stylesheet, `states.json`)
+and copies the module path and the states into the manifest. A call
+that cannot apply refuses in one sentence and writes nothing.
 
 The readers and renderers:
 
@@ -105,28 +109,33 @@ The readers and renderers:
   as labeled boxes. The map, not the understanding.
 - `tools/cdp/capture.mjs`: `stableShot(page, probeExpr, out, clip)`,
   clip screenshots behind the stability gate.
-- `node tools/verify-replica.mjs <replica.html|url> <live-tab-url> <x,y,w,h> --out <dir>`:
+- `node tools/verify-replica.mjs http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h> --out <dir>`:
   one verification pass: captures the live element, renders the
-  replica headlessly at the same viewport and ratio, diffs in node,
-  writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` into `--out`, prints
-  `{ pass, mismatch, pct, maxDelta, clusters, screenshot, diff }`.
+  library app's `#/render/<slug>/<state>` (the component alone, at
+  those coordinates) headlessly at the same viewport and ratio, diffs
+  in node, writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` into
+  `--out`, prints `{ pass, mismatch, pct, maxDelta, clusters,
+  screenshot, diff }`. The state comes from the unit's `states.json`
+  through the app, so it renders before anything is landed.
 - `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
   component cropped from the live page at 2x, for a skipped card.
-- `node tools/cdp/measure.mjs <state.html>`: a state file's rendered
-  height, measured headlessly after its fonts load.
-- `node tools/serve.mjs <dir> 0`: a static server on a free port, when
-  a replica must be reached by URL rather than by path.
+- `node tools/serve.mjs <dir> 0`: a static server on a free port, for
+  a static folder that must be reached by URL.
 
 ## Where things go
 
-- `~/.proto/<codebase>/library/public/`: the contract files, written
-  by `library.mjs` only. Nothing else lands there.
-- `~/.proto/<codebase>/imports/<run>/units/<slug>/`: each unit's
-  working folder: `notes.md` (every value with its source),
-  `replica.html`, the states, fonts, and `passes/` (what
-  `verify-replica.mjs` writes). The artifacts are how claims get
-  checked, and `history` moves the pass images from here into the
-  library.
+- `~/.proto/<codebase>/library/public/`: the manifest, the events,
+  the queue, each component's product crop and history, written by
+  `library.mjs` only. Nothing else lands there.
+- `~/.proto/<codebase>/library/src/components/<slug>/`: the unit's
+  folder, and the only place a unit writes: `<Slug>.tsx`,
+  `<Slug>.module.css`, the font files, `states.json`, and `notes.md`
+  (every value with its source). The app imports it from here, live,
+  which is how the render route can show a state before it is landed.
+- `~/.proto/<codebase>/imports/<run>/units/<slug>/passes/`: what
+  `verify-replica.mjs` writes for the unit; `history` moves the pass
+  images from here into the library. The artifacts are how claims get
+  checked.
 
 ## Setup
 
@@ -266,8 +275,9 @@ pixel-verifying live pages. Every one of them was paid for.
 
 ## Extracting a component
 
-Each unit works in its own `units/<slug>/` folder under the run, and
-writes only there. The loop:
+Each unit works in its own `src/components/<slug>/` folder in the
+library app, and writes only there (passes go to its `passes/` folder
+under the run). The loop:
 
 1. **Find it live.** Locate an instance on the page. Read its
    anatomy: outline, rect, matched rules, the source component file,
@@ -276,33 +286,53 @@ writes only there. The loop:
    where they exist, and anything else visible (selected, error,
    loading, empty). At most six. The rect is the `x,y,w,h` every pass
    uses.
-2. **Author the replica.** `replica.html`: the component from read
-   values, inline CSS built with *their* mechanisms, rendered at the
-   instance's absolute page coordinates (position matters for dash
-   phase and gradient dithering; the traps doc says why). Webfonts
-   the product uses are copied beside it and declared with
-   `@font-face` and a real fallback stack: a preview that silently
-   falls back to Helvetica fails the bar.
+2. **Author the component.** Three files, the shape a prototype will
+   import later:
+   - `<Slug>.tsx`: one React component, the default export, with an
+     exported `<Slug>Props` interface. Every prop has a default that
+     gives the product's own default look with real product copy, so
+     `{}` is the default state. The states the product reaches with
+     a pointer or focus are props too (`hover`, `focused`,
+     `disabled`) that force the look the native `:hover`, `:focus`
+     and `:disabled` rules give, so a state renders without a
+     pointer. Variants the product names (`variant`, `size`, `tone`)
+     are typed unions from its class names.
+   - `<Slug>.module.css`: the whole look, from read values, with
+     *their* mechanisms; class names scoped by the module, no global
+     rules, nothing outside the component. The app's base styles sit
+     under yours and differ from the product's, so set box-sizing,
+     font, line-height and borders explicitly (the traps doc).
+     Webfonts the product uses are copied beside it and declared with
+     `@font-face` in the module, with a real fallback stack: a
+     component that silently falls back to Helvetica fails the bar.
+   - `states.json`: `[{ "name": "Default", "props": {} }, …]`, the
+     default first, then hover and disabled where the product has
+     them, then anything else it shows, at most six.
+   A generative component (a canvas, a chart, a p5 sketch) renders
+   several variations side by side in its default state rather than
+   one frozen instance.
 3. **Verify, one call per pass.** `node tools/verify-replica.mjs
-   replica.html <live-tab-url> <x,y,w,h> --out passes`. Read the
-   numbers, not the red map: rects must agree exactly (a geometry bug
-   is a clean number here and thousands of red pixels in the diff);
-   clusters say where. Fix the cause, run the next pass. Stop when
-   the mismatch is zero, or when what remains is confined to glyph
-   clusters of text set in the system font, which is the two Chromes
-   choosing different faces (the traps doc), not your replica. Every
-   pass's files stay in `passes/`; the orchestrator moves them into
-   the library's history, where the user watches the red drain. Ten
-   passes is the cap the library keeps and a reasonable cap for you:
-   past it, skip with what you learned as the reason.
-4. **Compose the states.** One standalone file per state,
-   `default.html` first, then `hover.html`, `disabled.html`, and any
-   other the product shows: inline CSS or same-folder assets, no
-   build step, no external requests, real copy, sized to show the
-   state compactly. `node tools/cdp/measure.mjs <state.html>` gives
-   each file's rendered height; never guess it. A generative component (a canvas, a
-   chart, a p5 sketch) shows several variations side by side in its
-   default state file rather than one frozen instance.
+   http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h>
+   --out passes`. It mounts your state alone at the instance's
+   absolute coordinates (position matters for dash phase and
+   gradient dithering; the traps doc says why) and diffs the clip.
+   Read the numbers, not the red map: rects must agree exactly (a
+   geometry bug is a clean number here and thousands of red pixels
+   in the diff); clusters say where. Fix the cause, run the next
+   pass. Stop when the mismatch is zero, or when what remains is
+   confined to glyph clusters of text set in the system font, which
+   is the two Chromes choosing different faces (the traps doc), not
+   your component. Every pass's files stay in `passes/`; the
+   orchestrator moves them into the library's history, where the
+   user watches the red drain. Ten passes is the cap the library
+   keeps and a reasonable cap for you: past it, skip with what you
+   learned as the reason.
+4. **Verify the other states** the same way against their live
+   instances where the page shows them (a hovered row, a focused
+   field: ask the orchestrator to ask the user only when the state
+   cannot be reached without a pointer in their window); a state
+   with no live instance is authored from the matched rules and
+   noted as unverified in `notes.md`.
 5. **Or skip it honestly.** A component you can't isolate cleanly
    (portals, canvas you cannot reproduce, a state you can't reach)
    is skipped: `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h>
@@ -315,9 +345,9 @@ writes only there. The loop:
    longer reason and a skip without the crop. Never silently dropped,
    never faked.
 
-State files must stand alone: the app frames them in an iframe at the
-recorded height, so the product's styles never touch the library's
-own.
+The component renders inside the library's own page, no iframe: the
+module's scoping is what keeps the product's styles from leaking, so
+a global rule in a module is a bug, not a shortcut.
 
 ## Fan out: this is a parallel job
 
@@ -334,21 +364,25 @@ and nowhere else, and reports. Its brief is short and complete, in
 this shape:
 
 > Extract `<Name>` (`<slug>`) into
-> `<run>/units/<slug>/`. This skill, `docs/cdp-traps.md` and the
-> source files are already in your context: do not search for them or
-> read them again. Live tab: `<liveUrl>` in the Proto window on port
-> 9333, read only; the instance is `<selector>` at `<x,y,w,h>`; the
-> states the product shows are `<list>`. Tools, complete signatures:
-> `node <kit>/tools/verify-replica.mjs replica.html <liveUrl> <x,y,w,h> --out passes`
-> (one pass, prints mismatch and clusters, files in `passes/`);
+> `~/.proto/<codebase>/library/src/components/<slug>/`: `<Slug>.tsx`
+> (default export, exported `<Slug>Props`), `<Slug>.module.css`,
+> `states.json`, `notes.md`; passes go to `<run>/units/<slug>/passes/`.
+> This skill, `docs/cdp-traps.md` and the source files are already in
+> your context: do not search for them or read them again. Live tab:
+> `<liveUrl>` in the Proto window on port 9333, read only; the
+> instance is `<selector>` at `<x,y,w,h>`; the states the product
+> shows are `<list>`. Tools, complete signatures:
+> `node <kit>/tools/verify-replica.mjs http://localhost:5210 <slug> <state> <liveUrl> <x,y,w,h> --out <run>/units/<slug>/passes`
+> (one pass of one state, prints mismatch and clusters);
 > `node <kit>/tools/cdp/crop.mjs <liveUrl> <x,y,w,h> screenshot.png`
-> (only if you skip); `node <kit>/tools/cdp/measure.mjs <state.html>`
-> (the height of each state file). Author from read values
-> only; put every value's source in `notes.md`. Never write outside
-> your folder; never touch the library. Report, as data: status (done
-> or skipped), the states as `name, file, height` in order, each pass
-> as `n, mismatch, one activity line` in order, and for a skip the
-> reason sentence and the screenshot path.
+> (only if you skip, into your passes folder). Author from read
+> values only; put every value's source in `notes.md`. Never write
+> outside your two folders; never touch `public/` or the manifest.
+> Report, as data: status (done or skipped), the states in
+> `states.json` order with which were verified, each pass as `n,
+> mismatch, one activity line` in order, and for a skip the reason
+> sentence (one line, at most 140 characters, in the product's terms)
+> and the screenshot path.
 
 Do not trust reports: spot-check claims against the artifacts (re-run
 a pass, re-read a cited source line) before landing a unit as done.
@@ -362,14 +396,15 @@ One shell line, chained, the moment the report arrives:
 ```
 node tools/library.mjs history <library> <slug> --screenshot passes/1.png --diff passes/1-diff.png --mismatch 4212 --activity "…" \
 && node tools/library.mjs history <library> <slug> --screenshot passes/2.png --diff passes/2-diff.png --mismatch 0 --activity "…" \
-&& node tools/library.mjs state <library> <slug> "Default" units/<slug>/default.html 110 \
-&& node tools/library.mjs state <library> <slug> "Hover" units/<slug>/hover.html 110 \
 && node tools/library.mjs component <library> <slug> status done
 ```
 
-A skip is `component <slug> status skipped --reason "…" --screenshot
-units/<slug>/screenshot.png`, after its `history` lines if it made
-passes. Then spawn the next waiting component, if any.
+`done` reads the unit's folder itself and refuses if the module, its
+stylesheet or `states.json` is not what the contract says; a refusal
+goes back to the unit as one line. A skip is `component <slug> status
+skipped --reason "…" --screenshot passes/screenshot.png`, after its
+`history` lines if it made passes. Then spawn the next waiting
+component, if any.
 
 ## The queue
 

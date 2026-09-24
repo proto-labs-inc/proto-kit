@@ -10,22 +10,31 @@ commands and is the contract's executable reference: the real import
 must be indistinguishable from it at the file level. Change the
 writer, the driver and the app only together.
 
-The library is a Vite React app (ADR 0003). The import never writes
-pages: it writes data into the app's `public/` folder, and the app
-renders it, live through Vite's dev server while the import runs, and
-from the built `dist/` (which carries a copy of `public/`) once published.
+The library is a Vite React app (ADR 0003). The import writes two
+kinds of thing into it: data into the app's `public/` folder (the
+manifest, the activity stream, each component's product crop and
+history), and the components themselves as React components with
+typed props into `src/components/<slug>/`, which the app imports and
+renders directly. Both are live through Vite's dev server while the
+import runs, and the built `dist/` (which carries a copy of `public/`
+and the compiled components) is what is published.
 
 ## Files
 
 ```
 library/                          the app, scaffolded from template/library/
-├── package.json, vite.config.ts, src/, …
+├── package.json, vite.config.ts, …
+├── src/components/<slug>/        the component, authored by the import's unit for it
+│   ├── <Slug>.tsx                a React component with a typed props interface, default export
+│   ├── <Slug>.module.css         its scoped stylesheet, from the read values; @font-face here
+│   ├── *.woff2                   the product's font files, beside the stylesheet
+│   ├── states.json               the named states as prop sets, the default first, at most six
+│   └── notes.md                  every value with its source (the unit's working notes)
 ├── public/
 │   ├── manifest.json             everything extracted so far
 │   ├── events.jsonl              append-only activity stream; the app tails it
 │   ├── queue.json                components the user asked for from the app
 │   └── components/<slug>/
-│       ├── <state>.html          one standalone page per state, at most six
 │       ├── screenshot.png        when skipped: the component cropped from the live page at 2x
 │       └── history/<n>.png, <n>-diff.png   the last ten passes' replica captures and diffs
 └── dist/                         the build; what publish uploads
@@ -39,7 +48,6 @@ node tools/library.mjs token <library> '<json>'
 node tools/library.mjs type <library> '<json>'
 node tools/library.mjs inventory <library> '<json array>'
 node tools/library.mjs component <library> <slug> status <found|extracting|done|skipped|queued> [--reason "…"] [--screenshot <png>]
-node tools/library.mjs state <library> <slug> <name> <file> <height>
 node tools/library.mjs history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "…"
 node tools/library.mjs event <library> [slug] "<activity>"
 node tools/library.mjs take-queued <library>
@@ -51,9 +59,13 @@ the manifest, applies its one change, writes the manifest back
 atomically (temp file, then rename), appends one event line, and
 holds a lock across the four steps, so two lanes calling at once
 never interleave. Each call is one short shell line and prints the
-event it appended; a call that cannot apply (a `done` with no states,
-a `complete` with a component still moving, an unknown slug) refuses
-in one sentence and writes nothing.
+event it appended; a call that cannot apply (a `done` whose component
+folder is missing a module or `states.json`, a `complete` with a
+component still moving, an unknown slug) refuses in one sentence and
+writes nothing. `status done` is the one call that reads `src/`: it
+checks the unit's folder and copies its module path and states into
+the manifest, so the manifest never names a state the app cannot
+render.
 
 Every path inside `manifest.json` is relative to `public/`, which is the
 app's root: `components/button/default.html`, never `public/…` or `/…`.
@@ -93,12 +105,14 @@ import, never rewritten from scratch mid-run.
   ],
   "components": [
     {
-      "slug": "button",               // folder name under components/ and the route
+      "slug": "button",               // folder name under src/components/ and public/components/, and the route
       "name": "Button",
       "status": "done",               // see the lifecycle below
-      "states": [                     // the first is the default; empty until extracted; at most six
-        { "name": "Default", "file": "components/button/default.html", "height": 110 },
-        { "name": "Hover", "file": "components/button/hover.html", "height": 110 }
+      "module": "src/components/button/Button.tsx",   // the component; only once done
+      "states": [                     // the first is the default; empty until done; at most six
+        { "name": "Default", "props": {} },
+        { "name": "Hover", "props": { "hover": true } },
+        { "name": "Disabled", "props": { "disabled": true } }
       ],
       "history": [                    // the last ten verification passes, in order; may be empty
         {
@@ -122,7 +136,8 @@ import, never rewritten from scratch mid-run.
 
 - `found`: listed in the inventory, not started. `states` and `history` are empty.
 - `extracting`: being read, authored and verified. `history` grows as passes land.
-- `done`: `states` holds one entry per state, the default first, then the
+- `done`: `module` names the component and `states` holds one prop set
+  per state, copied from its `states.json`: the default first, then the
   hover and disabled states where the product has them, then any other
   state the product shows, at most six. A single-state component still
   lists that one state.
@@ -137,7 +152,7 @@ import, never rewritten from scratch mid-run.
   the component goes on to `extracting` and then `done` or `skipped` again.
 
 A component with many natural variations (a generated illustration, a chart)
-shows several variations at once in its default state file rather than one
+renders several variations at once in its default state rather than one
 frozen instance.
 
 ## events.jsonl
@@ -176,14 +191,37 @@ slug; the import then extracts it like any other component and runs
 stays in the file, and the app keeps showing that component as queued
 and says the agent picks it up next time an import runs.
 
-## components/<slug>/<state>.html
+## src/components/<slug>/
 
-Each file is a standalone page rendering that one state of the component:
-inline CSS (or same-folder assets), no build step, no external requests. The
-app frames it in an iframe at `height` px, so the product's styles never
-touch the app's own. Real product copy, sized to show the state compactly.
-Webfonts the product uses are copied beside the file and declared with
-`@font-face` there.
+The component as a prototype will later import it: clean and typed, not
+a markup dump.
+
+- `<Slug>.tsx`: one React component, the default export, with an
+  exported `<Slug>Props` interface. Every prop has a default that
+  produces the product's own default look with real product copy, so
+  `{}` renders the default state. States the product reaches with a
+  pointer or focus are also props (`hover`, `focused`, `disabled`) that
+  force the same look the native `:hover`, `:focus` and `:disabled`
+  rules give, so a state renders without a pointer.
+- `<Slug>.module.css`: the component's whole look, from the read
+  values, with the product's mechanisms. Class names are scoped by the
+  module; no global rules, no `:root`, nothing outside the component.
+  The app's own base styles sit under the component, so the module sets
+  every property the product's base sets differently (box-sizing,
+  font, line-height, borders). Webfonts are copied beside it and
+  declared with `@font-face` in the module.
+- `states.json`: `[{ "name": "Default", "props": {} }, …]`, the named
+  states as prop sets, the default first, at most six. `status done`
+  copies it into the manifest.
+- `notes.md`: the unit's working notes; the app never reads it.
+
+The app imports the module lazily and renders it live, no iframe: the
+overview block shows the default state, the component's page one tab
+per state, and `#/render/<slug>/<state>?x=&y=&w=` mounts one state
+alone on the product's surface at those coordinates, which is what the
+fidelity check diffs against the live page. A component that throws
+shows its error in its own block; nothing else on the page is
+affected.
 
 ## components/<slug>/history/*.png
 
@@ -219,7 +257,9 @@ experience:
 
 An empty `events.jsonl`, empty arrays, a partial manifest, a component with
 no `history`, a skipped component without a `screenshot` (a blank block takes
-its place), a history whose oldest pass was dropped. It never tolerates:
-renamed fields, different status strings, a `done` component with no
-states, paths outside `components/`, or a token, type style, component or
-state that disappears.
+its place), a history whose oldest pass was dropped, a component whose
+module throws (its block says so). It never tolerates: renamed fields,
+different status strings, a `done` component with no `module` or no
+states, a `module` outside `src/components/`, paths outside
+`components/`, or a token, type style, component or state that
+disappears.

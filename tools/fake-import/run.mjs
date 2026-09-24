@@ -19,7 +19,8 @@
  *   package.json and public/). Serve it with `pnpm dev` and watch.
  */
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { cp, copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,61 +66,36 @@ const TYPE = [
   { name: "Caption", family: "Inter", size: "11.5px", weight: 500, lineHeight: "16px", sample: "CARD ··4921 · POSTED SEP 16" },
 ];
 
-// Each component's states, in the order the app shows them: the first
-// is the default. `history` is the button's three verification passes.
+// Each component's module (a TSX component, its scoped stylesheet and
+// states.json, in fixtures/meridian/components/<slug>/). `history` is
+// the button's three verification passes.
 const COMPONENTS = [
   {
     slug: "button", name: "Button",
-    states: [
-      { name: "Default", file: "default.html", height: 110 },
-      { name: "Hover", file: "hover.html", height: 110 },
-      { name: "Disabled", file: "disabled.html", height: 110 },
-      { name: "Loading", file: "loading.html", height: 110 },
-    ],
     history: [
       { mismatch: 4212, activity: "Rendered the replica at the live coordinates; radius and weight are off" },
       { mismatch: 388, activity: "Padding is 2px short on the right; widening" },
       { mismatch: 0, activity: "Pixel-clean at threshold 8" },
     ],
   },
-  {
-    slug: "input", name: "Input",
-    states: [
-      { name: "Default", file: "default.html", height: 150 },
-      { name: "Focused", file: "focused.html", height: 110 },
-      { name: "Error", file: "error.html", height: 110 },
-    ],
-  },
-  {
-    slug: "badge", name: "Status badge",
-    states: [{ name: "Default", file: "default.html", height: 90 }],
-  },
+  { slug: "input", name: "Input" },
+  { slug: "badge", name: "Status badge" },
   {
     slug: "date-picker", name: "Date picker",
-    skip: "Rendered inside a portal, so it could not be isolated cleanly. Queue it to try again with the calendar open.",
-    states: [{ name: "Default", file: "default.html", height: 270 }],
+    skip: "The calendar opens in a portal over the page, so the library cannot lift it out yet. Queue it to try with it open.",
   },
-  {
-    slug: "card", name: "Expense card",
-    states: [
-      { name: "Default", file: "default.html", height: 190 },
-      { name: "Selected", file: "selected.html", height: 190 },
-    ],
-  },
-  {
-    slug: "table", name: "Expense table",
-    states: [
-      { name: "Default", file: "default.html", height: 250 },
-      { name: "Empty", file: "empty.html", height: 160 },
-    ],
-  },
+  { slug: "card", name: "Expense card" },
+  { slug: "table", name: "Expense table" },
 ];
 
-// A unit folder per component, as a sub-agent would leave it: the
-// pass images verify-replica.mjs wrote, which `history` moves into the
-// library, and the state files, which `state` copies.
+// A unit folder per component holds the pass images verify-replica.mjs
+// wrote, which `history` moves into the library. The component itself
+// is authored straight into the app, src/components/<slug>/, the way a
+// unit does, and `status done` reads it from there.
 const run = await mkdtemp(join(tmpdir(), "fake-import-"));
 const unitOf = (slug) => join(run, "units", slug);
+const moduleOf = (slug) => join(libraryDir, "src", "components", slug);
+const states = (slug) => JSON.parse(readFileSync(join(FIXTURES, "components", slug, "states.json"), "utf8"));
 
 async function extract(spec) {
   const unit = unitOf(spec.slug);
@@ -137,8 +113,12 @@ async function extract(spec) {
     lib("history", libraryDir, spec.slug, "--screenshot", screenshot, "--diff", diff, "--mismatch", String(pass.mismatch), "--activity", pass.activity);
     await sleep(1100);
   }
-  for (const state of spec.states) {
-    lib("state", libraryDir, spec.slug, state.name, join(FIXTURES, "components", spec.slug, state.file), String(state.height));
+  await cp(join(FIXTURES, "components", spec.slug), moduleOf(spec.slug), {
+    recursive: true,
+    filter: (source) => !/\.png$/.test(source) && !/[\/]history$/.test(source),
+  });
+  for (const state of states(spec.slug)) {
+    lib("event", libraryDir, spec.slug, `Captured the ${state.name.toLowerCase()} state of ${spec.name}`);
     await sleep(500);
   }
   lib("component", libraryDir, spec.slug, "status", "done");

@@ -1,0 +1,6 @@
+[
+  { "name": "Default", "props": {} },
+  { "name": "Pending", "props": { "tone": "pending" } },
+  { "name": "Flagged", "props": { "tone": "flagged" } },
+  { "name": "Reimbursed", "props": { "tone": "reimbursed" } }
+]

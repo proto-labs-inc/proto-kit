@@ -5,6 +5,7 @@ import { useRoute } from "./route";
 import { paintSurface, surfaceFromTokens } from "./surface";
 import { Overview } from "./pages/Overview";
 import { ComponentPage } from "./pages/ComponentPage";
+import { RenderPage } from "./pages/RenderPage";
 
 export function App() {
   const load = useLibrary();
@@ -35,6 +36,9 @@ export function App() {
   }
   if (route.page === "component") {
     return <ComponentPage slug={route.slug} library={load.library} queue={load.queue} />;
+  }
+  if (route.page === "render") {
+    return <RenderPage slug={route.slug} state={route.state} placement={route.placement} library={load.library} />;
   }
   return <Overview library={load.library} queue={load.queue} />;
 }

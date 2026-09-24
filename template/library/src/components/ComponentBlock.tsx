@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import type { Component, ComponentView, QueueOutcome } from "@/library";
 import { href } from "@/route";
+import { Rendered } from "./Rendered";
 import { SkippedNotice } from "./SkippedNotice";
-import { StateFrame } from "./StateFrame";
 
 type Props = {
   component: Component;
@@ -18,8 +18,9 @@ const PLACEHOLDER_HEIGHT = 120;
  * One component on the overview, laid out the way ui.shadcn.com/blocks
  * lays out a block: a slim header line, then the preview at full width
  * in a bordered frame. Hovering the block reveals its actions; "See
- * states" opens the component's page. A skipped component carries its
- * notice under the frame, not inside it.
+ * states" opens the component's page. The preview is the component
+ * itself in its default state, rendered from its module. A skipped
+ * component carries its notice under the frame, not inside it.
  */
 export function ComponentBlock({ component, view, queue }: Props) {
   return (
@@ -34,10 +35,10 @@ export function ComponentBlock({ component, view, queue }: Props) {
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="Open the default state in a new tab"
+              aria-label="Open the default state on its own"
               className="text-muted-foreground"
               nativeButton={false}
-              render={<a href={view.state.file} target="_blank" rel="noreferrer" />}
+              render={<a href={href.render(component.slug, view.state.name)} target="_blank" rel="noreferrer" />}
             >
               <ExternalLinkIcon />
             </Button>
@@ -72,7 +73,11 @@ function Summary({ component, view }: { component: Component; view: ComponentVie
 function Body({ component, view }: { component: Component; view: ComponentView }) {
   switch (view.kind) {
     case "preview":
-      return <StateFrame state={view.state} title={component.name} />;
+      return (
+        <div className="p-5">
+          <Rendered component={component} state={view.state} />
+        </div>
+      );
     case "shimmer":
       return (
         <div className="flex items-center justify-center bg-muted/60" style={{ height: PLACEHOLDER_HEIGHT }}>
@@ -84,8 +89,13 @@ function Body({ component, view }: { component: Component; view: ComponentView }
   }
 }
 
-/** MAA-164: the real product's screenshot stands in for the states. */
+/**
+ * MAA-164: the real product's screenshot stands in for the states. The
+ * import crops it to the component's own rect; the height cap is the
+ * safety net for a crop that is not, so a page-tall shot never
+ * dominates the overview.
+ */
 function ProductShot({ component, screenshot }: { component: Component; screenshot: string | null }) {
   if (screenshot === null) return <div className="bg-muted/60" style={{ height: PLACEHOLDER_HEIGHT }} />;
-  return <img src={screenshot} alt={`${component.name} in the product`} className="mx-auto block max-w-full" />;
+  return <img src={screenshot} alt={`${component.name} in the product`} className="mx-auto block max-h-80 max-w-full object-contain" />;
 }

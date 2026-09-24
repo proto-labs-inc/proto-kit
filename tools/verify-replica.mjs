@@ -1,22 +1,24 @@
 #!/usr/bin/env node
 /**
- * One verification pass of a replica against its live instance, in
+ * One verification pass of a component against its live instance, in
  * one call (MAA-163): captures the element from the live tab in the
- * visible Proto window, renders the replica in the kit's headless
- * Chrome at the same viewport, device pixel ratio and clip, diffs the
- * two in node at threshold 8, writes the pass's files, and prints the
- * numbers and clusters to debug from. Nothing it renders appears on
- * screen, and nobody writes a diff page again.
+ * visible Proto window, renders the library app's render route for
+ * that component and state (`#/render/<slug>/<state>?x&y&w`, the
+ * component alone at the instance's absolute coordinates) in the
+ * kit's headless Chrome at the same viewport and device pixel ratio,
+ * diffs the two clips in node at threshold 8, writes the pass's
+ * files, and prints the numbers and clusters to debug from. Nothing
+ * it renders appears on screen, and nobody writes a diff page again.
  *
- * Usage: node verify-replica.mjs <replica> <live-tab-url> <rect> [--out <dir>] [--pass <n>] [--port <visible-cdp-port>]
- *   <replica>       an http(s) URL, or a path to the replica page: a path is
- *                   served from its folder on a free port for this call, so
- *                   same-folder assets (fonts) resolve.
+ * Usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <rect> [--out <dir>] [--pass <n>] [--port <visible-cdp-port>]
+ *   <app-url>       the library app's dev server, http://localhost:5210.
+ *   <slug> <state>  the component and the name of the state to render,
+ *                   from its src/components/<slug>/states.json.
  *   <live-tab-url>  a substring of the live tab's URL in the Proto window.
  *   <rect>          x,y,w,h in CSS px of the element in the live viewport
- *                   (from getBoundingClientRect); the same clip is taken
- *                   from the replica, which must render the element at
- *                   those absolute coordinates (docs/cdp-traps.md).
+ *                   (from getBoundingClientRect); the component is placed
+ *                   at x,y with width w and the same clip is taken from
+ *                   both sides (docs/cdp-traps.md on why position matters).
  *   --out           where the files go (default: the current folder).
  *   --pass          the pass number for the file names (default: next free).
  *
@@ -27,16 +29,15 @@
  * The orchestrator lands the pass with:
  *   node tools/library.mjs history <library> <slug> --screenshot <n>.png --diff <n>-diff.png --mismatch <mismatch> --activity "..."
  */
-import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { mkdirSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { findPage } from "./cdp/attach.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 
-const USAGE = "usage: node verify-replica.mjs <replica-url-or-path> <live-tab-url> <x,y,w,h> [--out <dir>] [--pass <n>] [--port 9333]";
+const USAGE = "usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <x,y,w,h> [--out <dir>] [--pass <n>] [--port 9333]";
 const options = { out: ".", port: "9333" };
 const positional = [];
 const args = process.argv.slice(2);
@@ -48,9 +49,9 @@ for (let i = 0; i < args.length; i += 1) {
     positional.push(args[i]);
   }
 }
-const [replicaArg, liveMatch, rectArg] = positional;
+const [appUrl, slug, stateName, liveMatch, rectArg] = positional;
 const rect = (rectArg ?? "").split(",").map(Number);
-if (!replicaArg || !liveMatch || rect.length !== 4 || rect.some((n) => !Number.isFinite(n))) {
+if (!appUrl || !slug || !stateName || !liveMatch || rect.length !== 4 || rect.some((n) => !Number.isFinite(n))) {
   console.error(USAGE);
   process.exit(1);
 }
@@ -87,15 +88,22 @@ const clip = { x, y, width: w, height: h };
 await stableShot(live, probe, files.live, clip);
 live.close();
 
-// The replica side: headless, same metrics, same clip.
-const { url, stop } = await serveIfPath(replicaArg);
-step(`rendering the replica headlessly at ${width}x${height} @${dpr}x`);
+// The replica side: the app's render route, headless, same metrics,
+// same clip. The route answers with a sentence instead of the
+// component when the state is not there; that is a failed pass.
+const url = `${appUrl.replace(/\/+$/, "")}/#/render/${encodeURIComponent(slug)}/${encodeURIComponent(stateName)}?x=${x}&y=${y}&w=${w}`;
+step(`rendering ${slug}/${stateName} headlessly at ${width}x${height} @${dpr}x`);
 const replica = await headlessPage(url, { width, height, dpr });
 try {
+  await evaluate(replica.page, "new Promise((done) => { const tick = () => document.querySelector('[data-render]') ? done() : setTimeout(tick, 50); tick(); })");
+  const outcome = await evaluate(replica.page, "document.querySelector('[data-render]').dataset.render");
+  if (outcome !== "ok") {
+    console.error(`the render route could not show ${slug}/${stateName}: ${outcome}`);
+    process.exit(1);
+  }
   await stableShot(replica.page, probe, files.screenshot, clip);
 } finally {
   await replica.close();
-  stop();
 }
 
 step("diffing");
@@ -122,53 +130,4 @@ function nextPass(dir) {
     if (match) last = Math.max(last, Number(match[1]));
   }
   return last + 1;
-}
-
-// A path is served over http from its folder for the duration of the
-// call: file:// has its own cache and origin rules, and the replica's
-// same-folder fonts must resolve the way they will in the library.
-async function serveIfPath(replica) {
-  if (/^https?:\/\//.test(replica)) return { url: replica, stop: () => {} };
-  const file = resolve(replica);
-  if (!existsSync(file)) {
-    console.error(`${file} does not exist`);
-    process.exit(1);
-  }
-  const root = dirname(file);
-  const TYPES = {
-    ".html": "text/html; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".png": "image/png",
-    ".svg": "image/svg+xml",
-    ".woff2": "font/woff2",
-    ".woff": "font/woff",
-  };
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
-    const target = resolve(root, `.${path}`);
-    if (!target.startsWith(root)) {
-      res.writeHead(403).end();
-      return;
-    }
-    let body;
-    try {
-      body = readFileSync(target);
-    } catch {
-      res.writeHead(404).end();
-      return;
-    }
-    res.writeHead(200, { "Content-Type": TYPES[extname(target)] ?? "application/octet-stream", "Cache-Control": "no-store" });
-    res.end(body);
-  });
-  await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const { port } = server.address();
-  return {
-    url: `http://127.0.0.1:${port}/${encodeURIComponent(basename(file))}`,
-    // Chrome keeps its connection alive; close() alone would wait on it.
-    stop: () => {
-      server.closeAllConnections();
-      server.close();
-    },
-  };
 }

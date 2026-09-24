@@ -23,11 +23,13 @@
  *   inventory <library> <json>        every component at once, [{ slug, name }], all "found"
  *   component <library> <slug> status <found|extracting|done|skipped|queued>
  *       [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
- *       skipped needs both: the reason, one plain sentence of at most
+ *       done reads the component the unit authored in
+ *       src/components/<slug>/ (one <Slug>.tsx with a default export,
+ *       its <Slug>.module.css, and states.json listing the named states
+ *       as prop sets, the first being the default) and records its
+ *       module path and states. skipped needs both: the reason, one plain sentence of at most
  *       140 characters in the product's terms, and the product crop
  *       (copied to components/<slug>/screenshot.png); queued clears both.
- *   state <library> <slug> <name> <file> <height>
- *       Copies <file> to components/<slug>/<basename> and appends the state.
  *   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
  *       Moves both images into components/<slug>/history/ and appends the
  *       pass; the oldest pass goes once there are more than ten.
@@ -49,7 +51,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
   init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>]
@@ -57,7 +59,6 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
   type <library> <json>
   inventory <library> <json array>
   component <library> <slug> status <found|extracting|done|skipped|queued> [--reason ...] [--screenshot ...] [--activity ...]
-  state <library> <slug> <name> <file> <height>
   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity <line>
   event <library> [slug] <activity>
   take-queued <library>
@@ -129,6 +130,7 @@ const paths = {
   events: join(publicDir, "events.jsonl"),
   queue: join(publicDir, "queue.json"),
   components: join(publicDir, "components"),
+  modules: join(libraryDir, "src", "components"),
   lock: join(publicDir, ".lock"),
 };
 const now = () => new Date().toISOString();
@@ -258,6 +260,7 @@ const commands = {
       }
       rmSync(paths.components, { recursive: true, force: true });
       mkdirSync(paths.components, { recursive: true });
+      for (const slug of importedModules()) rmSync(join(paths.modules, slug), { recursive: true, force: true });
       writeFileSync(paths.events, "");
       writeJsonAtomic(paths.queue, { requests: [] });
       Object.assign(manifest, { ...EMPTY, codebase, source, product, startedAt: now(), tokens: [], type: [], components: [] });
@@ -332,31 +335,9 @@ const commands = {
       } else {
         unskip(entry);
       }
-      if (status === "done" && entry.states.length === 0) fail(`${slug} has no states; add them with "state" before "done"`);
+      if (status === "done") Object.assign(entry, authored(slug));
       if (status === "queued") manifest.completedAt = null;
       return { activity: options.activity ?? statusActivity(status, entry.name), slug };
-    });
-  },
-
-  state() {
-    const [slug, name, file, heightArg] = positional;
-    const height = Number(heightArg);
-    if (!slug || !name || !file || !Number.isInteger(height) || height <= 0) fail(USAGE);
-    if (!existsSync(file)) fail(`${file} does not exist`);
-    const target = basename(file);
-    if (!target.endsWith(".html")) fail("a state file is a standalone .html page");
-    change((manifest) => {
-      const entry = componentIn(manifest, slug);
-      if (entry.states.length >= STATE_CAP && !entry.states.some((s) => s.name === name)) {
-        fail(`${slug} already has ${STATE_CAP} states; the contract stops there`);
-      }
-      mkdirSync(folderOf(slug), { recursive: true });
-      copyFileSync(file, join(folderOf(slug), target));
-      const state = { name, file: relative(slug, target), height };
-      const existing = entry.states.findIndex((s) => s.name === name);
-      if (existing === -1) entry.states.push(state);
-      else entry.states[existing] = state;
-      return { activity: options.activity ?? `Captured the ${name.toLowerCase()} state of ${entry.name}`, slug };
     });
   },
 
@@ -427,9 +408,47 @@ const commands = {
   },
 };
 
+// What the unit authored in src/components/<slug>/: the module and its
+// states, checked here so a done component always renders.
+function authored(slug) {
+  const folder = join(paths.modules, slug);
+  if (!existsSync(folder)) fail(`${folder} does not exist; the unit authors the component there before it is done`);
+  const modules = readdirSync(folder).filter((name) => /^[A-Z][A-Za-z0-9]*\.tsx$/.test(name));
+  if (modules.length !== 1) fail(`${folder} must hold exactly one <Slug>.tsx module; found ${modules.join(", ") || "none"}`);
+  const source = readFileSync(join(folder, modules[0]), "utf8");
+  if (!/export default /.test(source)) fail(`${modules[0]} needs a default export: the component`);
+  if (!/\.module\.css/.test(source)) fail(`${modules[0]} must style itself from a scoped <Slug>.module.css beside it`);
+  let states;
+  try {
+    states = JSON.parse(readFileSync(join(folder, "states.json"), "utf8"));
+  } catch {
+    fail(`${folder}/states.json is missing or not JSON: [{ "name": "Default", "props": {} }, …]`);
+  }
+  if (!Array.isArray(states) || states.length === 0) fail(`${folder}/states.json must list at least the default state`);
+  if (states.length > STATE_CAP) fail(`${folder}/states.json lists ${states.length} states; the cap is ${STATE_CAP}`);
+  for (const state of states) {
+    requireString(state.name, "state.name");
+    if (typeof state.props !== "object" || state.props === null || Array.isArray(state.props)) fail(`state "${state.name}" needs a props object`);
+  }
+  if (new Set(states.map((s) => s.name)).size !== states.length) fail("state names must be unique");
+  return { module: ["src", "components", slug, modules[0]].join("/"), states };
+}
+
+// The folders under src/components/ that an import wrote: the ones
+// carrying states.json. The app's own components never do.
+function importedModules() {
+  try {
+    return readdirSync(paths.modules).filter((name) => existsSync(join(paths.modules, name, "states.json")));
+  } catch {
+    return [];
+  }
+}
+
 // A component leaving "skipped" loses the reason and the product crop.
 function unskip(entry) {
   delete entry.reason;
+  delete entry.module;
+  entry.states = [];
   if (entry.screenshot) rmSync(join(publicDir, entry.screenshot), { force: true });
   delete entry.screenshot;
 }

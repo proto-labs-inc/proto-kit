@@ -1,0 +1,8 @@
+[
+  { "name": "Default", "props": {} },
+  { "name": "Hover", "props": { "hover": true } },
+  { "name": "Disabled", "props": { "disabled": true } },
+  { "name": "Loading", "props": { "loading": true } },
+  { "name": "Secondary", "props": { "variant": "secondary", "children": "Request changes" } },
+  { "name": "Danger", "props": { "variant": "danger", "children": "Reject" } }
+]

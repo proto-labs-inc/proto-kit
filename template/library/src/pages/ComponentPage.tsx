@@ -4,8 +4,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { HistoryView } from "@/components/HistoryView";
+import { Rendered } from "@/components/Rendered";
 import { SkippedNotice } from "@/components/SkippedNotice";
-import { StateFrame } from "@/components/StateFrame";
 import { componentView, type ActivityEvent, type Component, type ComponentView, type Library, type QueueOutcome } from "@/library";
 import { href } from "@/route";
 
@@ -73,8 +73,8 @@ function States({ component, look, queue }: { component: Component; look: Compon
           </TabsList>
           {component.states.map((state) => (
             <TabsContent key={state.name} value={state.name}>
-              <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">
-                <StateFrame state={state} title={component.name} />
+              <div className="overflow-hidden rounded-xl bg-white p-5 ring-1 ring-foreground/10">
+                <Rendered component={component} state={state} />
               </div>
             </TabsContent>
           ))}
