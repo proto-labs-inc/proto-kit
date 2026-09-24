@@ -57,13 +57,17 @@ function validated(cmd) {
   return null;
 }
 
-// agentListening: the listening session's feed watch heartbeats into the run
-// dir; fresh heartbeat = someone is consuming commands.
+// agentListening: the listening session's feed watch stamps
+// watch-heartbeat.json in the run dir; a fresh stamp means someone is
+// consuming commands. Local to this laptop: the feed watchers write
+// the stamp every few seconds, and this is how old it may be before
+// the watcher counts as gone.
+const WATCH_STALE_MS = 15_000;
 function agentState() {
   try {
     const beat = JSON.parse(readFileSync(join(runDir, "watch-heartbeat.json"), "utf8"));
     const age = Date.now() - Date.parse(beat.at);
-    return { agentListening: age < 15_000, lastSeenAt: beat.at };
+    return { agentListening: age < WATCH_STALE_MS, lastSeenAt: beat.at };
   } catch {
     return { agentListening: false, lastSeenAt: null };
   }
@@ -95,21 +99,19 @@ serveHttp({ port: config.port, secret: config.secret, handle }, () =>
   console.log(`courier listener for ${config.codebase} on 127.0.0.1:${config.port}`),
 );
 
-// Heartbeat to the cloud (~30s): how the site knows this laptop's
-// courier is alive and whether an agent is consuming its feed —
-// couriers are per laptop, keyed by the cloud-minted courierId in
-// courier.json. Fail soft always: a beat that can't be sent is a
-// missed beat, never a crash (the site marks us offline after 90s).
+// Heartbeat to the cloud: how the site knows this laptop's courier is
+// alive and whether an agent is consuming its feed. Couriers are per
+// laptop, keyed by the cloud-minted courierId in courier.json. The
+// app answers with its staleness window and the loop paces itself
+// from that (heartbeat.mjs). Fail soft always: a beat that cannot be
+// sent is a missed beat, never a crash.
 if (config.courierId) {
   const { callTool } = await import("./mcp-call.mjs");
-  const beat = async () => {
-    try {
-      await callTool("courier_heartbeat", {
-        courierId: config.courierId,
-        agentListening: agentState().agentListening,
-      });
-    } catch {}
-  };
-  beat();
-  setInterval(beat, 30_000);
+  const { beatForever } = await import("./heartbeat.mjs");
+  beatForever(() =>
+    callTool("courier_heartbeat", {
+      courierId: config.courierId,
+      agentListening: agentState().agentListening,
+    }),
+  );
 }

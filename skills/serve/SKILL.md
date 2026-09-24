@@ -37,10 +37,11 @@ directory, which is also the proto-kit checkout root.
        // dev command = the workspace's own package manager (its lockfile
        // tells you): ["npm", "run", "dev"], ["pnpm", "dev"], …
        { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "<connectorToken>"] },
-       // Liveness: beats prototype_heartbeat (~15s) while dev and tunnel
-       // are up; its lifetime is the serving lifetime, so stopping the
-       // run silences it and staleness tells the Frame to use the
-       // published build. No "is live" flag exists anywhere.
+       // Liveness: beats prototype_heartbeat while dev and tunnel are
+       // up, at the cadence the app answers with; its lifetime is the
+       // serving lifetime, so stopping the run silences it and staleness
+       // tells the Frame to use the published build. No "is live" flag
+       // exists anywhere.
        { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "--kind", "prototype", "<run-dir>", "<codebase>", "<slug>"] }
      ]
    }
@@ -189,11 +190,12 @@ Setup:
    settles.
 
 **Heartbeat.** The listener beats `courier_heartbeat { courierId,
-agentListening }` every ~30s (fail-soft; `agentListening` from the
-feed watcher's local heartbeat). The site marks a courier offline
-after 90s — three missed beats — and dispatches each brief to the
-account's freshest listening courier; registered-but-not-listening
-falls back to the copyable prompt with "your agent isn't running".
+agentListening }` at the cadence the app answers with (fail-soft;
+`agentListening` from the feed watcher's local heartbeat). A courier
+whose beats have gone stale is offline; the site dispatches each brief
+to the account's freshest listening courier, and
+registered-but-not-listening falls back to the copyable prompt with
+"your agent isn't running".
 
 The proto MCP server carries the agent's cloud actions (registration,
 tunnels, comments); command payloads arrive inline in the feed — MCP

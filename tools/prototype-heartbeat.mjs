@@ -6,12 +6,12 @@
  * takes it down, and nothing beats when nothing serves. Staleness is
  * the signal; there is no "is live" flag anywhere.
  *
- * Every ~15s it checks its sibling processes in the run's state.json
- * (a crash-looping dev server must not claim liveness) and, when all
- * are up, calls the `prototype_heartbeat` MCP tool. Failures are
- * logged and beating continues: a beat that cannot be sent is a
- * missed beat, never a crash. The app treats a prototype as not live
- * after ~45s of silence.
+ * On every beat it checks its sibling processes in the run's
+ * state.json (a crash-looping dev server must not claim liveness)
+ * and, when all are up, calls the heartbeat MCP tool. The app answers
+ * with its staleness window and the loop (heartbeat.mjs) paces itself
+ * from that. Failures are logged and beating continues: a beat that
+ * cannot be sent is a missed beat, never a crash.
  *
  * Usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
  *        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>
@@ -23,6 +23,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { callTool, readConfig } from "./mcp-call.mjs";
+import { beatForever } from "./heartbeat.mjs";
 
 const USAGE = `usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>`;
@@ -72,16 +73,11 @@ function siblingsUp() {
   }
 }
 
-async function beat() {
-  if (!siblingsUp()) return; // serving is not healthy; stay silent
-  try {
-    const account = readConfig().account?.user;
-    if (kind === "library") await callTool("library_heartbeat", { codebase, account });
-    else await callTool("prototype_heartbeat", { codebase, slug, account });
-  } catch (e) {
-    console.log(`heartbeat not sent (${e.message}); still beating`);
-  }
+function sendBeat() {
+  if (!siblingsUp()) return null; // serving is not healthy; stay silent
+  const account = readConfig().account?.user;
+  if (kind === "library") return callTool("library_heartbeat", { codebase, account });
+  return callTool("prototype_heartbeat", { codebase, slug, account });
 }
 
-beat();
-setInterval(beat, 15_000);
+beatForever(sendBeat);
