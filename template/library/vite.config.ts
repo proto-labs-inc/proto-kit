@@ -59,14 +59,18 @@ function libraryData(): Plugin {
           next();
           return;
         }
+        res.setHeader("Cache-Control", "no-store");
         try {
           const body = await readFile(file);
           res.setHeader("Content-Type", TYPES[extname(file)] ?? "application/octet-stream");
-          res.setHeader("Cache-Control", "no-store");
           res.setHeader("Access-Control-Allow-Origin", "*");
           res.end(body);
         } catch {
-          next();
+          // A state file that is not there yet is a 404, never the SPA
+          // fallback: the browser would cache the app's own page under
+          // the state's URL and keep showing it inside the frame.
+          res.statusCode = 404;
+          res.end();
         }
       });
     },
