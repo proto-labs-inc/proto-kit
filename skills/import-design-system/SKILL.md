@@ -185,11 +185,18 @@ call; chain the short ones in one shell line.
    value winning. `role: "surface"` on the page background token and
    `role: "text"` on the page text token, once each. Use real product
    copy for every `sample`.
-6. **Land units as they report.** The moment a report arrives, land
+6. **The courier, while the units run.** If
+   `~/.proto/<codebase>/run/courier/` has no `courier.json`, bring
+   the courier up now, per the serve skill's "The courier" section.
+   It depends only on the codebase id; doing it here, in the window
+   where you would otherwise be waiting on sub-agents, is what makes
+   the run end when the library does. Landing a report always comes
+   first: check for reports between its steps.
+7. **Land units as they report.** The moment a report arrives, land
    it before anything else (see **Landing a unit**): a report that is
    not landed is a unit the user never sees finish. The manifest, not
    your memory, is the record of what is done.
-7. **Finish**, per the checklist below.
+8. **Finish**, per the checklist below.
 
 Side errand, once, while the live page is attached: if the codebase
 has no icon yet, take the page's `<link rel="icon">` (largest png or
@@ -371,9 +378,10 @@ Every line, in order, before you say the import is done:
   you can; it carries whatever `public/` holds when it runs, so build
   again after the last landing;
 - the courier is up (`node tools/supervise.mjs status
-  ~/.proto/<codebase>/run/courier`); setup started it at codebase
-  creation, and if it is not, the serve skill's courier section is
-  the fix;
+  ~/.proto/<codebase>/run/courier` shows the listener and tunnel up,
+  and a `{"status": true}` POST through the edge answers); step 6
+  brought it up, and if it is not, the serve skill's courier section
+  is the fix;
 - one sentence to the user: the library is published and stays
   viewable after this laptop closes;
 - then listen: continue into the next thing setup asked for (a

@@ -299,8 +299,7 @@ const commands = {
         entry.reason = options.reason;
         entry.screenshot = relative(slug, "screenshot.png");
       } else {
-        delete entry.reason;
-        delete entry.screenshot;
+        unskip(entry);
       }
       if (status === "done" && entry.states.length === 0) fail(`${slug} has no states; add them with "state" before "done"`);
       if (status === "queued") manifest.completedAt = null;
@@ -380,8 +379,7 @@ const commands = {
       writeJsonAtomic(paths.queue, { requests: queue.requests.filter((r) => r.slug !== request.slug) });
       const entry = componentIn(manifest, request.slug);
       entry.status = "queued";
-      delete entry.reason;
-      delete entry.screenshot;
+      unskip(entry);
       manifest.completedAt = null;
       return { activity: `Queued ${entry.name}`, slug: request.slug };
     });
@@ -397,6 +395,13 @@ const commands = {
     });
   },
 };
+
+// A component leaving "skipped" loses the reason and the product crop.
+function unskip(entry) {
+  delete entry.reason;
+  if (entry.screenshot) rmSync(join(publicDir, entry.screenshot), { force: true });
+  delete entry.screenshot;
+}
 
 function statusActivity(status, name) {
   switch (status) {

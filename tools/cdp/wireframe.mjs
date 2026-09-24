@@ -11,7 +11,7 @@ const GRAB = `(() => {
   function grab(el) {
     const r = el.getBoundingClientRect();
     // zero-size is not empty: display:contents wrappers report 0x0 but
-    // their children lay out normally — descend without emitting a node
+    // their children lay out normally: descend without emitting a node
     if (r.width < 5 || r.height < 5) return [...el.children].flatMap(grab);
     const cls = (typeof el.className === "string" ? el.className : "")
       .split(" ").filter(x => x && !x.includes(":")).slice(0, 2).join(" ");
@@ -54,7 +54,7 @@ walk(data.tree, 0);
 
 writeFileSync(out, `<!doctype html>
 <meta charset="utf-8">
-<title>wireframe — ${tab.url.slice(0, 60)}</title>
+<title>wireframe: ${tab.url.slice(0, 60)}</title>
 <body style="margin:0; font-family:monospace;">
 <div style="position:relative;">
 ${boxes}</div>

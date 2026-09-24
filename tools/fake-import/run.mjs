@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * Plays a recorded design-system import into a library app, at a
- * realistic pace, writing exactly the contract the real import skill
- * writes (docs/library-contract.md): public/manifest.json,
- * public/events.jsonl, public/components/<slug>/<state>.html, a
- * skipped component's screenshot, a component's iteration history,
- * and, once complete, watches public/queue.json and extracts a
- * component the user queues from the app.
+ * realistic pace, through the same writer the real import uses
+ * (tools/library.mjs, docs/library-contract.md): so the files it
+ * leaves behind are exactly what a real run leaves behind, and the
+ * order it writes them in is the real skill's order. Once complete it
+ * watches public/queue.json and extracts a component the user queues
+ * from the app.
  *
  * The recording is of "Meridian", a fictional expense product: every
  * name below (codebase, tokens, components, copy) is that fixture's
@@ -18,11 +18,15 @@
  *   <library-dir> is the library app's folder (the one holding
  *   package.json and public/). Serve it with `pnpm dev` and watch.
  */
-import { copyFile, mkdir, readFile, rm, writeFile, appendFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures/meridian");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const FIXTURES = join(HERE, "fixtures/meridian");
+const LIBRARY_MJS = join(HERE, "..", "library.mjs");
 
 const [libraryDir] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const fast = process.argv.includes("--fast");
@@ -30,10 +34,15 @@ if (!libraryDir) {
   console.error("usage: node run.mjs <library-dir> [--fast]");
   process.exit(1);
 }
-const publicDir = join(libraryDir, "public");
 const speed = fast ? 0.15 : 1;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms * speed));
-const now = () => new Date().toISOString();
+
+// One line per write, exactly as the skill runs it. library.mjs prints
+// the event it appended; that is this driver's log.
+const lib = (...args) => {
+  execFileSync(process.execPath, [LIBRARY_MJS, ...args], { stdio: ["ignore", "inherit", "inherit"] });
+};
+const libOut = (...args) => execFileSync(process.execPath, [LIBRARY_MJS, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
 
 const TOKENS = [
   { name: "slate-50", value: "#f8fafc", group: "gray", role: "surface" },
@@ -106,131 +115,49 @@ const COMPONENTS = [
   },
 ];
 
-const manifest = {
-  codebase: "meridian",
-  source: "meridian-web",
-  product: {
-    name: "Meridian",
-    pageUrl: "https://app.meridian.example/expenses",
-    pageTitle: "Expenses · Meridian",
-  },
-  startedAt: now(),
-  completedAt: null,
-  tokens: [],
-  type: [],
-  components: [],
-};
-
-// Writes are serialised: components extract in parallel, and the
-// manifest must never be written half-way through another write.
-let writing = Promise.resolve();
-const serial = (work) => {
-  writing = writing.then(work, work);
-  return writing;
-};
-const flush = () =>
-  serial(() => writeFile(join(publicDir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n"));
-const event = (activity, component) => {
-  const line = { at: now(), ...(component && { component }), activity };
-  console.log(component ? `· [${component}] ${activity}` : `· ${activity}`);
-  return serial(() => appendFile(join(publicDir, "events.jsonl"), JSON.stringify(line) + "\n"));
-};
-const readQueue = async () => JSON.parse(await readFile(join(publicDir, "queue.json"), "utf8"));
-const writeQueue = (queue) =>
-  serial(() => writeFile(join(publicDir, "queue.json"), JSON.stringify(queue, null, 2) + "\n"));
+// A unit folder per component, as a sub-agent would leave it: the
+// pass images verify-replica.mjs wrote, which `history` moves into the
+// library, and the state files, which `state` copies.
+const run = await mkdtemp(join(tmpdir(), "fake-import-"));
+const unitOf = (slug) => join(run, "units", slug);
 
 async function extract(spec) {
-  const entry = manifest.components.find((c) => c.slug === spec.slug);
-  const folder = join(publicDir, "components", spec.slug);
-  await mkdir(folder, { recursive: true });
-  entry.status = "extracting";
-  await flush();
-  await event(`Reading ${spec.name} on the live page`, spec.slug);
+  const unit = unitOf(spec.slug);
+  await mkdir(join(unit, "passes"), { recursive: true });
+  lib("component", libraryDir, spec.slug, "status", "extracting");
   await sleep(900);
-  await event(`Authoring ${spec.name} from its matched rules`, spec.slug);
+  lib("event", libraryDir, spec.slug, `Authoring ${spec.name} from its matched rules`);
   await sleep(700);
   for (const [i, pass] of (spec.history ?? []).entries()) {
-    await mkdir(join(folder, "history"), { recursive: true });
     const n = i + 1;
-    await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}.png`), join(folder, "history", `${n}.png`));
-    await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}-diff.png`), join(folder, "history", `${n}-diff.png`));
-    entry.history.push({
-      at: now(),
-      activity: pass.activity,
-      screenshot: `components/${spec.slug}/history/${n}.png`,
-      diff: `components/${spec.slug}/history/${n}-diff.png`,
-      mismatch: pass.mismatch,
-    });
-    await flush();
-    await event(`${pass.activity} (${pass.mismatch.toLocaleString()} pixels off)`, spec.slug);
+    const screenshot = join(unit, "passes", `${n}.png`);
+    const diff = join(unit, "passes", `${n}-diff.png`);
+    await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}.png`), screenshot);
+    await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}-diff.png`), diff);
+    lib("history", libraryDir, spec.slug, "--screenshot", screenshot, "--diff", diff, "--mismatch", String(pass.mismatch), "--activity", pass.activity);
     await sleep(1100);
   }
   for (const state of spec.states) {
-    await copyFile(join(FIXTURES, "components", spec.slug, state.file), join(folder, state.file));
-    entry.states.push({ name: state.name, file: `components/${spec.slug}/${state.file}`, height: state.height });
-    await flush();
-    await event(`Captured the ${state.name.toLowerCase()} state of ${spec.name}`, spec.slug);
+    lib("state", libraryDir, spec.slug, state.name, join(FIXTURES, "components", spec.slug, state.file), String(state.height));
     await sleep(500);
   }
-  entry.status = "done";
-  await flush();
-  await event(`Extracted ${spec.name}`, spec.slug);
+  lib("component", libraryDir, spec.slug, "status", "done");
 }
 
 async function skip(spec) {
-  const entry = manifest.components.find((c) => c.slug === spec.slug);
-  const folder = join(publicDir, "components", spec.slug);
-  await mkdir(folder, { recursive: true });
-  entry.status = "extracting";
-  await flush();
-  await event(`Reading ${spec.name} on the live page`, spec.slug);
+  lib("component", libraryDir, spec.slug, "status", "extracting");
   await sleep(1200);
-  await copyFile(join(FIXTURES, "components", spec.slug, "screenshot.png"), join(folder, "screenshot.png"));
-  entry.status = "skipped";
-  entry.reason = spec.skip;
-  entry.screenshot = `components/${spec.slug}/screenshot.png`;
-  await flush();
-  await event(`Skipping ${spec.name}`, spec.slug);
+  lib("component", libraryDir, spec.slug, "status", "skipped", "--reason", spec.skip, "--screenshot", join(FIXTURES, "components", spec.slug, "screenshot.png"));
 }
 
-// A fresh run: the app tolerates a manifest that grows, never one that
-// shrinks, so the previous run's files go before the first write.
-await rm(join(publicDir, "components"), { recursive: true, force: true });
-await writeFile(join(publicDir, "events.jsonl"), "");
-await writeQueue({ requests: [] });
-await flush();
-await event("Reading the source");
+// The skill's order: open the run, flush the whole inventory, fan out,
+// then stream tokens and type styles while the units run.
+lib("init", libraryDir, "meridian", "meridian-web");
 await sleep(1800);
+lib("inventory", libraryDir, JSON.stringify(COMPONENTS.map((c) => ({ slug: c.slug, name: c.name, category: c.category }))));
+await sleep(600);
 
-await event("Extracting color tokens");
-for (const t of TOKENS) {
-  manifest.tokens.push(t);
-  await flush();
-  await event(`Extracting color tokens (${t.name})`);
-  await sleep(320);
-}
-
-await event("Extracting type styles");
-for (const s of TYPE) {
-  manifest.type.push(s);
-  await flush();
-  await event(`Extracting type styles (${s.name})`);
-  await sleep(550);
-}
-
-manifest.components = COMPONENTS.map((c) => ({
-  slug: c.slug,
-  name: c.name,
-  category: c.category,
-  status: "found",
-  states: [],
-  history: [],
-}));
-await flush();
-await event(`Found ${COMPONENTS.length} components`);
-await sleep(1200);
-
-// Two at a time, the second lane a beat behind, the way the real
+// Four lanes at most, each a beat behind the last, the way the real
 // import fans out.
 const pending = [...COMPONENTS];
 const lane = async (delay) => {
@@ -241,40 +168,42 @@ const lane = async (delay) => {
     else await extract(spec);
   }
 };
-await Promise.all([lane(0), lane(1500)]);
+const lanes = Promise.all([lane(0), lane(700), lane(1400), lane(2100)]);
 
-async function complete() {
-  manifest.completedAt = now();
-  await flush();
-  await event("Import complete");
+const stream = async () => {
+  await sleep(400);
+  for (const t of TOKENS) {
+    lib("token", libraryDir, JSON.stringify(t));
+    await sleep(320);
+  }
+  for (const s of TYPE) {
+    lib("type", libraryDir, JSON.stringify(s));
+    await sleep(550);
+  }
+};
+await Promise.all([lanes, stream()]);
+
+function complete() {
+  lib("complete", libraryDir);
   console.log("✓ complete");
 }
-await complete();
+complete();
 
-// The app's "Queue it" button appends { slug, at } to queue.json. The
-// import takes each request off the queue, marks the component queued,
-// and extracts it like any other; completedAt is cleared meanwhile so
-// the app keeps polling. This driver watches for ninety seconds.
-const skippable = COMPONENTS.filter((c) => c.skip);
+// The app's "Queue it" button appends { slug, at } to queue.json.
+// take-queued pops one request, marks the component queued and clears
+// completedAt, so the app keeps polling; the driver then extracts it
+// like any other and completes again. It watches for ninety seconds.
 const deadline = Date.now() + 90_000 * speed;
 console.log(`watching public/queue.json for ${Math.round((deadline - Date.now()) / 1000)}s (press "Queue it" in the app)`);
-while (Date.now() < deadline && manifest.components.some((c) => c.status === "skipped")) {
-  const queue = await readQueue();
-  const request = queue.requests.find((r) => skippable.some((c) => c.slug === r.slug));
-  if (!request) {
+while (Date.now() < deadline) {
+  const slug = libOut("take-queued", libraryDir).trim().split("\n").pop();
+  const spec = COMPONENTS.find((c) => c.slug === slug);
+  if (!spec) {
     await sleep(1000 / speed);
     continue;
   }
-  const spec = skippable.find((c) => c.slug === request.slug);
-  const entry = manifest.components.find((c) => c.slug === spec.slug);
-  await writeQueue({ requests: queue.requests.filter((r) => r.slug !== request.slug) });
-  manifest.completedAt = null;
-  entry.status = "queued";
-  delete entry.reason;
-  delete entry.screenshot;
-  await flush();
-  await event(`Queued ${spec.name}`, spec.slug);
   await sleep(4000);
   await extract(spec);
-  await complete();
+  complete();
 }
+await rm(run, { recursive: true, force: true });

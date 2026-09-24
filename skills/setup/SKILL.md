@@ -279,13 +279,24 @@ system it extracts."**
 }
 ```
 
-### Library scaffold
+### Host the library, in the background
 
-Copy `template/library/` → `~/.proto/<codebase>/library/` (skip if its
-`public/manifest.json` already has content), then `pnpm install
---frozen-lockfile` there: the library is a Vite React app (ADR 0003).
-The import-design-system skill fills its `public/` folder; the serve
-skill serves it.
+The moment `codebase.json` exists, start the library coming up and
+move on:
+
+```
+node tools/host-library.mjs <codebase> > ~/.proto/<codebase>/run/host-library.log 2>&1 &
+```
+
+(`mkdir -p` the run dir first.) One call scaffolds `template/library/`
+into `~/.proto/<codebase>/library/`, installs its dependencies (the
+library is a Vite React app, ADR 0003; the install is paid once per
+codebase), provisions the library tunnel through the site, starts the
+supervised run and verifies it through Cloudflare's edge. It runs
+while the Proto window and icon steps below proceed, so the first
+thing the import does, running the same call again, returns at once
+with the address. Never look the library's hostname up yourself
+meanwhile; the serve skill says why.
 
 ### The reference page (the Proto window)
 
@@ -363,7 +374,10 @@ Setup ends by continuing, not by stopping:
 
 1. Run **import-design-system** against the found source + the Proto
    window's live page: the library filling in is the first thing the
-   user watches.
+   user watches. The courier (the serve skill's "The courier" section)
+   comes up inside the import, while its units run, so the run's
+   tail is nothing: when the library is published, the courier is
+   already listening.
 2. If the document carried a `brief`, hand it to **create-prototype**
    verbatim: title, description, the brief document URL, the
    reference page (`productUrl`), the reference HTML (structure

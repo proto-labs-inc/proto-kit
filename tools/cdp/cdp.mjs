@@ -44,7 +44,7 @@ export function connect(wsUrl) {
 }
 
 // Evaluate an expression in the page, return its JSON-serializable value.
-// Promises are awaited. Note: return values truncate at 64KB — fetch big
+// Promises are awaited. Note: return values truncate at 64KB: fetch big
 // payloads in chunks.
 export async function evaluate(page, expression) {
   const r = await page.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
