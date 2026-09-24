@@ -1,39 +1,12 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Design system</title>
-  <link rel="stylesheet" href="viewer.css" />
-</head>
-<body>
-  <div class="import-strip" id="import-strip">
-    <span class="activity"><span class="pulse" aria-hidden></span><span id="activity-text">Waiting for import…</span></span>
-    <span class="inventory" id="inventory"></span>
-  </div>
-
-  <main>
-    <section id="primitives-section" hidden>
-      <h2>UI primitives</h2>
-      <div class="block-grid" id="primitives"></div>
-    </section>
-
-    <section id="composites-section" hidden>
-      <h2>Composite components</h2>
-      <div class="block-grid" id="composites"></div>
-    </section>
-
-    <section id="type-section" hidden>
-      <h2>Typography</h2>
-      <div class="type-list" id="type"></div>
-    </section>
-
-    <section id="tokens-section" hidden>
-      <h2>Design tokens</h2>
-      <div class="token-grid" id="tokens"></div>
-    </section>
-  </main>
-
-  <script src="viewer.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Design system</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
