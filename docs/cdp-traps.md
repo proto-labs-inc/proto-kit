@@ -69,3 +69,10 @@ Traps we hit, so you don't:
   node; merging it with adjacent text changes glyph shaping by fractions
   of a pixel. Reproduce text node splits (an HTML comment between text
   runs does it).
+- Fetching a font from Google Fonts with a bare `curl` returns an HTML
+  page, not a font: `fonts.googleapis.com/css2` needs a browser
+  User-Agent to name woff2 files, and a guessed `fonts.gstatic.com`
+  path answers with an error page. Saved as `.woff2`, the file is
+  ignored and the text renders in the fallback face. Take the woff2
+  URLs from the css2 response fetched with a Chrome User-Agent, and
+  check each saved file with `file` before declaring it.

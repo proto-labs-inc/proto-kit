@@ -129,6 +129,7 @@ const TYPES = {
   ".webp": "image/webp",
   ".ico": "image/x-icon",
   ".txt": "text/plain",
+  ".jsonl": "text/plain",
   ".gif": "image/gif",
   ".woff2": "font/woff2",
   ".woff": "font/woff",

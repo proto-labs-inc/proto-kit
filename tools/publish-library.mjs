@@ -81,13 +81,14 @@ for (;;) {
   }
 }
 
-try {
-  const build = spawnSync("pnpm", ["build"], { cwd: libraryDir, stdio: ["ignore", "inherit", "inherit"] });
-  if (build.status !== 0) fail(`pnpm build failed in ${libraryDir}`);
-  const publishArgs = [join(HERE, "publish.mjs"), "--kind", "library", "--codebase", codebase, "--dir", join(libraryDir, "dist")];
-  if (dryRun) publishArgs.push("--dry-run");
-  const publish = spawnSync(process.execPath, publishArgs, { stdio: ["ignore", "inherit", "inherit"] });
-  if (publish.status !== 0) process.exit(publish.status ?? 1);
-} finally {
-  rmSync(lock, { recursive: true, force: true });
-}
+// Release on every exit: fail() and a failed publish both call
+// process.exit, which skips a finally block and would leave the lock
+// holding every later publish for STALE_MS.
+process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
+
+const build = spawnSync("pnpm", ["build"], { cwd: libraryDir, stdio: ["ignore", "inherit", "inherit"] });
+if (build.status !== 0) fail(`pnpm build failed in ${libraryDir}`);
+const publishArgs = [join(HERE, "publish.mjs"), "--kind", "library", "--codebase", codebase, "--dir", join(libraryDir, "dist")];
+if (dryRun) publishArgs.push("--dry-run");
+const publish = spawnSync(process.execPath, publishArgs, { stdio: ["ignore", "inherit", "inherit"] });
+if (publish.status !== 0) process.exit(publish.status ?? 1);
