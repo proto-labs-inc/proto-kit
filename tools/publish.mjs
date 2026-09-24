@@ -27,7 +27,7 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, relative, extname, sep } from "node:path";
-import { callTool } from "./mcp-call.mjs";
+import { callTool, readConfig } from "./mcp-call.mjs";
 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
@@ -81,14 +81,6 @@ if (kind === "prototype") {
   dist = resolve(options.dir ?? join(process.env.HOME ?? "", ".proto", codebase, "library"));
 }
 if (!codebase && !dryRun) fail("cannot derive codebase from the workspace path; pass --codebase <id>");
-
-const config = (() => {
-  try {
-    return JSON.parse(readFileSync(join(process.env.HOME ?? "", ".proto", "config.json"), "utf8"));
-  } catch {
-    return {};
-  }
-})();
 
 // Upload-only: the session already built with the workspace's own
 // build script. A publishable folder has an index.html, and a build
@@ -189,6 +181,12 @@ const unwrap = (result) => {
   }
 };
 
+let config;
+try {
+  config = readConfig();
+} catch (e) {
+  fail(e.message);
+}
 const account = config.account?.user;
 // The target both publish tools key on: the kind and codebase, plus
 // the slug for a prototype.

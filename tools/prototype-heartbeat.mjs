@@ -22,7 +22,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { callTool } from "./mcp-call.mjs";
+import { callTool, readConfig } from "./mcp-call.mjs";
 
 const USAGE = `usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>`;
@@ -45,14 +45,6 @@ if (!runDirArg || !codebase || (kind === "prototype" && !slug)) {
   process.exit(1);
 }
 const runDir = resolve(runDirArg);
-const account = (() => {
-  try {
-    return JSON.parse(readFileSync(join(process.env.HOME ?? "", ".proto", "config.json"), "utf8"))
-      .account?.user;
-  } catch {
-    return undefined;
-  }
-})();
 
 const alive = (pid) => {
   try {
@@ -83,6 +75,7 @@ function siblingsUp() {
 async function beat() {
   if (!siblingsUp()) return; // serving is not healthy; stay silent
   try {
+    const account = readConfig().account?.user;
     if (kind === "library") await callTool("library_heartbeat", { codebase, account });
     else await callTool("prototype_heartbeat", { codebase, slug, account });
   } catch (e) {

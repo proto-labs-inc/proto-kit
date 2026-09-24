@@ -5,11 +5,36 @@
  * mcp-stdio.mjs, the Cursor plugin's stdio bridge. Speaks just enough
  * Streamable HTTP: POST one JSON-RPC message, carry the session header
  * when the server issues one, read answers that come as plain JSON or
- * as SSE frames. `callTool` reads the endpoint and bearer from
- * ~/.proto/config.json (`app`, `auth.secret`).
+ * as SSE frames. `readConfig` is the one reader of
+ * ~/.proto/config.json for every kit process; `callTool` takes the
+ * endpoint and bearer from it (`app`, `auth.secret`).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+export const CONFIG_PATH = join(process.env.HOME ?? "", ".proto", "config.json");
+export const NOT_SET_UP =
+  "Proto is not set up on this laptop yet: run the Proto setup skill, then try again.";
+
+/**
+ * ~/.proto/config.json, the account link setup writes (shape in
+ * skills/setup). A file that is missing, unreadable, or without the
+ * app origin and the secret throws NOT_SET_UP, so every kit process
+ * answers "not set up yet" with the same sentence. `app` comes back
+ * without a trailing slash.
+ */
+export function readConfig() {
+  let config;
+  try {
+    config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  } catch {
+    throw new Error(NOT_SET_UP);
+  }
+  const app = typeof config.app === "string" ? config.app.trim() : "";
+  const secret = config.auth?.secret;
+  if (app.length === 0 || typeof secret !== "string" || secret.length === 0) throw new Error(NOT_SET_UP);
+  return { ...config, app: app.replace(/\/+$/, "") };
+}
 
 /** Every JSON-RPC message in a response body: plain JSON or SSE frames. */
 export function parseMessages(text) {
@@ -61,9 +86,7 @@ export async function post({ app, secret }, body, sessionId) {
 }
 
 export async function callTool(name, args) {
-  const config = JSON.parse(
-    readFileSync(join(process.env.HOME ?? "", ".proto", "config.json"), "utf8"),
-  );
+  const config = readConfig();
   const target = { app: config.app, secret: config.auth.secret };
 
   const init = await post(target, {
