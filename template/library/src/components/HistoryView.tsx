@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
 import type { ActivityEvent, Component } from "@/library";
+import { clock } from "@/time";
 
 const STEP_MS = 900;
 
@@ -111,10 +112,4 @@ function Player({ component }: { component: Component }) {
       </p>
     </div>
   );
-}
-
-function clock(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
