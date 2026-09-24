@@ -281,9 +281,11 @@ system it extracts."**
 
 ### Library scaffold
 
-Copy `template/library/` → `~/.proto/<codebase>/library/` (skip if it
-already has a manifest with content). The import-design-system skill
-fills it; the serve skill serves it.
+Copy `template/library/` → `~/.proto/<codebase>/library/` (skip if its
+`public/manifest.json` already has content), then `pnpm install
+--frozen-lockfile` there: the library is a Vite React app (ADR 0003).
+The import-design-system skill fills its `public/` folder; the serve
+skill serves it.
 
 ### The reference page (the Proto window)
 

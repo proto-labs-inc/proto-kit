@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-/** Static server for laptop-served Proto surfaces (library viewer, static
- *  prototypes). CORS on (the Proto app probes manifests cross-origin) and
- *  no-store (live population must never fight a cache). */
+/** Static server for laptop-served static folders (an import's work
+ *  dir, static prototypes). CORS on (tool pages fetch cross-origin) and
+ *  no-store (files rewritten mid-run must never fight a cache). */
 import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
