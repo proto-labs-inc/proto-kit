@@ -1,4 +1,4 @@
-# CDP traps — reading and pixel-verifying live pages
+# CDP traps: reading and pixel-verifying live pages
 
 Hard-won facts for any work that reads a rendered page over CDP or
 verifies a replica against it pixel by pixel. Both the
@@ -22,8 +22,8 @@ Traps we hit, so you don't:
   the same fractional phase. Two independent discoveries forced this:
   dashed borders (dash phase accumulates from absolute position) and
   gradients (Skia's dithering is device-position-keyed). Absolute-position
-  placement subsumes phase matching — make it the default.
-- Verify only after `document.fonts.status === "loaded"` — rect probes
+  placement subsumes phase matching: make it the default.
+- Verify only after `document.fonts.status === "loaded"`: rect probes
   taken while a woff2 is still loading report plausible-looking
   fallback-font metrics that are all slightly wrong.
 - Serialized computed values round: a used line box of 31.9921875px
@@ -33,7 +33,7 @@ Traps we hit, so you don't:
 - Computed style is not rendered truth. An element can report a fully
   opaque 1px border in computed style and still rasterize nothing (state
   the style system doesn't surface). When a read and the pixels disagree,
-  the pixels win — sample colors from the capture before painting
+  the pixels win: sample colors from the capture before painting
   something the real page might not paint.
 - `img.decode()` never resolves in a background or occluded tab. Wait for
   load events and let `drawImage` decode instead. Same family: anything
@@ -45,7 +45,7 @@ Traps we hit, so you don't:
 - Clip to the element's own paint, not its line box. A text element's
   line box can overlap a neighbor's border; the diff then reports the
   neighbor. A thin full-width strip at a clip edge in the cluster output
-  means the clip includes a neighbor — shrink the clip, don't chase the
+  means the clip includes a neighbor: shrink the clip, don't chase the
   replica.
 - Ancestor compositing is a paint mechanism. A sticky scroller inside a
   `contain: paint` column gets its own composited layer; the layer's

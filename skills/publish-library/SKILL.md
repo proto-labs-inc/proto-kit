@@ -14,7 +14,7 @@ lives now.
 2. Run `node tools/publish.mjs --kind library --codebase <codebase>` (kit tools
    resolve from `${CLAUDE_PLUGIN_ROOT}` when running as the installed
    proto plugin, else the proto-kit checkout). It refuses politely if
-   the library has no `index.html` or no `manifest.json` — a library
+   the library has no `index.html` or no `manifest.json`: a library
    with nothing imported has nothing to publish; run
    import-design-system first.
 3. Tell the user in one line: the library is published at the printed

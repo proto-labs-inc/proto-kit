@@ -1,6 +1,6 @@
 # proto-kit
 
-Proto's installable surface — everything a customer's machine runs. The
+Proto's installable surface: everything a customer's machine runs. The
 cloud product lives in the `proto` repo; this repo is what their coding
 agent installs and drives.
 
@@ -102,13 +102,13 @@ and on in Customize.
 
 ```
 ~/.proto/
-├─ config.json              account link (app origin, account, auth, rig source) — shape in skills/setup
+├─ config.json              account link (app origin, account, auth, rig source), shape in skills/setup
 └─ <codebase>/               one per codebase being prototyped
    ├─ codebase.json          source pointers (repo path, remote, live URL)
    ├─ library/              design-system viewer + extracted pieces
    ├─ prototypes/<slug>/    prototype workspaces (vite + rig + prototype.json)
    ├─ imports/<run>/        import working artifacts (wireframes, verify stages)
-   └─ run/<slug>/           serving state per prototype (spec, pids, logs) — owned by supervise.mjs
+   └─ run/<slug>/           serving state per prototype (spec, pids, logs), owned by supervise.mjs
 ```
 
 ## Demo: watch a design system populate
