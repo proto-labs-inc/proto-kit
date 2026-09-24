@@ -19,7 +19,7 @@ FALLBACK — recovery, or nobody-at-the-keyboard — same protocol.)
 
 The harness facts this protocol stands on (per-line Monitor wake,
 watch caps and re-arming, the lost-lines gap, at-least-once offsets)
-are recorded with evidence in `docs/claude-code-mechanics.md`. Read it
+are recorded with evidence in `docs/harness-mechanics.md`. Read it
 if any step below seems arbitrary.
 
 Your run dir is `~/.proto/<codebase>/run/courier/` — courier.json

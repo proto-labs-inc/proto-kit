@@ -122,7 +122,7 @@ half is down. Then the log for that process in the run dir:
 Harness facts this design stands on — per-line Monitor wake-ups,
 `-p` watch caps and re-arming, the lost-lines gap, session resume —
 are recorded with their verification evidence in
-`docs/claude-code-mechanics.md`.
+`docs/harness-mechanics.md`.
 
 Once per **laptop and codebase** the site can start agent work here.
 The codebase is the team's — many developers, each with their own

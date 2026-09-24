@@ -10,7 +10,7 @@
  * supervise.mjs: reads <run-dir>/session.json, starts the agent fresh
  * or with --resume <id>, captures the session id from the agent's own
  * JSON stream (the first stream event already carries session_id —
- * docs/claude-code-mechanics.md, "Session identity in headless runs"),
+ * docs/harness-mechanics.md, "Session identity in headless runs"),
  * and persists it for the next launch. Exits with the agent's code, so
  * supervise's crash-restart gives resume-across-crashes for free.
  *
