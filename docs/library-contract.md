@@ -2,9 +2,13 @@
 
 What an import writes into the library app at `~/.proto/<codebase>/library/`,
 and what the app (`template/library/`) reads. **This contract is frozen.**
-The fake driver (`tools/fake-import/run.mjs`) is its executable reference:
-the real import skill must be indistinguishable from it at the file level.
-Change either only together, with the app.
+`tools/library.mjs` is its only writer: every file below is written by
+one of its subcommands, and nothing else in the kit (no skill, no
+sub-agent, no script an agent composes) touches them. The fake driver
+(`tools/fake-import/run.mjs`) plays a recorded import through the same
+commands and is the contract's executable reference: the real import
+must be indistinguishable from it at the file level. Change the
+writer, the driver and the app only together.
 
 The library is a Vite React app (ADR 0003). The import never writes
 pages: it writes data into the app's `public/` folder, and the app
@@ -21,11 +25,35 @@ library/                          the app, scaffolded from template/library/
 │   ├── events.jsonl              append-only activity stream; the app tails it
 │   ├── queue.json                components the user asked for from the app
 │   └── components/<slug>/
-│       ├── <state>.html          one standalone page per state
-│       ├── screenshot.png        when skipped: a crop of the real product
-│       └── history/*.png         iteration screenshots and diff images
+│       ├── <state>.html          one standalone page per state, at most six
+│       ├── screenshot.png        when skipped: the component cropped from the live page at 2x
+│       └── history/<n>.png, <n>-diff.png   the last ten passes' replica captures and diffs
 └── dist/                         the build; what publish uploads
 ```
+
+## The writer
+
+```
+node tools/library.mjs init <library> <codebase> <source>
+node tools/library.mjs token <library> '<json>'
+node tools/library.mjs type <library> '<json>'
+node tools/library.mjs inventory <library> '<json array>'
+node tools/library.mjs component <library> <slug> status <found|extracting|done|skipped|queued> [--reason "…"] [--screenshot <png>]
+node tools/library.mjs state <library> <slug> <name> <file> <height>
+node tools/library.mjs history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "…"
+node tools/library.mjs event <library> [slug] "<activity>"
+node tools/library.mjs take-queued <library>
+node tools/library.mjs complete <library>
+```
+
+`<library>` is the app's folder or the codebase id. Every call reads
+the manifest, applies its one change, writes the manifest back
+atomically (temp file, then rename), appends one event line, and
+holds a lock across the four steps, so two lanes calling at once
+never interleave. Each call is one short shell line and prints the
+event it appended; a call that cannot apply (a `done` with no states,
+a `complete` with a component still moving, an unknown slug) refuses
+in one sentence and writes nothing.
 
 Every path inside `manifest.json` is relative to `public/`, which is the
 app's root: `components/button/default.html`, never `public/…` or `/…`.
@@ -68,11 +96,11 @@ import, never rewritten from scratch mid-run.
       "name": "Button",
       "category": "primitive",        // "primitive" | "composite"
       "status": "done",               // see the lifecycle below
-      "states": [                     // the first is the default; empty until extracted
+      "states": [                     // the first is the default; empty until extracted; at most six
         { "name": "Default", "file": "components/button/default.html", "height": 110 },
         { "name": "Hover", "file": "components/button/hover.html", "height": 110 }
       ],
-      "history": [                    // every verification pass, in order; may be empty
+      "history": [                    // the last ten verification passes, in order; may be empty
         {
           "at": "…ISO…",
           "activity": "Padding is 2px short on the right; widening",
@@ -94,14 +122,16 @@ import, never rewritten from scratch mid-run.
 
 - `found`: listed in the inventory, not started. `states` and `history` are empty.
 - `extracting`: being read, authored and verified. `history` grows as passes land.
-- `done`: `states` holds one entry per state, the default first. A single-state
-  component still lists that one state.
+- `done`: `states` holds one entry per state, the default first, then the
+  hover and disabled states where the product has them, then any other
+  state the product shows, at most six. A single-state component still
+  lists that one state.
 - `skipped`: could not be rebuilt. `reason` says why in the product's own terms
-  and `screenshot` shows the component cropped from the live product, so the
-  card is not an absence. `states` is empty.
+  and `screenshot` shows the component cropped from the live product at 2x,
+  so the card is not an absence. `states` is empty.
 - `queued`: the user pressed "Queue it" and the import has taken the request
-  (see queue.json). `reason` and `screenshot` are removed; the component goes
-  on to `extracting` and then `done` or `skipped` again.
+  (`take-queued`; see queue.json). `reason` and `screenshot` are removed;
+  the component goes on to `extracting` and then `done` or `skipped` again.
 
 A component with many natural variations (a generated illustration, a chart)
 shows several variations at once in its default state file rather than one
@@ -134,13 +164,14 @@ picker`, `Found 6 components`. No jargon, no file paths, no percentages.
 ```
 
 The app appends a request when the user presses "Queue it" on a skipped
-component (through the dev server; a published build cannot). The import
-polls the file, and for each request whose slug it knows: removes the
-request from `requests`, sets the component's `status` to `queued`, clears
-`completedAt`, and extracts it like any other component, setting
-`completedAt` again when nothing is left in motion. A request the import
-does not take stays in the file, and the app keeps showing that component
-as queued.
+component (through the dev server; a published build cannot). A running
+import polls the file with `take-queued`, which, for the first request
+whose slug it knows, removes the request from `requests`, sets the
+component's `status` to `queued`, clears `completedAt` and prints the
+slug; the import then extracts it like any other component and runs
+`complete` again when nothing is left in motion. A request nothing takes
+stays in the file, and the app keeps showing that component as queued
+and says the agent picks it up next time an import runs.
 
 ## components/<slug>/<state>.html
 
@@ -153,10 +184,12 @@ Webfonts the product uses are copied beside the file and declared with
 
 ## components/<slug>/history/*.png
 
-The replica screenshot and diff image of every verification pass, named by
-the manifest's `history` entries (`<n>.png`, `<n>-diff.png` by convention).
-Kept for every component, done or skipped: the "Underneath" reveal on the
-component's page plays them in order so the mismatch visibly falls.
+The replica screenshot and diff image of every verification pass,
+`<n>.png` and `<n>-diff.png`, `n` counting passes from 1 and never
+reused. At most ten passes are kept per component: when an eleventh
+lands, the oldest entry and its two files go. Kept for every component,
+done or skipped: the "Underneath" reveal on the component's page plays
+them in order so the mismatch visibly falls.
 
 ## The choreography
 
@@ -183,6 +216,7 @@ experience:
 
 An empty `events.jsonl`, empty arrays, a partial manifest, a component with
 no `history`, a skipped component without a `screenshot` (a blank block takes
-its place). It never tolerates: renamed fields, different status strings, a
-`done` component with no states, paths outside `components/`, or a manifest
-that shrinks.
+its place), a history whose oldest pass was dropped. It never tolerates:
+renamed fields, different status strings, a `done` component with no
+states, paths outside `components/`, or a token, type style, component or
+state that disappears.

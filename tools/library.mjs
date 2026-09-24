@@ -1,0 +1,439 @@
+#!/usr/bin/env node
+/**
+ * The one writer of the library contract (docs/library-contract.md).
+ * Every subcommand is one short line for the import to run: it reads
+ * public/manifest.json, applies one change, writes the manifest back
+ * atomically (temp file, then rename) and appends one line to
+ * public/events.jsonl, all under a lock, so parallel lanes never
+ * interleave a write. Nothing else in the kit writes these files; the
+ * fake driver (tools/fake-import/run.mjs) goes through here too.
+ *
+ * <library> is the library app's folder (~/.proto/<codebase>/library)
+ * or just the codebase id, which resolves to that folder. <json> is a
+ * JSON literal or @path to a file holding one.
+ *
+ *   init <library> <codebase> <source>
+ *       A fresh run when no run is open (resets everything), a resume
+ *       when one is; prints which. Appends "Reading the source".
+ *   token <library> <json>            one { name, value, group, role? }
+ *   type <library> <json>             one { name, family, size, weight, lineHeight, sample }
+ *   inventory <library> <json>        every component at once, [{ slug, name, category }], all "found"
+ *   component <library> <slug> status <found|extracting|done|skipped|queued>
+ *       [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
+ *       skipped takes the reason and the product crop (copied to
+ *       components/<slug>/screenshot.png); queued clears both.
+ *   state <library> <slug> <name> <file> <height>
+ *       Copies <file> to components/<slug>/<basename> and appends the state.
+ *   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
+ *       Moves both images into components/<slug>/history/ and appends the
+ *       pass; the oldest pass goes once there are more than ten.
+ *   event <library> [slug] <activity>  one activity line, about a component or the whole import
+ *   take-queued <library>             pops queue.json: prints the slug it took (now "queued",
+ *                                     completedAt cleared) or nothing
+ *   complete <library>                sets completedAt; refuses while a component is still moving
+ */
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, join, resolve } from "node:path";
+
+const USAGE = `usage: node library.mjs <subcommand> <library> ...
+  init <library> <codebase> <source>
+  token <library> <json>
+  type <library> <json>
+  inventory <library> <json array>
+  component <library> <slug> status <found|extracting|done|skipped|queued> [--reason ...] [--screenshot ...] [--activity ...]
+  state <library> <slug> <name> <file> <height>
+  history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity <line>
+  event <library> [slug] <activity>
+  take-queued <library>
+  complete <library>`;
+const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
+const CATEGORIES = ["primitive", "composite"];
+const HISTORY_CAP = 10;
+const STATE_CAP = 6;
+
+// Thrown, not exited: a failure inside the lock must still release
+// it, so the lock's finally runs before the process ends.
+class Failure extends Error {}
+const fail = (message) => {
+  throw new Failure(message);
+};
+process.on("uncaughtException", (e) => {
+  if (!(e instanceof Failure)) throw e;
+  console.error(e.message);
+  process.exit(1);
+});
+
+// ---- arguments ----
+
+const [subcommand, libraryArg, ...rest] = process.argv.slice(2);
+if (!subcommand || !libraryArg) fail(USAGE);
+
+const options = {};
+const positional = [];
+for (let i = 0; i < rest.length; i += 1) {
+  const arg = rest[i];
+  if (arg.startsWith("--")) {
+    if (rest[i + 1] === undefined) fail(`${arg} needs a value\n${USAGE}`);
+    options[arg.slice(2)] = rest[i + 1];
+    i += 1;
+  } else {
+    positional.push(arg);
+  }
+}
+
+const libraryDir = resolveLibrary(libraryArg);
+const publicDir = join(libraryDir, "public");
+if (!existsSync(join(libraryDir, "package.json")) || !existsSync(publicDir)) {
+  fail(`${libraryDir} is not a library app (no package.json or public/); scaffold it first (tools/host-library.mjs)`);
+}
+
+function resolveLibrary(arg) {
+  if (!arg.includes("/")) {
+    const byId = join(process.env.HOME ?? "", ".proto", arg, "library");
+    if (existsSync(byId)) return byId;
+  }
+  return resolve(arg);
+}
+
+function readJsonArg(arg) {
+  if (arg === undefined) fail(`missing JSON argument\n${USAGE}`);
+  let text = arg;
+  if (arg.startsWith("@")) text = readFileSync(arg.slice(1), "utf8");
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    fail(`not JSON: ${e.message}`);
+  }
+}
+
+// ---- the files ----
+
+const paths = {
+  manifest: join(publicDir, "manifest.json"),
+  events: join(publicDir, "events.jsonl"),
+  queue: join(publicDir, "queue.json"),
+  components: join(publicDir, "components"),
+  lock: join(publicDir, ".lock"),
+};
+const now = () => new Date().toISOString();
+
+const EMPTY = { codebase: null, source: null, startedAt: null, completedAt: null, tokens: [], type: [], components: [] };
+
+function readManifest() {
+  try {
+    return JSON.parse(readFileSync(paths.manifest, "utf8"));
+  } catch {
+    return { ...EMPTY };
+  }
+}
+
+// Temp file then rename: a reader (Vite's middleware, the app) never
+// sees a half-written manifest.
+function writeJsonAtomic(path, value) {
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n");
+  renameSync(tmp, path);
+}
+
+// One appended line is one write call, which O_APPEND keeps whole.
+function appendEvent(activity, slug) {
+  const line = { at: now() };
+  if (slug !== undefined) line.component = slug;
+  line.activity = activity;
+  appendFileSync(paths.events, JSON.stringify(line) + "\n");
+  if (slug === undefined) console.log(`· ${activity}`);
+  else console.log(`· [${slug}] ${activity}`);
+}
+
+// mkdir is atomic on every filesystem the kit runs on: whoever makes
+// the lock folder holds it. A lock older than ten seconds belongs to
+// a writer that died mid-call and is taken over.
+function withLock(work) {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    try {
+      mkdirSync(paths.lock);
+      break;
+    } catch {
+      let age = 0;
+      try {
+        age = Date.now() - statSync(paths.lock).mtimeMs;
+      } catch {}
+      if (age > 10_000) {
+        rmSync(paths.lock, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() > deadline) fail(`${paths.lock} is held by another writer; remove it if nothing is running`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+  try {
+    return work();
+  } finally {
+    rmSync(paths.lock, { recursive: true, force: true });
+  }
+}
+
+// Every subcommand: read, change, write, event, under the lock.
+function change(work) {
+  return withLock(() => {
+    const manifest = readManifest();
+    const result = work(manifest);
+    writeJsonAtomic(paths.manifest, manifest);
+    if (result?.activity !== undefined) appendEvent(result.activity, result.slug);
+    return result;
+  });
+}
+
+const componentIn = (manifest, slug) => {
+  const entry = manifest.components.find((c) => c.slug === slug);
+  if (!entry) fail(`no component "${slug}" in the manifest; it has: ${manifest.components.map((c) => c.slug).join(", ") || "none"}`);
+  return entry;
+};
+const folderOf = (slug) => join(paths.components, slug);
+const relative = (slug, ...parts) => ["components", slug, ...parts].join("/");
+
+function requireString(value, what) {
+  if (typeof value !== "string" || value.trim() === "") fail(`${what} must be a non-empty string`);
+  return value;
+}
+
+// ---- subcommands ----
+
+const commands = {
+  init() {
+    const [codebase, source] = positional;
+    if (!codebase || !source) fail(USAGE);
+    mkdirSync(paths.components, { recursive: true });
+    const outcome = change((manifest) => {
+      const open = manifest.startedAt !== null && manifest.completedAt === null;
+      if (open) {
+        manifest.codebase = codebase;
+        manifest.source = source;
+        return { kind: "resumed", activity: "Resuming the import" };
+      }
+      rmSync(paths.components, { recursive: true, force: true });
+      mkdirSync(paths.components, { recursive: true });
+      writeFileSync(paths.events, "");
+      writeJsonAtomic(paths.queue, { requests: [] });
+      Object.assign(manifest, { ...EMPTY, codebase, source, startedAt: now(), tokens: [], type: [], components: [] });
+      return { kind: "fresh", activity: "Reading the source" };
+    });
+    console.log(`${outcome.kind}: ${libraryDir}`);
+  },
+
+  token() {
+    const token = readJsonArg(positional[0]);
+    requireString(token.name, "token.name");
+    requireString(token.value, "token.value");
+    requireString(token.group, "token.group");
+    if (token.role !== undefined && token.role !== "surface" && token.role !== "text") fail("token.role is surface or text");
+    change((manifest) => {
+      const existing = manifest.tokens.findIndex((t) => t.name === token.name);
+      if (existing === -1) manifest.tokens.push(token);
+      else manifest.tokens[existing] = token;
+      return { activity: `Extracting color tokens (${token.name})` };
+    });
+  },
+
+  type() {
+    const style = readJsonArg(positional[0]);
+    requireString(style.name, "type.name");
+    requireString(style.family, "type.family");
+    requireString(style.size, "type.size");
+    requireString(style.lineHeight, "type.lineHeight");
+    requireString(style.sample, "type.sample");
+    if (typeof style.weight !== "number") fail("type.weight must be a number");
+    change((manifest) => {
+      const existing = manifest.type.findIndex((t) => t.name === style.name);
+      if (existing === -1) manifest.type.push(style);
+      else manifest.type[existing] = style;
+      return { activity: `Extracting type styles (${style.name})` };
+    });
+  },
+
+  inventory() {
+    const list = readJsonArg(positional[0]);
+    if (!Array.isArray(list) || list.length === 0) fail("inventory takes a non-empty JSON array of { slug, name, category }");
+    for (const item of list) {
+      requireString(item.slug, "slug");
+      requireString(item.name, "name");
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(item.slug)) fail(`slug "${item.slug}" must be lowercase letters, digits and dashes`);
+      if (!CATEGORIES.includes(item.category)) fail(`category of "${item.slug}" must be one of ${CATEGORIES.join(", ")}`);
+    }
+    change((manifest) => {
+      for (const item of list) {
+        if (manifest.components.some((c) => c.slug === item.slug)) continue;
+        manifest.components.push({ slug: item.slug, name: item.name, category: item.category, status: "found", states: [], history: [] });
+        mkdirSync(folderOf(item.slug), { recursive: true });
+      }
+      return { activity: `Found ${manifest.components.length} components` };
+    });
+  },
+
+  component() {
+    const [slug, keyword, status] = positional;
+    if (!slug || keyword !== "status" || !STATUSES.includes(status)) fail(USAGE);
+    if (status === "skipped" && !options.reason) fail("skipped needs --reason, one plain sentence for the user");
+    if (status === "skipped" && !options.screenshot) fail("skipped needs --screenshot, the component cropped from the live page (tools/cdp/crop.mjs)");
+    change((manifest) => {
+      const entry = componentIn(manifest, slug);
+      const folder = folderOf(slug);
+      mkdirSync(folder, { recursive: true });
+      entry.status = status;
+      if (status === "skipped") {
+        if (!existsSync(options.screenshot)) fail(`${options.screenshot} does not exist`);
+        copyFileSync(options.screenshot, join(folder, "screenshot.png"));
+        entry.reason = options.reason;
+        entry.screenshot = relative(slug, "screenshot.png");
+      } else {
+        delete entry.reason;
+        delete entry.screenshot;
+      }
+      if (status === "done" && entry.states.length === 0) fail(`${slug} has no states; add them with "state" before "done"`);
+      if (status === "queued") manifest.completedAt = null;
+      return { activity: options.activity ?? statusActivity(status, entry.name), slug };
+    });
+  },
+
+  state() {
+    const [slug, name, file, heightArg] = positional;
+    const height = Number(heightArg);
+    if (!slug || !name || !file || !Number.isInteger(height) || height <= 0) fail(USAGE);
+    if (!existsSync(file)) fail(`${file} does not exist`);
+    const target = basename(file);
+    if (!target.endsWith(".html")) fail("a state file is a standalone .html page");
+    change((manifest) => {
+      const entry = componentIn(manifest, slug);
+      if (entry.states.length >= STATE_CAP && !entry.states.some((s) => s.name === name)) {
+        fail(`${slug} already has ${STATE_CAP} states; the contract stops there`);
+      }
+      mkdirSync(folderOf(slug), { recursive: true });
+      copyFileSync(file, join(folderOf(slug), target));
+      const state = { name, file: relative(slug, target), height };
+      const existing = entry.states.findIndex((s) => s.name === name);
+      if (existing === -1) entry.states.push(state);
+      else entry.states[existing] = state;
+      return { activity: options.activity ?? `Captured the ${name.toLowerCase()} state of ${entry.name}`, slug };
+    });
+  },
+
+  history() {
+    const [slug] = positional;
+    const mismatch = Number(options.mismatch);
+    if (!slug || !options.screenshot || !options.diff || !options.activity || !Number.isInteger(mismatch) || mismatch < 0) fail(USAGE);
+    for (const image of [options.screenshot, options.diff]) if (!existsSync(image)) fail(`${image} does not exist`);
+    change((manifest) => {
+      const entry = componentIn(manifest, slug);
+      const folder = join(folderOf(slug), "history");
+      mkdirSync(folder, { recursive: true });
+      const n = nextPass(folder);
+      renameOrCopy(options.screenshot, join(folder, `${n}.png`));
+      renameOrCopy(options.diff, join(folder, `${n}-diff.png`));
+      entry.history.push({
+        at: now(),
+        activity: options.activity,
+        screenshot: relative(slug, "history", `${n}.png`),
+        diff: relative(slug, "history", `${n}-diff.png`),
+        mismatch,
+      });
+      while (entry.history.length > HISTORY_CAP) {
+        const dropped = entry.history.shift();
+        for (const image of [dropped.screenshot, dropped.diff]) rmSync(join(publicDir, image), { force: true });
+      }
+      return { activity: `${options.activity} (${mismatch.toLocaleString()} pixels off)`, slug };
+    });
+  },
+
+  event() {
+    let slug;
+    let activity;
+    if (positional.length === 2) [slug, activity] = positional;
+    else [activity] = positional;
+    if (!activity) fail(USAGE);
+    withLock(() => {
+      if (slug !== undefined) componentIn(readManifest(), slug);
+      appendEvent(activity, slug);
+    });
+  },
+
+  "take-queued"() {
+    const taken = change((manifest) => {
+      let queue = { requests: [] };
+      try {
+        queue = JSON.parse(readFileSync(paths.queue, "utf8"));
+      } catch {}
+      const request = queue.requests.find((r) => manifest.components.some((c) => c.slug === r.slug));
+      if (!request) return { slug: null };
+      writeJsonAtomic(paths.queue, { requests: queue.requests.filter((r) => r.slug !== request.slug) });
+      const entry = componentIn(manifest, request.slug);
+      entry.status = "queued";
+      delete entry.reason;
+      delete entry.screenshot;
+      manifest.completedAt = null;
+      return { activity: `Queued ${entry.name}`, slug: request.slug };
+    });
+    if (taken.slug !== null) console.log(taken.slug);
+  },
+
+  complete() {
+    change((manifest) => {
+      const moving = manifest.components.filter((c) => c.status !== "done" && c.status !== "skipped");
+      if (moving.length > 0) fail(`still moving: ${moving.map((c) => `${c.slug} (${c.status})`).join(", ")}; finish or skip them first`);
+      manifest.completedAt = now();
+      return { activity: "Import complete" };
+    });
+  },
+};
+
+function statusActivity(status, name) {
+  switch (status) {
+    case "found":
+      return `Found ${name}`;
+    case "extracting":
+      return `Reading ${name} on the live page`;
+    case "done":
+      return `Extracted ${name}`;
+    case "skipped":
+      return `Skipping ${name}`;
+    case "queued":
+      return `Queued ${name}`;
+  }
+}
+
+// Passes are numbered by the folder, not the manifest, so a dropped
+// pass never frees its number.
+function nextPass(folder) {
+  let last = 0;
+  for (const name of readdirSync(folder)) {
+    const match = /^(\d+)\.png$/.exec(name);
+    if (match) last = Math.max(last, Number(match[1]));
+  }
+  return last + 1;
+}
+
+// A rename fails across filesystems (a unit folder on another volume): copy then remove.
+function renameOrCopy(from, to) {
+  try {
+    renameSync(from, to);
+  } catch {
+    copyFileSync(from, to);
+    unlinkSync(from);
+  }
+}
+
+const run = commands[subcommand];
+if (!run) fail(`unknown subcommand "${subcommand}"\n${USAGE}`);
+run();
