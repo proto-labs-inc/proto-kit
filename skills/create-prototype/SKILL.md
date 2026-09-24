@@ -16,9 +16,14 @@ and state map; your job is only the app itself.
 
 You need three things before scaffolding; ask only for what's missing:
 
-- **A title** — kebab-case it into the slug (lowercase letters,
-  digits, hyphens; it becomes the subdomain label, so pick something a
-  person could read aloud).
+- **A short, specific title** — keep prototype names brief and to the
+  point, usually 2–5 words that identify the screen or flow. Avoid
+  filler such as "prototype," "concept," or "exploration." Good examples:
+  "Checkout Review," "Invite Teammates," "Empty Inbox," and "Billing
+  Settings." Avoid names like "New Checkout Flow Prototype" or "Settings
+  Page Design Exploration." Kebab-case the title into the slug (lowercase
+  letters, digits, hyphens; it becomes the subdomain label, so pick
+  something a person could read aloud).
 - **What it should show** — the feature, flow, or screen, and what is
   being explored or decided.
 - **A live source URL** when the prototype replicates an existing page
