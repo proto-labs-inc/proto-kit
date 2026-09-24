@@ -6,38 +6,46 @@
  * takes it down, and nothing beats when nothing serves. Staleness is
  * the signal; there is no "is live" flag anywhere.
  *
- * Every ~15s it checks its sibling processes in the run's state.json
- * (a crash-looping dev server must not claim liveness) and, when all
- * are up, calls the `prototype_heartbeat` MCP tool. Failures are
- * logged and beating continues: a beat that cannot be sent is a
- * missed beat, never a crash. The app treats a prototype as not live
- * after ~45s of silence.
+ * On every beat it checks its sibling processes in the run's
+ * state.json (a crash-looping dev server must not claim liveness)
+ * and, when all are up, calls the heartbeat MCP tool. The app answers
+ * with its staleness window and the loop (heartbeat.mjs) paces itself
+ * from that. Failures are logged and beating continues: a beat that
+ * cannot be sent is a missed beat, never a crash.
  *
- * Usage: node prototype-heartbeat.mjs <run-dir> <codebase> <slug>
- *        node prototype-heartbeat.mjs <run-dir> <codebase> --library
- *   account comes from ~/.proto/config.json. --library beats for the
- *   codebase's library serving run instead of a prototype (the
- *   library_heartbeat tool, no slug).
+ * Usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
+ *        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>
+ *   --kind is required: a prototype's serving run beats
+ *   prototype_heartbeat; the codebase's library serving run beats
+ *   library_heartbeat (no slug). account comes from
+ *   ~/.proto/config.json.
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { callTool } from "./mcp-call.mjs";
+import { callTool, readConfig } from "./mcp-call.mjs";
+import { beatForever } from "./heartbeat.mjs";
 
-const [runDirArg, codebase, slug] = process.argv.slice(2);
-if (!runDirArg || !codebase || !slug) {
-  console.error("usage: node prototype-heartbeat.mjs <run-dir> <codebase> <slug|--library>");
+const USAGE = `usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
+       node prototype-heartbeat.mjs --kind library <run-dir> <codebase>`;
+const KINDS = ["prototype", "library"];
+const args = process.argv.slice(2);
+const kindAt = args.indexOf("--kind");
+let kind = null;
+let positional = args;
+if (kindAt !== -1) {
+  kind = args[kindAt + 1];
+  positional = args.filter((_, i) => i !== kindAt && i !== kindAt + 1);
+}
+const [runDirArg, codebase, slug] = positional;
+if (!KINDS.includes(kind)) {
+  console.error(`--kind must be one of ${KINDS.join(", ")}; got ${kind ?? "nothing"}\n${USAGE}`);
   process.exit(1);
 }
-const isLibrary = slug === "--library";
+if (!runDirArg || !codebase || (kind === "prototype" && !slug)) {
+  console.error(USAGE);
+  process.exit(1);
+}
 const runDir = resolve(runDirArg);
-const account = (() => {
-  try {
-    return JSON.parse(readFileSync(join(process.env.HOME ?? "", ".proto", "config.json"), "utf8"))
-      .account?.user;
-  } catch {
-    return undefined;
-  }
-})();
 
 const alive = (pid) => {
   try {
@@ -65,15 +73,11 @@ function siblingsUp() {
   }
 }
 
-async function beat() {
-  if (!siblingsUp()) return; // serving is not healthy; stay silent
-  try {
-    if (isLibrary) await callTool("library_heartbeat", { codebase, account });
-    else await callTool("prototype_heartbeat", { codebase, slug, account });
-  } catch (e) {
-    console.log(`heartbeat not sent (${e.message}); still beating`);
-  }
+function sendBeat() {
+  if (!siblingsUp()) return null; // serving is not healthy; stay silent
+  const account = readConfig().account?.user;
+  if (kind === "library") return callTool("library_heartbeat", { codebase, account });
+  return callTool("prototype_heartbeat", { codebase, slug, account });
 }
 
-beat();
-setInterval(beat, 15_000);
+beatForever(sendBeat);

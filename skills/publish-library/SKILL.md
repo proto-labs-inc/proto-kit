@@ -11,10 +11,10 @@ lives now.
 1. Find the codebase id (the current codebase's `~/.proto/<id>/`; ask
    only if several codebases exist and the conversation doesn't say
    which).
-2. Run `node tools/publish.mjs --library <codebase>` (kit tools
+2. Run `node tools/publish.mjs --kind library --codebase <codebase>` (kit tools
    resolve from `${CLAUDE_PLUGIN_ROOT}` when running as the installed
    proto plugin, else the proto-kit checkout). It refuses politely if
-   the library has no `index.html` or no `manifest.json` — a library
+   the library has no `index.html` or no `manifest.json`: a library
    with nothing imported has nothing to publish; run
    import-design-system first.
 3. Tell the user in one line: the library is published at the printed

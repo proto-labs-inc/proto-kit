@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The proto CLI shim — thin wrappers over the kit's tools, resolved
 // relative to this script so it works from the installed plugin.
-//   proto status                          one health line per product
+//   proto status                          one health line per codebase
 //   proto verify <workspace>              data-proto-id marker check
 //   proto serve <run-dir> start|stop|status   the run supervisor
 import { spawnSync } from "node:child_process";

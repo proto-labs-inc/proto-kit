@@ -17,10 +17,8 @@
  * than a failing one. Nothing is logged to stdout but protocol
  * messages; notes go to stderr, which hosts show as the server's log.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { post } from "./mcp-call.mjs";
+import { NOT_SET_UP, post, readConfig } from "./mcp-call.mjs";
 
 const PROTOCOL_VERSION = "2025-03-26";
 const CLIENT_INFO = { name: "proto-kit", version: "0" };
@@ -34,13 +32,11 @@ function resolveConfig() {
   const secret = process.env.PROTO_PROVISION_SECRET;
   if (usable(app) && usable(secret)) return { app: app.trim().replace(/\/+$/, ""), secret };
   try {
-    const config = JSON.parse(
-      readFileSync(join(process.env.HOME ?? "", ".proto", "config.json"), "utf8"),
-    );
-    if (usable(config.app) && usable(config.auth?.secret))
-      return { app: config.app.replace(/\/+$/, ""), secret: config.auth.secret };
-  } catch {}
-  return null;
+    const config = readConfig();
+    return { app: config.app, secret: config.auth.secret };
+  } catch {
+    return null;
+  }
 }
 
 const send = (message) => process.stdout.write(JSON.stringify(message) + "\n");
@@ -110,11 +106,7 @@ const notConfigured = (id) =>
   send({
     jsonrpc: "2.0",
     id,
-    error: {
-      code: -32002,
-      message:
-        "Proto is not set up on this laptop yet: run the Proto setup skill, then try again.",
-    },
+    error: { code: -32002, message: NOT_SET_UP },
   });
 
 async function forward(message) {

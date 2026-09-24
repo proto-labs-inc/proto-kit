@@ -10,7 +10,7 @@
  * "command": {…}}. The CONSUMER commits progress by writing
  * {"offset": N} to <run-dir>/offset.json after acting on a line —
  * this tool never writes, so delivery is at-least-once across watch
- * gaps, agent restarts, and reboots (see docs/claude-code-mechanics.md,
+ * gaps, agent restarts, and reboots (see docs/harness-mechanics.md,
  * "Lines emitted while no watch is armed are LOST to the watch").
  *
  * Usage: node feed-tail.mjs <run-dir> [--once]

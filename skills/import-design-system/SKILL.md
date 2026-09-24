@@ -6,14 +6,14 @@ description: Import your product's design system into Proto. Reads your codebase
 # Import a design system
 
 You are turning a real product into its design system: the colors,
-the type styles, the fonts, and the notable components — buttons,
-inputs, badges, the handful of composites the product leans on — each
+the type styles, the fonts, and the notable components: buttons,
+inputs, badges, the handful of composites the product leans on, each
 type appearing **once**, its variants side by side on a neutral
 canvas with a line of realistic sample copy. The page you read is a
 specimen catalog of living instances; matching a whole page is
-create-prototype's job. The output is the **library contract** —
+create-prototype's job. The output is the **library contract**:
 `manifest.json`, `progress.json`, and `components/*.html` in
-`~/.proto/<codebase>/library/` — specified in
+`~/.proto/<codebase>/library/`, specified in
 `docs/library-contract.md`. Read that first; the user is watching the
 viewer fill in as you write, so the write choreography there is not
 optional polish, it is the product.
@@ -22,11 +22,11 @@ optional polish, it is the product.
 
 You have both of these. Use both:
 
-- **The source repo** — path in `~/.proto/<codebase>/codebase.json`.
+- **The source repo**: path in `~/.proto/<codebase>/codebase.json`.
   This is where names live: token definitions (CSS custom properties,
   Tailwind `@theme`/config, design-token files), font faces, the
   component inventory, and the mechanism behind every look.
-- **A live page** — the product page setup recorded
+- **A live page**: the product page setup recorded
   (`codebase.json`'s `source.liveUrl`), open and logged in in the
   Proto window; setup confirmed the login, so don't ask again. Read it over CDP. This is ground
   truth for values: deployed builds drift from checkouts (feature
@@ -38,7 +38,7 @@ When source and live page disagree, the live page wins.
 ## The one rule
 
 Never invent a value. Every color, size, gap, weight, and wrap in your
-output must trace back to something you read — from CDP or from the
+output must trace back to something you read: from CDP or from the
 source. If you catch yourself estimating a margin from a screenshot,
 stop. You have the tools to know. Guessed values look fine until they
 break, and when they break you can't tell which guess did it.
@@ -58,27 +58,27 @@ Prefer the installed plugin root exposed by the host (`PLUGIN_ROOT`,
 above this skill's `skills/` directory, which is also the proto-kit
 checkout root.)
 
-- `tools/cdp/chrome.mjs` — start (or find) the debug Chrome without
+- `tools/cdp/chrome.mjs`: start (or find) the debug Chrome without
   taking focus.
-- `tools/cdp/cdp.mjs` — connect to a CDP websocket; `evaluate()` in a page.
-- `tools/cdp/attach.mjs` — find tabs; open background tabs; navigate
+- `tools/cdp/cdp.mjs`: connect to a CDP websocket; `evaluate()` in a page.
+- `tools/cdp/attach.mjs`: find tabs; open background tabs; navigate
   worker tabs.
-- `tools/serve.mjs` — static server for your work dir. Serve replica
+- `tools/serve.mjs`: static server for your work dir. Serve replica
   and diff pages over http, never file://. This removes canvas taint,
   base64 embedding, and the stale file:// cache trap in one move.
-- `tools/cdp/wireframe.mjs` — the raw layout tree as labeled
+- `tools/cdp/wireframe.mjs`: the raw layout tree as labeled
   depth-colored boxes with a slider. The map, not the understanding.
-- `tools/cdp/capture.mjs` — `stableShot()`: clip screenshots behind the
+- `tools/cdp/capture.mjs`: `stableShot()`, clip screenshots behind the
   stability gate (two agreeing probes, then capture, then recheck).
-- `tools/cdp/diff.mjs` + `diff.html` — pixel compare in a browser tab;
+- `tools/cdp/diff.mjs` + `diff.html`: pixel compare in a browser tab;
   read `DIFF_NUMBERS` and `CLUSTERS` out of it.
-- `tools/cdp/workspace.mjs` — per-run work folders.
+- `tools/cdp/workspace.mjs`: per-run work folders.
 
 ## Where things go
 
-- `~/.proto/<codebase>/library/` — the contract files only. The viewer
+- `~/.proto/<codebase>/library/`: the contract files only. The viewer
   serves this folder; nothing else lands here.
-- `~/.proto/<codebase>/imports/<run>/` — your working artifacts:
+- `~/.proto/<codebase>/imports/<run>/`, your working artifacts:
   wireframes, and one `units/<name>/` per component with `notes.md`,
   captures, and diffs. The artifacts are how claims get checked.
 
@@ -96,25 +96,25 @@ startup means try again, not broken.
 
 Never steal focus. The user is doing something else while you work.
 `PUT /json/new` activates the tab and raises the Chrome window every
-time — don't use it. Use `tools/cdp/attach.mjs`: `openBackground()`
+time: don't use it. Use `tools/cdp/attach.mjs`: `openBackground()`
 creates tabs without raising the window, and `navigate()` on a reused
 worker tab never raises focus. Screenshots and reads work on background
 and occluded tabs (capture forces a frame commit), so the debug window
 can stay minimized the whole session.
 
-The debug port gives full read access to that Chrome — treat it as
+The debug port gives full read access to that Chrome: treat it as
 sensitive. Working artifacts from logged-in apps contain real user
 data; never commit or share them without a check.
 
 ## Order of operations
 
 (One side errand while the live page is attached: if the codebase has
-no icon yet — setup skipped it — grab the page's `<link rel="icon">`,
+no icon yet, setup skipped it, grab the page's `<link rel="icon">`,
 largest png/svg, and call `set_codebase_icon {account, codebase,
 image}` with a ≤256KB data URL. Fail soft; never let it interrupt
 the import.)
 
-0. **Host the library first — before extracting anything.** The
+0. **Host the library first, before extracting anything.** The
    whole point of the write choreography is that the user WATCHES the
    library fill in; that needs the viewer reachable from the site
    before item one. Reachable means through its tunnel, not on
@@ -136,8 +136,8 @@ the import.)
       processes, exactly as the serve skill does for a prototype:
       `node tools/serve.mjs <library-dir> <port>`, the tunnel
       connector from the provisioning result, and the liveness beat
-      `node tools/prototype-heartbeat.mjs <run-dir> <codebase>
-      --library`. Then `supervise.mjs start`. A library run without a
+      `node tools/prototype-heartbeat.mjs --kind library <run-dir>
+      <codebase>`. Then `supervise.mjs start`. A library run without a
       tunnel process is a bug: the beat stays silent without one, so
       the site would never call it live anyway.
    4. Verify through Cloudflare's edge only, once: `curl --resolve
@@ -147,29 +147,29 @@ the import.)
       it races the record it poisons this laptop for thirty minutes.
       Then tell the user the URL. Only then start the import.
 
-Write `progress.json` **before** doing anything slow — the first
+Write `progress.json` **before** doing anything slow: the first
 heartbeat ("Reading the source…") is what tells the user the import is
 alive. Then, flushing manifest + progress after every item per the
 contract:
 
 1. **Tokens.** Harvest definitions from the source (custom properties,
-   `@theme` blocks, token files) — the source has the *names* and the
+   `@theme` blocks, token files): the source has the *names* and the
    grouping. Spot-check values against the live page's computed styles;
    where they disagree, the live value wins and the disagreement goes
    in your run notes. Push each token as you confirm it.
 2. **Type styles.** Same split: families/weights/scale from the source,
    arbitrated live (`getComputedStyle` on real headings, body text,
    captions). Use real product copy as each style's `sample`.
-3. **Inventory — a curated shelf, not a census.** Build the component
+3. **Inventory: a curated shelf, not a census.** Build the component
    list before extracting anything, and flush it all at once as
-   `"found"` — the user sees the queue up front. Pick the
+   `"found"`: the user sees the queue up front. Pick the
    **notable** components: the primitives everything is made of
    (button, input, badge, and their peers), then the few composites
    the product visibly leans on (its card, its table, its page
    header). The source's component directories and the live page's
    class names (`LemonButton--secondary` names both component and
    variant) tell you what exists; your judgment picks what earns a
-   shelf spot — a first import of a dozen-odd components that
+   shelf spot: a first import of a dozen-odd components that
    renders faithfully beats an exhaustive one. Order primitives
    first; the queue order is the extraction order.
 4. **Components, in parallel.** Fan the inventory out to extraction
@@ -188,7 +188,7 @@ contract:
    - `completedAt` is set and `progress.json` says
      `{"status": "complete", "activity": "Import complete"}`;
    - the library is published so it outlives the laptop:
-     `node tools/publish.mjs --library <codebase>`;
+     `node tools/publish.mjs --kind library --codebase <codebase>`;
    - one line to the user: the library is published and stays
      viewable after this laptop closes;
    - then continue into the next thing setup asked for (a prototype
@@ -220,7 +220,7 @@ the next read.
    page can't, like why a container wraps at 4 buttons.
 6. When source and live page disagree, the live page wins.
 
-Before your first read — and again before your first pixel diff —
+Before your first read, and again before your first pixel diff,
 read **`docs/cdp-traps.md`**: the accumulated traps of reading and
 pixel-verifying live pages. Every one of them was paid for.
 
@@ -236,13 +236,13 @@ run:
    inline CSS built with *their* mechanisms, tokens referenced by the
    names you extracted, a line of realistic sample copy in the
    product's voice. Authoring is the point: it produces
-   understanding — named variants, known mechanisms, values with
+   understanding, named variants, known mechanisms, values with
    sources.
-3. **Verify each variant against its live instance — the full
+3. **Verify each variant against its live instance, the full
    loop.** Render the authored variant at the instance's absolute
    page coordinates in a verification page (`docs/cdp-traps.md`
    tells you why position matters and what will bite). Probe the
-   same landmark rects in both and require exact agreement —
+   same landmark rects in both and require exact agreement:
    geometry bugs surface as clean numbers there; in a pixel diff
    they surface as thousands of red pixels you then have to
    interpret. Then `stableShot()` both, diff, debug from the numbers
@@ -252,37 +252,37 @@ run:
 4. **Compose and land the variant sheet.** Assemble the verified
    variants side by side on a neutral canvas as the standalone
    `library/components/<name>.html`, set the entry's `file` and
-   `height` (measure the sheet's rendered height — don't guess),
+   `height` (measure the sheet's rendered height: don't guess),
    status `"done"`, flush.
 5. **Or skip it honestly.** A component you can't isolate cleanly
    (portals, canvas-rendered, needs state you can't reach) becomes
-   `"skipped"` with a `reason` written for the user — what blocked
+   `"skipped"` with a `reason` written for the user: what blocked
    you, whether a retry could work. Never silently dropped, never
    faked.
 
 Component files must stand alone: inline CSS or same-folder assets, no
 build step, no external requests. If the product's fonts are webfonts,
 copy the font files into `library/` and `@font-face` them locally with
-a real fallback stack — a component preview that silently falls back
+a real fallback stack: a component preview that silently falls back
 to Helvetica fails the "renders faithfully" bar.
 
-## Fan out — this is a parallel job
+## Fan out: this is a parallel job
 
 Extraction is embarrassingly parallel and speed is a feature: the
 user is watching the library fill. The curated tree already divides
-the work — one component type per unit — so **dispatch one
+the work, one component type per unit, so **dispatch one
 extraction subagent per unit, all of them at once** (up to whatever
 your harness comfortably runs; there is no fixed cap, and serial
 extraction is wrong unless only one unit remains). Tokens and type
 styles can be a parallel unit of their own alongside the components.
 
-Use cheap, fast models for unit work — the protocol is prescriptive
+Use cheap, fast models for unit work: the protocol is prescriptive
 enough that they do it well. On Claude Code the `importer` agent is
 preconfigured for this (Haiku); on Codex, `spawn_agent` with
 `proto-importer`. Verification of claims can go to the
 `verifier`/`proto-verifier` the same way.
 
-One orchestrator — you, the bigger model — owns the run and the
+One orchestrator, you, the bigger model, owns the run and the
 contract files; only you write `manifest.json` and `progress.json`.
 Each subagent gets a narrow brief: the target element, this skill,
 its own `units/<name>/` folder (the only place it may write). Do not

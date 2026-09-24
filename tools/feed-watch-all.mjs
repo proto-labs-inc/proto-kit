@@ -17,7 +17,7 @@ import { join } from "node:path";
 const root = join(process.env.HOME ?? "", ".proto");
 const feeds = new Map(); // codebase -> {offset, carry}
 
-function drainProduct(codebase) {
+function drainCodebase(codebase) {
   const runDir = join(root, codebase, "run", "courier");
   const feed = join(runDir, "commands.jsonl");
   let state = feeds.get(codebase);
@@ -82,7 +82,7 @@ function tick() {
   } catch {
     return; // no ~/.proto yet; keep waiting
   }
-  for (const p of codebases) drainProduct(p);
+  for (const p of codebases) drainCodebase(p);
   beat(codebases);
 }
 
