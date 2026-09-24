@@ -1,6 +1,6 @@
 ---
 name: serve
-description: Put a prototype online at its public address. Provisions its tunnel, starts the dev server and connector under supervision, registers it in your gallery, publishes a permanent snapshot, verifies end to end, and recovers when something is down. Use when the user wants to share or see a prototype online, when a prototype's public address stopped working, or after create-prototype finishes.
+description: Put a prototype online at its public address. Registers it in your gallery, provisions its tunnel, starts the dev server and connector under supervision, publishes a permanent snapshot, verifies end to end, and recovers when something is down. Use when the user wants to share or see a prototype online, when a prototype's public address stopped working, or after create-prototype finishes.
 ---
 
 # Serve
@@ -18,14 +18,26 @@ directory, which is also the proto-kit checkout root.
 
 ## Start
 
-1. **Provision the tunnel** (idempotent; reuses an existing tunnel for
-   the slug): call the `provision_tunnel` MCP tool with
-   `{ slug: "<slug>", port: <port from prototype.json> }`. It returns
-   `hostname` (the public address) and `connectorToken` (runs exactly
-   this one tunnel, nothing else). An auth failure means the MCP
-   connection's credential is stale: back to setup.
+1. **Register the prototype** first: `register_prototype { codebase,
+   slug, title, owner }`, owner = config.json's `account.user`. It
+   upserts on (codebase, slug), so re-registering after a title change
+   is correct. The row must exist before the next step: the site
+   stores the prototype's address on it. An unknown-owner error means
+   `account.user` is wrong: fix it in setup, not here. Registering
+   also flips the build's brief to done, closing the gallery's loading
+   card; the tile waits for a heartbeat before it loads anything.
 
-2. **Write the run spec** at `~/.proto/<codebase>/run/<slug>/spec.json`
+2. **Provision the tunnel** (idempotent; reuses an existing tunnel):
+   call the `provision_tunnel` MCP tool with
+   `{ kind: "prototype", codebase: "<codebase>", slug: "<slug>", port: <port from prototype.json> }`.
+   The site chooses the address, stores it on the prototype's row, and
+   returns it: `url` (the public address), `hostname` (its bare form)
+   and `connectorToken` (runs exactly this one tunnel, nothing else).
+   Never build the address yourself; read it from this answer. An
+   "unknown prototype" error means step 1 was skipped; an auth failure
+   means the MCP connection's credential is stale: back to setup.
+
+3. **Write the run spec** at `~/.proto/<codebase>/run/<slug>/spec.json`
    (this dir, not the workspace: the workspace stays naked):
 
    ```jsonc
@@ -51,16 +63,16 @@ directory, which is also the proto-kit checkout root.
    HMR: without it the tunnel serves a blocked-host error. `chmod
    600 spec.json`; it holds the connector token.
 
-3. **Start**: `node tools/supervise.mjs start ~/.proto/<codebase>/run/<slug>`.
+4. **Start**: `node tools/supervise.mjs start ~/.proto/<codebase>/run/<slug>`.
    Children that die are restarted with backoff; `stop` and `status`
    take the same run dir.
 
-4. **Verify end to end, in order**, each step isolates the next
+5. **Verify end to end, in order**, each step isolates the next
    failure:
    - `http://localhost:<port>` serves the prototype (dev server up).
    - `http://localhost:<port>/prototype.json` returns the manifest
      (the Frame needs it).
-   - `https://<hostname>` serves it publicly. Check this **through
+   - The `url` from step 2 serves it publicly. Check this **through
      Cloudflare's edge only**: `curl --resolve <hostname>:443:<edge
      ip> https://<hostname>/prototype.json`, with the ip from `dig
      @1.1.1.1 <hostname> A`. Give the edge up to ~30s on a fresh
@@ -72,14 +84,10 @@ directory, which is also the proto-kit checkout root.
      laptop and at the ISP, and the prototype looks dead long after
      it is up. The record can take a few minutes to be visible to
      ordinary resolvers; that is normal and not yours to wait for.
+     (The site itself never loads the address until the row has one
+     and a fresh heartbeat, so registering first is safe.)
 
-   Only now, with the tunnel provisioned and the run up, register the
-   prototype in the gallery (`register_prototype`, as create-prototype
-   describes). Registering earlier puts a tile on the site whose
-   hostname does not exist yet; the first person to open it poisons
-   their resolver the same way.
-
-5. **Publish** a permanent snapshot. Build the workspace with its
+6. **Publish** a permanent snapshot. Build the workspace with its
    own build script (`pnpm build`; the templates configure relative
    asset paths, which a published build needs because it lives under
    a path). Then upload the output folder: `node tools/publish.mjs
@@ -88,14 +96,10 @@ directory, which is also the proto-kit checkout root.
    URL. The Frame falls back to that URL when the laptop is gone, so
    viewers see the last checkpoint instead of nothing.
 
-6. **Report**: the live URL, the published URL, the Frame URL
-   (`<app>/p/<slug>`), and where the run lives. Tell the user
-   plainly: the prototype is live while this laptop serves it, and
-   falls back to the last published build when serving stops. (Gallery
-   registration is create-prototype's job, via the
-   `register_prototype` MCP tool: it upserts, so re-registering
-   there after a title change is the fix if the gallery shows a
-   stale title.)
+7. **Report**: the live URL (step 2's `url`), the published URL, the
+   Frame URL (`<app>/p/<slug>`), and where the run lives. Tell the
+   user plainly: the prototype is live while this laptop serves it,
+   and falls back to the last published build when serving stops.
 
 ## Recovery
 
@@ -109,7 +113,7 @@ half is down. Then the log for that process in the run dir:
   error introduced since.
 - **tunnel DOWN or public URL dead with dev up**: read `tunnel.log`.
   `cloudflared` missing → install it; token rejected → the tunnel was
-  deprovisioned, re-provision (step 1) and rewrite the spec; connected
+  deprovisioned, re-provision (step 2) and rewrite the spec; connected
   but 502 at the edge → the dev server isn't listening on the spec'd
   port.
 - **Both up but the page is wrong**: the Frame reads
@@ -128,13 +132,13 @@ are recorded with their verification evidence in
 Once per **laptop and codebase** the site can start agent work here.
 The codebase is the team's: many developers, each with their own
 laptop and courier; **the courier is this laptop's**, identified by a
-cloud-minted opaque `courierId`. The courier's tunnel is never named
-after the codebase: its slug is the per-laptop id `c-<courierId>`.
-The library's tunnel is the exception: the site's Design system page
-loads `https://<codebaseId>-library.<base domain>`, so the library
-tunnel's slug is `<codebaseId>-library` (one per codebase; two laptops
-serving the same codebase's library would contend for it, accepted
-for now). Laptop paths stay keyed by the codebase id
+cloud-minted opaque `courierId`. Tunnels are provisioned by target:
+the courier's is `{ kind: "courier", courierId }`, one per laptop,
+never named after the codebase; the library's is `{ kind: "library",
+codebase }`, one per codebase (two laptops serving the same codebase's
+library would contend for it, accepted for now). The site chooses and
+stores every address; read it from the tool's answer, never build it.
+Laptop paths stay keyed by the codebase id
 (`~/.proto/<codebase>/`); the courier id lives in the run dir. Three pieces, one
 supervised run dir (`~/.proto/<codebase>/run/courier/`):
 
@@ -163,10 +167,11 @@ Setup:
    keeps its ids; one account with two laptops gets two couriers).
 2. Pick a free local port for the listener; generate a command
    secret (`openssl rand -hex 24`).
-3. Provision the tunnel: `provision_tunnel`, slug **`c-<courierId>`**,
-   the listener's port.
+3. Provision the tunnel: `provision_tunnel { kind: "courier",
+   courierId, port: <the listener's port> }`. Its answer's `hostname`
+   is the courier's public address.
 4. **Endpoint**: `register_courier { courierId, host, secret,
-   account }`: `host` the `c-<courierId>` hostname (a full URL is
+   account }`: `host` the `hostname` from step 3 (a full URL is
    accepted for local dev couriers), `secret` from step 2. This
    call is repeatable, keyed on courierId: re-provisioned tunnel or
    rotated secret just overwrites. The user never sees or touches a
@@ -180,14 +185,13 @@ Setup:
    `tools/feed-drive.mjs`).
 6. `spec.json`: the listener
    (`node <kit>/tools/courier.mjs <run-dir>`) and `cloudflared` with
-   the `c-<courierId>` connector token (plus the fallback agent
+   the courier's connector token from step 3 (plus the fallback agent
    launcher when running nobody-at-the-keyboard).
    `supervise.mjs start`.
 7. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
    `Authorization: Bearer <secret>` answers with `agentListening`
    and the line lands in `commands.jsonl`; the same POST works
-   against the public `c-<courierId>` hostname once the edge
-   settles.
+   against the public hostname from step 3 once the edge settles.
 
 **Heartbeat.** The listener beats `courier_heartbeat { courierId,
 agentListening }` at the cadence the app answers with (fail-soft;
@@ -208,4 +212,6 @@ recovery prompt is the answer.
 `node tools/supervise.mjs stop <run-dir>` stops serving; the tunnel
 and DNS record stay provisioned (harmless, instantly reusable). Full
 teardown, only when the user asks to remove the prototype: the
-`delete_tunnel` MCP tool with the slug, then delete the run dir.
+`delete_tunnel` MCP tool with the same target provisioning took
+(`{ kind: "prototype", codebase, slug }`), which also clears the
+stored address, then delete the run dir.
