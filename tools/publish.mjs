@@ -193,6 +193,19 @@ const account = config.account?.user;
 let target;
 if (kind === "prototype") target = { kind, codebase, slug };
 else target = { kind, codebase };
+
+// A prototype publish records which rig it was built with, so the app
+// knows which message contract the published build speaks. Pre-npm the
+// rig ships as source from the proto checkout named in config.packages;
+// its package version is the rig version.
+let rigVersion = null;
+if (kind === "prototype") {
+  if (!config.packages) fail("config.json has no packages path; setup records it (pre-npm, the rig's source)");
+  const rigPackage = join(config.packages, "rig-core", "package.json");
+  if (!existsSync(rigPackage)) fail(`${rigPackage} not found; config.packages must point at a proto checkout's packages folder`);
+  rigVersion = JSON.parse(readFileSync(rigPackage, "utf8")).version;
+  if (!rigVersion) fail(`${rigPackage} has no version`);
+}
 const opened = unwrap(
   await callTool("begin_publish", { ...target, account, files: manifest }).catch((e) => ({
     content: [{ text: e.message }],
@@ -229,8 +242,10 @@ if (failed.length > 0) {
   process.exit(1);
 }
 
+const finishInput = { ...target, buildId, account };
+if (kind === "prototype") finishInput.rigVersion = rigVersion;
 const finished = unwrap(
-  await callTool("finish_publish", { ...target, buildId, account }).catch((e) => ({
+  await callTool("finish_publish", finishInput).catch((e) => ({
     content: [{ text: e.message }],
   })),
 );
