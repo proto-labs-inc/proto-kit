@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon } from "lucide-react";
+import { ArrowLeftIcon, ClockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ComponentBlock } from "@/components/ComponentBlock";
-import { ImportContext } from "@/components/ImportContext";
+import { ImportedAt } from "@/components/ImportedAt";
 import { ImportQueue } from "@/components/ImportQueue";
 import { TokenSwatches } from "@/components/TokenSwatches";
 import { TypeSpecimens } from "@/components/TypeSpecimens";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { EVERYTHING, type SendOutcome } from "@/courier";
-import { componentView, importInProgress, importRequested, type Component, type Courier, type Library } from "@/library";
+import { componentView, importInProgress, importRequested, queuedSentence, type Component, type Courier, type Library } from "@/library";
 import { galleryUrl } from "@/route";
-import { clock, stamp } from "@/time";
 
 type Props = { library: Library; courier: Courier };
 
@@ -26,15 +25,12 @@ export function Overview({ library, courier }: Props) {
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10 md:grid md:grid-cols-[1fr_16rem] md:gap-x-12">
       <div className="flex min-w-0 flex-col gap-14">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-xl font-medium">{manifest.product?.name ?? "Design system"}</h1>
-            {started && <p className="m-0 text-sm text-muted-foreground">{when(manifest)}</p>}
-          </div>
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="m-0 text-xl font-medium">{manifest.product?.name ?? "Design system"}</h1>
           {started && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <ImportAgain library={library} courier={courier} />
-              <ImportContext library={library} />
+              <ImportedAt manifest={manifest} />
             </div>
           )}
         </header>
@@ -72,14 +68,6 @@ export function Overview({ library, courier }: Props) {
   );
 }
 
-/** When the import ran, under the product's name. */
-function when(manifest: Library["manifest"]): string {
-  const source = manifest.source ?? "your product";
-  if (manifest.completedAt !== null) return `Imported from ${source}, ${stamp(manifest.completedAt)}`;
-  if (manifest.startedAt !== null) return `Importing from ${source} since ${clock(manifest.startedAt)}`;
-  return "";
-}
-
 type SectionProps = {
   title: string;
   filled: boolean;
@@ -101,23 +89,42 @@ function Section({ title, filled, reading, reserve, gap = "gap-4", children }: S
 
 type Ask = "idle" | "asking" | SendOutcome;
 
-/** Runs the whole import again: the same request as "Queue it", for everything. */
+/**
+ * Runs the whole import again: the same request as "Queue it", for
+ * everything. While the import runs there is nothing to ask for, so the
+ * button is there and disabled; once the request is in and nothing has
+ * taken it yet, its place carries the queued line and the way out of
+ * it, the shape and the words a queued component's block uses.
+ */
 function ImportAgain({ library, courier }: Props) {
   const [ask, setAsk] = useState<Ask>("idle");
-  const pending = importRequested(library.requests);
-  const running = library.manifest.completedAt === null;
-  if (running) return null;
-  if (pending) {
-    return <span className="text-sm text-muted-foreground">Import again: your agent picks this up next time it runs.</span>;
-  }
-  const send = async () => {
+  const { manifest, requests } = library;
+  const send = async (call: Courier["ask"]) => {
     setAsk("asking");
-    setAsk(await courier.ask(EVERYTHING));
+    setAsk(await call(EVERYTHING));
   };
+  if (manifest.completedAt === null) {
+    return (
+      <Button size="sm" variant="outline" disabled>
+        Import again
+      </Button>
+    );
+  }
+  if (importRequested(requests)) {
+    return (
+      <div className="flex items-center gap-2">
+        <ClockIcon className="size-4 shrink-0 text-muted-foreground" />
+        <p className="m-0 text-sm font-medium">{queuedSentence(manifest)}</p>
+        <Button size="sm" variant="ghost" onClick={() => send(courier.withdraw)} disabled={ask === "asking"}>
+          Cancel
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-3">
       {ask === "unreachable" && <span className="text-xs text-muted-foreground">Only the live library can ask; open it from your agent's session.</span>}
-      <Button size="sm" variant="outline" onClick={send} disabled={ask === "asking"}>
+      <Button size="sm" variant="outline" onClick={() => send(courier.ask)} disabled={ask === "asking"}>
         Import again
       </Button>
     </div>

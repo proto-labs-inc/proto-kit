@@ -226,6 +226,17 @@ export type ComponentView =
 const NEXT = "Queued: the import builds this next.";
 const NEXT_RUN = "Queued: your agent builds this next time it runs.";
 
+/**
+ * What something queued is waiting for, in the one wording the whole
+ * page uses: the running import takes it next, and a finished one
+ * leaves it to the agent's next run. The header's re-import and a
+ * component's block read it from here, so they never drift apart.
+ */
+export function queuedSentence(manifest: Manifest): string {
+  if (manifest.completedAt === null) return NEXT;
+  return NEXT_RUN;
+}
+
 export function componentView(component: Component, library: Library): ComponentView {
   const { manifest, events, requests } = library;
   const activity = latestActivity(events, component.slug);
@@ -235,9 +246,7 @@ export function componentView(component: Component, library: Library): Component
       return { kind: "preview", state: component.states[0] };
     case "skipped":
       if (requested(requests, component.slug)) {
-        let sentence = NEXT_RUN;
-        if (manifest.completedAt === null) sentence = NEXT;
-        return { kind: "pending", sentence, screenshot, reason: component.reason ?? null, skipKind: component.skipKind ?? null, withdrawable: true };
+        return { kind: "pending", sentence: queuedSentence(manifest), screenshot, reason: component.reason ?? null, skipKind: component.skipKind ?? null, withdrawable: true };
       }
       return { kind: "skipped", reason: component.reason ?? "Skipped", skipKind: component.skipKind ?? "not-tried", screenshot };
     case "queued":
