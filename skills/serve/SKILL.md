@@ -134,8 +134,8 @@ loads `https://<codebaseId>-library.<base domain>`, so the library
 tunnel's slug is `<codebaseId>-library` (one per codebase; two laptops
 serving the same codebase's library would contend for it, accepted
 for now). Laptop paths stay keyed by the codebase id
-(`~/.proto/<productId>/`); the courier id lives in the run dir. Three pieces, one
-supervised run dir (`~/.proto/<productId>/run/courier/`):
+(`~/.proto/<codebase>/`); the courier id lives in the run dir. Three pieces, one
+supervised run dir (`~/.proto/<codebase>/run/courier/`):
 
 - **The listener** (`tools/courier.mjs`) — the doorbell. Receives
   bearer-authed enumerated commands on a local port, validates, and
@@ -170,10 +170,13 @@ Setup:
    call is repeatable, keyed on courierId: re-provisioned tunnel or
    rotated secret just overwrites. The user never sees or touches a
    credential.
-5. Write `~/.proto/<productId>/run/courier/courier.json`
+5. Write `~/.proto/<codebase>/run/courier/courier.json`
    (`chmod 600`) — `{ codebase, port, secret, courierId, libraryId,
-   agent }`; the `agent` block is the fallback launcher's command
-   template (see `tools/agent-launch.mjs`'s header).
+   codebaseDir, agent }`; `codebaseDir` is the codebase checkout
+   (`codebase.json`'s `source.path`), where the fallback session runs;
+   the `agent` block is the fallback launcher's command template (see
+   `tools/agent-launch.mjs`'s header; on Codex, `codexAgent`, see
+   `tools/feed-drive.mjs`).
 6. `spec.json` — the listener
    (`node <kit>/tools/courier.mjs <run-dir>`) and `cloudflared` with
    the `c-<courierId>` connector token (plus the fallback agent
