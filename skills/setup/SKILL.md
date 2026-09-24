@@ -109,9 +109,7 @@ for "who am I and where is the app":
 ```jsonc
 {
   "schemaVersion": 1,
-  "app": "https://…",              // the Proto app's origin — from the user
-                                   //  or a proto checkout's .env (PROTO_APP_DOMAIN).
-                                   //  Domains live here and in .env only, never in code or docs.
+  "app": "https://…",              // the Proto app's origin, from the setup prompt
   "account": { "user": "<id>", "name": "<name>" },   // both from the snippet; org comes from whoami
   "auth": { "kind": "shared-secret", "secret": "…" },
   "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
