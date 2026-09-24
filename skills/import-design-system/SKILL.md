@@ -329,9 +329,9 @@ under the run). The loop:
    is the two Chromes choosing different faces (the traps doc), not
    your component. Every pass's files stay in `passes/`; the
    orchestrator moves them into the library's history, where the
-   user watches the red drain. Ten passes is the cap the library
-   keeps and a reasonable cap for you: past it, skip with what you
-   learned as the reason.
+   user watches the red drain: every pass is kept, so the whole climb
+   stays on the page. Ten is a reasonable number of passes to spend on
+   one component: past it, skip with what you learned as the reason.
 4. **Verify the other states** the same way against their live
    instances where the page shows them (a hovered row, a focused
    field: ask the orchestrator to ask the user only when the state

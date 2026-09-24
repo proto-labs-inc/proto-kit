@@ -31,8 +31,8 @@
  *       140 characters in the product's terms, and the product crop
  *       (copied to components/<slug>/screenshot.png); queued clears both.
  *   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
- *       Moves both images into components/<slug>/history/ and appends the
- *       pass; the oldest pass goes once there are more than ten.
+ *       Moves both images into components/<slug>/history/ and appends
+ *       the pass. Every pass a component made is kept.
  *   event <library> [slug] <activity>  one activity line, about a component or the whole import
  *   take-queued <library>             pops queue.json: prints the slug it took (now "queued",
  *                                     completedAt cleared) or nothing
@@ -64,7 +64,6 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
   take-queued <library>
   complete <library>`;
 const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
-const HISTORY_CAP = 10;
 const REASON_CAP = 140;
 
 // Thrown, not exited: a failure inside the lock must still release
@@ -359,10 +358,6 @@ const commands = {
         diff: relative(slug, "history", `${n}-diff.png`),
         mismatch,
       });
-      while (entry.history.length > HISTORY_CAP) {
-        const dropped = entry.history.shift();
-        for (const image of [dropped.screenshot, dropped.diff]) rmSync(join(publicDir, image), { force: true });
-      }
       return { activity: `${options.activity} (${mismatch.toLocaleString()} pixels off)`, slug };
     });
   },
@@ -466,8 +461,8 @@ function statusActivity(status, name) {
   }
 }
 
-// Passes are numbered by the folder, not the manifest, so a dropped
-// pass never frees its number.
+// Passes are numbered by the folder, not the manifest, so a number is
+// never reused.
 function nextPass(folder) {
   let last = 0;
   for (const name of readdirSync(folder)) {

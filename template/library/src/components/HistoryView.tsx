@@ -72,7 +72,7 @@ function Player({ component }: { component: Component }) {
       <div className="flex items-baseline gap-4">
         <span className="text-4xl font-medium tabular-nums">{iteration.mismatch.toLocaleString()}</span>
         <span className="text-sm text-muted-foreground">pixels off, iteration {index + 1} of {history.length}</span>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
           {history.map((_, i) => (
             <button
               key={i}

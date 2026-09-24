@@ -36,7 +36,7 @@ library/                          the app, scaffolded from template/library/
 │   ├── queue.json                components the user asked for from the app
 │   └── components/<slug>/
 │       ├── screenshot.png        when skipped: the component cropped from the live page at 2x
-│       └── history/<n>.png, <n>-diff.png   the last ten passes' replica captures and diffs
+│       └── history/<n>.png, <n>-diff.png   every pass's replica capture and diff
 └── dist/                         the build; what publish uploads
 ```
 
@@ -114,7 +114,7 @@ import, never rewritten from scratch mid-run.
         { "name": "Hover", "props": { "hover": true } },
         { "name": "Disabled", "props": { "disabled": true } }
       ],
-      "history": [                    // the last ten verification passes, in order; may be empty
+      "history": [                    // every verification pass, in order; may be empty
         {
           "at": "…ISO…",
           "activity": "Padding is 2px short on the right; widening",
@@ -235,10 +235,9 @@ affected.
 
 The replica screenshot and diff image of every verification pass,
 `<n>.png` and `<n>-diff.png`, `n` counting passes from 1 and never
-reused. At most ten passes are kept per component: when an eleventh
-lands, the oldest entry and its two files go. Kept for every component,
-done or skipped: the "Underneath" reveal on the component's page plays
-them in order so the mismatch visibly falls.
+reused. Every pass a component made is kept, however many it took, for
+every component, done or skipped: the "Underneath" reveal on the
+component's page plays them in order so the mismatch visibly falls.
 
 ## The choreography
 
@@ -265,8 +264,7 @@ experience:
 
 An empty `events.jsonl`, empty arrays, a partial manifest, a component with
 no `history`, a skipped component without a `screenshot` (a blank block takes
-its place), a history whose oldest pass was dropped, a component whose
-module throws (its block says so). It never tolerates: renamed fields,
+its place), a component whose module throws (its block says so). It never tolerates: renamed fields,
 different status strings, a `done` component with no `module` or no
 states, a `module` outside `src/components/`, paths outside
 `components/`, or a token, type style, component or state that
