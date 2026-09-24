@@ -38,9 +38,13 @@ export type Component = {
   history: Iteration[];
 };
 
+/** The product as its live page presents it: the name heads the library. */
+export type Product = { name: string; pageUrl: string; pageTitle: string };
+
 export type Manifest = {
   codebase: string | null;
   source: string | null;
+  product: Product | null;
   startedAt: string | null;
   completedAt: string | null;
   tokens: Token[];

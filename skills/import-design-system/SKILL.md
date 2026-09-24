@@ -160,7 +160,11 @@ the import.)
 
 Append the first event to `public/events.jsonl` **before** doing
 anything slow: that line ("Reading the source") is what tells the user
-the import is alive. Then, flushing the manifest and appending an event
+the import is alive. The same first flush of the manifest sets
+`codebase`, `source`, `startedAt` and `product`: the live page's
+address, its `<title>` verbatim, and the product's name taken from
+that title ("Expenses · Meridian" names Meridian), which is the
+library's page heading. Then, flushing the manifest and appending an event
 after every item per the contract:
 
 1. **Tokens.** Harvest definitions from the source (custom properties,
