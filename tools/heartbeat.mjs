@@ -1,29 +1,34 @@
 /**
  * The beat loop the kit's heartbeat processes share:
  * prototype-heartbeat.mjs (a prototype's or the library's serving run)
- * and courier.mjs (this laptop's courier). The app owns the cadence:
- * every heartbeat tool answers with `staleAfterSeconds`, the silence
- * after which it treats the laptop as gone, and this loop beats at a
- * third of that window, so the app still sees a beat inside it when
- * one goes missing. Only the first beat is sent before any answer
- * exists; from then on the interval is the app's. A beat that fails,
- * or that the caller skips because serving is not healthy, keeps the
- * last window learned and never crashes the process: staleness is the
- * signal, and a beat that cannot be sent is a missed beat.
+ * and courier.mjs (this laptop's courier). Every beat is one call of
+ * the app's `heartbeat` tool with a target that says what is being
+ * served: { kind: "prototype", codebase, slug }, { kind: "library",
+ * codebase } or { kind: "courier", courierId, agentListening }; the
+ * account comes from ~/.proto/config.json. The app owns the cadence:
+ * the tool answers with `staleAfterSeconds`, the silence after which
+ * it treats the laptop as gone, and this loop beats at a third of that
+ * window, so the app still sees a beat inside it when one goes
+ * missing. Only the first beat is sent before any answer exists; from
+ * then on the interval is the app's. A beat that fails, or that the
+ * caller skips because serving is not healthy, keeps the last window
+ * learned and never crashes the process: staleness is the signal, and
+ * a beat that cannot be sent is a missed beat.
  */
+import { callTool, readConfig } from "./mcp-call.mjs";
 
 /** Between tries while the app has not yet answered with its window. */
 const RETRY_BEFORE_FIRST_ANSWER_MS = 5_000;
 
 /**
- * Beat forever. `sendBeat` calls the heartbeat tool and returns its
- * result (or null to skip this beat); it may throw.
+ * Beat forever. `targetNow` answers, for each beat, the target to send
+ * (or null to skip this beat); it may throw.
  */
-export function beatForever(sendBeat) {
+export function beatForever(targetNow) {
   let staleAfterSeconds = null;
   const tick = async () => {
     try {
-      const window = windowOf(await sendBeat());
+      const window = windowOf(await sendBeat(targetNow()));
       if (window !== null) staleAfterSeconds = window;
     } catch (e) {
       console.log(`heartbeat not sent (${e.message}); still beating`);
@@ -35,7 +40,14 @@ export function beatForever(sendBeat) {
   tick();
 }
 
-/** The `staleAfterSeconds` in a heartbeat tool's answer (JSON in content[0].text), or null. */
+/** One call of the heartbeat tool for `target`, or null when there is nothing to send. */
+function sendBeat(target) {
+  if (target === null) return null;
+  const account = readConfig().account?.user;
+  return callTool("heartbeat", { ...target, account });
+}
+
+/** The `staleAfterSeconds` in the heartbeat tool's answer (JSON in content[0].text), or null. */
 function windowOf(result) {
   const text = result?.content?.[0]?.text;
   if (typeof text !== "string") return null;

@@ -102,17 +102,16 @@ serveHttp({ port: config.port, secret: config.secret, handle }, () =>
 
 // Heartbeat to the cloud: how the site knows this laptop's courier is
 // alive and whether an agent is consuming its feed. Couriers are per
-// laptop, keyed by the cloud-minted courierId in courier.json. The
+// laptop, keyed by the cloud-minted courierId in courier.json; the
+// beat's target is { kind: "courier", courierId, agentListening }. The
 // app answers with its staleness window and the loop paces itself
 // from that (heartbeat.mjs). Fail soft always: a beat that cannot be
 // sent is a missed beat, never a crash.
 if (config.courierId) {
-  const { callTool } = await import("./mcp-call.mjs");
   const { beatForever } = await import("./heartbeat.mjs");
-  beatForever(() =>
-    callTool("courier_heartbeat", {
-      courierId: config.courierId,
-      agentListening: agentState().agentListening,
-    }),
-  );
+  beatForever(() => ({
+    kind: "courier",
+    courierId: config.courierId,
+    agentListening: agentState().agentListening,
+  }));
 }

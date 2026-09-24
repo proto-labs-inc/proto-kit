@@ -8,21 +8,20 @@
  *
  * On every beat it checks its sibling processes in the run's
  * state.json (a crash-looping dev server must not claim liveness)
- * and, when all are up, calls the heartbeat MCP tool. The app answers
- * with its staleness window and the loop (heartbeat.mjs) paces itself
- * from that. Failures are logged and beating continues: a beat that
- * cannot be sent is a missed beat, never a crash.
+ * and, when all are up, hands the loop (heartbeat.mjs) the target to
+ * beat for. The app answers with its staleness window and the loop
+ * paces itself from that. Failures are logged and beating continues:
+ * a beat that cannot be sent is a missed beat, never a crash.
  *
  * Usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
  *        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>
- *   --kind is required: a prototype's serving run beats
- *   prototype_heartbeat; the codebase's library serving run beats
- *   library_heartbeat (no slug). account comes from
- *   ~/.proto/config.json.
+ *   --kind is required and is the heartbeat tool's kind: a
+ *   prototype's serving run beats for { kind: "prototype", codebase,
+ *   slug }; the codebase's library serving run beats for
+ *   { kind: "library", codebase } (no slug).
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { callTool, readConfig } from "./mcp-call.mjs";
 import { beatForever } from "./heartbeat.mjs";
 
 const USAGE = `usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
@@ -46,6 +45,8 @@ if (!runDirArg || !codebase || (kind === "prototype" && !slug)) {
   process.exit(1);
 }
 const runDir = resolve(runDirArg);
+let target = { kind, codebase };
+if (kind === "prototype") target = { kind, codebase, slug };
 
 const alive = (pid) => {
   try {
@@ -73,11 +74,5 @@ function siblingsUp() {
   }
 }
 
-function sendBeat() {
-  if (!siblingsUp()) return null; // serving is not healthy; stay silent
-  const account = readConfig().account?.user;
-  if (kind === "library") return callTool("library_heartbeat", { codebase, account });
-  return callTool("prototype_heartbeat", { codebase, slug, account });
-}
-
-beatForever(sendBeat);
+// Serving that is not healthy stays silent.
+beatForever(() => (siblingsUp() ? target : null));
