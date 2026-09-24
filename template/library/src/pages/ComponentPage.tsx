@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { ArrowLeftIcon } from "lucide-react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shimmer } from "@/components/ai-elements/shimmer";
@@ -35,9 +42,17 @@ export function ComponentPage({ slug, state, library, courier }: Props) {
     <main className="mx-auto grid max-w-5xl gap-10 px-6 py-10 md:grid-cols-[1fr_12rem]">
       <div className="flex min-w-0 flex-col gap-8">
         <header className="flex flex-col gap-3">
-          <a href={href.overview()} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeftIcon className="size-4" /> Design system
-          </a>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink href={href.overview()}>Design system</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{component.name}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <h1 className="text-2xl font-medium">{component.name}</h1>
           {note && <p className="m-0 text-sm text-muted-foreground">{note}</p>}
         </header>
