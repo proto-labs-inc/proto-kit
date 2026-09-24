@@ -1,6 +1,6 @@
 ---
 name: import-design-system
-description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library viewer shows an empty library.
+description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colors, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
 ---
 
 # Import a design system
@@ -12,10 +12,11 @@ type appearing **once**, its variants side by side on a neutral
 canvas with a line of realistic sample copy. The page you read is a
 specimen catalog of living instances; matching a whole page is
 create-prototype's job. The output is the **library contract**:
-`manifest.json`, `progress.json`, and `components/*.html` in
+`public/manifest.json`, `public/events.jsonl` and
+`public/components/<slug>/<state>.html` inside the library app at
 `~/.proto/<codebase>/library/`, specified in
 `docs/library-contract.md`. Read that first; the user is watching the
-viewer fill in as you write, so the write choreography there is not
+library fill in as you write, so the write choreography there is not
 optional polish, it is the product.
 
 ## Two inputs, one output
@@ -76,8 +77,9 @@ checkout root.)
 
 ## Where things go
 
-- `~/.proto/<codebase>/library/`: the contract files only. The viewer
-  serves this folder; nothing else lands here.
+- `~/.proto/<codebase>/library/`: the library app. You write only
+  into its `public/` folder, and only the contract files; nothing
+  else lands there.
 - `~/.proto/<codebase>/imports/<run>/`, your working artifacts:
   wireframes, and one `units/<name>/` per component with `notes.md`,
   captures, and diffs. The artifacts are how claims get checked.
@@ -116,7 +118,7 @@ the import.)
 
 0. **Host the library first, before extracting anything.** The
    whole point of the write choreography is that the user WATCHES the
-   library fill in; that needs the viewer reachable from the site
+   library fill in; that needs the library app reachable from the site
    before item one. Reachable means through its tunnel, not on
    localhost: the app's Design system page loads the address the site
    returns and stores when the library's tunnel is provisioned,
@@ -124,7 +126,10 @@ the import.)
    (a `run/library/` with a live daemon), leave it; otherwise, in this
    order:
    1. Scaffold `template/library/` into `~/.proto/<codebase>/library/`
-      if setup hasn't.
+      if setup hasn't (skip when its `public/manifest.json` already
+      has content), then `pnpm install --frozen-lockfile` there. The
+      library is a Vite React app (ADR 0003); the install is paid
+      once per codebase.
    2. **Provision the tunnel before anything can look the name up**:
       call the `provision_tunnel` MCP tool with
       `{ kind: "library", codebase: "<codebase>", port: <port> }`. The
@@ -137,8 +142,10 @@ the import.)
       for thirty minutes, and the library will look dead long after
       it is up. Never `curl https://<hostname>` before this step.
    3. Write the `~/.proto/<codebase>/run/library/` spec with **three**
-      processes, exactly as the serve skill does for a prototype:
-      `node tools/serve.mjs <library-dir> <port>`, the tunnel
+      processes, exactly as the serve skill's "The library" section
+      shows: Vite's dev server (`pnpm dev` in the library folder with
+      `PROTO_TUNNEL=1`; the port is the one in its `vite.config.ts`,
+      5210, and is what you passed to `provision_tunnel`), the tunnel
       connector from the provisioning result, and the liveness beat
       `node tools/prototype-heartbeat.mjs --kind library <run-dir>
       <codebase>`. Then `supervise.mjs start`. A library run without a
@@ -151,10 +158,10 @@ the import.)
       it races the record it poisons this laptop for thirty minutes.
       Then tell the user the URL. Only then start the import.
 
-Write `progress.json` **before** doing anything slow: the first
-heartbeat ("Reading the source…") is what tells the user the import is
-alive. Then, flushing manifest + progress after every item per the
-contract:
+Append the first event to `public/events.jsonl` **before** doing
+anything slow: that line ("Reading the source") is what tells the user
+the import is alive. Then, flushing the manifest and appending an event
+after every item per the contract:
 
 1. **Tokens.** Harvest definitions from the source (custom properties,
    `@theme` blocks, token files): the source has the *names* and the
@@ -189,10 +196,16 @@ contract:
    import is done:**
    - every component in the manifest is `done` or `skipped` (none
      `found` or `extracting`);
-   - `completedAt` is set and `progress.json` says
-     `{"status": "complete", "activity": "Import complete"}`;
-   - the library is published so it outlives the laptop:
+   - `completedAt` is set and the last event says "Import complete";
+   - the library is published so it outlives the laptop: build it
+     first (`pnpm build` in `~/.proto/<codebase>/library/`; the build
+     carries a copy of `public/`), then
      `node tools/publish.mjs --kind library --codebase <codebase>`;
+   - keep watching `public/queue.json` for as long as the session
+     lasts: a "Queue it" from the library page is a request to extract
+     a skipped component (the contract says how to take it), and a
+     component that lands afterwards means building and publishing
+     again;
    - one line to the user: the library is published and stays
      viewable after this laptop closes;
    - then continue into the next thing setup asked for (a prototype
@@ -253,21 +266,22 @@ run:
    (clusters, sampled pixels), and iterate until clean at threshold
    8. A component-sized clip makes this loop fast; zero is
    reachable and components this small earn it.
-4. **Compose and land the variant sheet.** Assemble the verified
-   variants side by side on a neutral canvas as the standalone
-   `library/components/<name>.html`, set the entry's `file` and
-   `height` (measure the sheet's rendered height: don't guess),
-   status `"done"`, flush.
+4. **Compose and land the states.** Write each verified state as a
+   standalone `public/components/<slug>/<state>.html`, the default
+   first, and push each onto the entry's `states` with its `file` and
+   `height` (measure the rendered height: don't guess); then status
+   `"done"`, flush.
 5. **Or skip it honestly.** A component you can't isolate cleanly
    (portals, canvas-rendered, needs state you can't reach) becomes
-   `"skipped"` with a `reason` written for the user: what blocked
-   you, whether a retry could work. Never silently dropped, never
-   faked.
+   `"skipped"` with a `reason` written for the user (what blocked
+   you, whether a retry could work) and a `screenshot` cropped from
+   the live product into `public/components/<slug>/screenshot.png`.
+   Never silently dropped, never faked.
 
-Component files must stand alone: inline CSS or same-folder assets, no
+State files must stand alone: inline CSS or same-folder assets, no
 build step, no external requests. If the product's fonts are webfonts,
-copy the font files into `library/` and `@font-face` them locally with
-a real fallback stack: a component preview that silently falls back
+copy the font files into the component's folder and `@font-face` them
+locally with a real fallback stack: a component preview that silently falls back
 to Helvetica fails the "renders faithfully" bar.
 
 ## Fan out: this is a parallel job
@@ -287,7 +301,7 @@ preconfigured for this (Haiku); on Codex, `spawn_agent` with
 `verifier`/`proto-verifier` the same way.
 
 One orchestrator, you, the bigger model, owns the run and the
-contract files; only you write `manifest.json` and `progress.json`.
+contract files; only you write `manifest.json` and `events.jsonl`.
 Each subagent gets a narrow brief: the target element, this skill,
 its own `units/<name>/` folder (the only place it may write). Do not
 trust reports: spot-check claims against the artifacts (recompute a

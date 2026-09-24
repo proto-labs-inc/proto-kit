@@ -102,6 +102,34 @@ directory, which is also the proto-kit checkout root.
    user plainly: the prototype is live while this laptop serves it,
    and falls back to the last published build when serving stops.
 
+## The library
+
+The codebase's design-system library (ADR 0003) is a Vite React app
+at `~/.proto/<codebase>/library/` and is served the same way, with two
+differences: there is nothing to register (the codebase's row already
+exists) and the target has no slug. The import-design-system skill
+does this before it extracts anything; the app's recovery prompt
+("serve ~/.proto/<codebase>/library and run its tunnel") means do it
+again.
+
+1. `pnpm install --frozen-lockfile` in the library folder if it has no
+   `node_modules`.
+2. `provision_tunnel { kind: "library", codebase, port: 5210 }` (the
+   port in the library's `vite.config.ts`). Never build or look up the
+   address yourself, for the reason step 5 above gives.
+3. The run spec at `~/.proto/<codebase>/run/library/spec.json`, three
+   processes: `dev` = `["pnpm", "dev"]` with `cwd` the library folder
+   and `env` `{ "PROTO_TUNNEL": "1" }`; `tunnel` = cloudflared with the
+   connector token; `heartbeat` = `node <kit>/tools/prototype-heartbeat.mjs
+   --kind library <run-dir> <codebase>`. `chmod 600`, then
+   `supervise.mjs start`.
+4. Verify `http://localhost:5210/manifest.json` locally, then the
+   public address through Cloudflare's edge only, as in step 5 above.
+5. Publish when the import finishes, or on request: `pnpm build` in
+   the library folder (the build carries a copy of `public/`, the
+   import's data), then `node tools/publish.mjs --kind library
+   --codebase <codebase>`, which uploads `dist/`.
+
 ## Recovery
 
 `node tools/supervise.mjs status <run-dir>` first: it names which
