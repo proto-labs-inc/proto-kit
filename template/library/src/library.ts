@@ -18,7 +18,6 @@ export type TypeStyle = {
 };
 
 export type ComponentStatus = "found" | "extracting" | "done" | "skipped" | "queued";
-export type ComponentCategory = "primitive" | "composite";
 export type ComponentState = { name: string; file: string; height: number };
 export type Iteration = {
   at: string;
@@ -30,7 +29,6 @@ export type Iteration = {
 export type Component = {
   slug: string;
   name: string;
-  category: ComponentCategory;
   status: ComponentStatus;
   states: ComponentState[];
   reason?: string;

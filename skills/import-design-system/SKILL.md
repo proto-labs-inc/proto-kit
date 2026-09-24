@@ -70,15 +70,15 @@ The writer, one line per write (`<library>` is the codebase id or
 the app's folder; JSON is a literal or `@file`):
 
 ```
-node tools/library.mjs init <library> <codebase> <source>
+node tools/library.mjs init <library> <codebase> <source> --page-url <liveUrl> --page-title "<the page's title, verbatim>"
 node tools/library.mjs token <library> '{"name":"slate-900","value":"#0f172a","group":"gray","role":"text"}'
 node tools/library.mjs type <library> '{"name":"Heading L","family":"Inter","size":"24px","weight":650,"lineHeight":"32px","sample":"Expense report: September"}'
-node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button","category":"primitive"}, …]'
+node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button"}, …]'
 node tools/library.mjs component <library> <slug> status extracting
 node tools/library.mjs history <library> <slug> --screenshot <n>.png --diff <n>-diff.png --mismatch <n> --activity "Padding is 2px short on the right; widening"
 node tools/library.mjs state <library> <slug> "Default" <file.html> <height>
 node tools/library.mjs component <library> <slug> status done
-node tools/library.mjs component <library> <slug> status skipped --reason "<one plain sentence>" --screenshot <crop.png>
+node tools/library.mjs component <library> <slug> status skipped --reason "<one plain sentence, at most 140 characters>" --screenshot <crop.png>
 node tools/library.mjs event <library> [slug] "<activity>"
 node tools/library.mjs take-queued <library>
 node tools/library.mjs complete <library>
@@ -162,24 +162,38 @@ call; chain the short ones in one shell line.
    the address. The site's Design system page loads that address (the
    one the site chose and stored), so hosting first is what lets the
    user watch. Also `node tools/cdp/headless.mjs start`.
-1. **Open the run.** `node tools/library.mjs init <library> <codebase>
-   <source>` (`<source>` is the repo name or the live host). This
-   appends "Reading the source": the line that tells the user the
-   import is alive. Make a run folder
+1. **Open the run.** Read the live tab's `document.title`, then
+   `node tools/library.mjs init <library> <codebase> <source>
+   --page-url <liveUrl> --page-title "<title>"` (`<source>` is the
+   repo name or the live host). This appends "Reading the source":
+   the line that tells the user the import is alive, and sets the
+   product entry: the name is taken from the title ("Expenses ·
+   Meridian" names Meridian), and when the page has no title the
+   codebase's display name is used, never its id. Make a run folder
    `~/.proto/<codebase>/imports/<UTC stamp>/units/`.
 2. **Read.** The source's component directories, token files and
    font faces; the live page's outline, class names and computed
    styles (see **Reading the page**). Small reads, printed, looked at.
-3. **Inventory, flushed at once.** Decide the shelf (see **A curated
+3. **The page's state: one question at most.** A page with obvious
+   states hides its components behind them: a start button, a sign-in
+   wall, an empty list, a welcome screen before the real thing. The
+   22 run read the welcome state and skipped both composites for it.
+   If the page you read is in a state like that, put it in the
+   representative one yourself when a read-only route or hash does it
+   (never by clicking in their window), otherwise ask the user one
+   plain question naming what to do ("Press Start in the Proto window
+   so the garden is showing, then tell me") and wait. Note the state
+   in your run notes; every unit reads the same page.
+4. **Inventory, flushed at once.** Decide the shelf (see **A curated
    shelf**) and write it in one call: `inventory <library> '[…]'`.
    Every component is `found` and the user sees the whole queue.
    This comes *before* tokens and type styles: the fan-out is the
    critical path and it waits on nothing but this list.
-4. **Fan out, in one turn.** Issue every sub-agent spawn in the same
+5. **Fan out, in one turn.** Issue every sub-agent spawn in the same
    turn (see **Fan out**), at most four extracting at once; the rest
    start as lanes free up. Mark each `component <slug> status
    extracting` as you spawn it.
-5. **Tokens and type styles, while the units run.** Push each token
+6. **Tokens and type styles, while the units run.** Push each token
    and each type style as you confirm it, one `token`/`type` line
    each (chain a dozen in one shell line): the source has the names
    and the grouping, the live page's computed styles arbitrate the
@@ -187,18 +201,18 @@ call; chain the short ones in one shell line.
    value winning. `role: "surface"` on the page background token and
    `role: "text"` on the page text token, once each. Use real product
    copy for every `sample`.
-6. **The courier, while the units run.** If
+7. **The courier, while the units run.** If
    `~/.proto/<codebase>/run/courier/` has no `courier.json`, bring
    the courier up now, per the serve skill's "The courier" section.
    It depends only on the codebase id; doing it here, in the window
    where you would otherwise be waiting on sub-agents, is what makes
    the run end when the library does. Landing a report always comes
    first: check for reports between its steps.
-7. **Land units as they report.** The moment a report arrives, land
+8. **Land units as they report.** The moment a report arrives, land
    it before anything else (see **Landing a unit**): a report that is
    not landed is a unit the user never sees finish. The manifest, not
    your memory, is the record of what is done.
-8. **Finish**, per the checklist below.
+9. **Finish**, per the checklist below.
 
 Side errand, once, while the live page is attached: if the codebase
 has no icon yet, take the page's `<link rel="icon">` (largest png or
@@ -210,7 +224,7 @@ mid-import, a recovery prompt from the site, a crash, a resumed
 session): do that thing, then come back here. `init` again resumes
 an open run without touching what is there; read `manifest.json`,
 treat every component that is not `done` or `skipped` as still yours,
-and carry on from step 4. Never declare the import finished from
+and carry on from step 5. Never declare the import finished from
 memory; the manifest says what is finished.
 
 ## A curated shelf, not a census
@@ -223,8 +237,8 @@ source's component directories and the live page's class names
 what exists; your judgment picks what earns a shelf spot: a first
 import of a dozen-odd components that renders faithfully beats an
 exhaustive one. Primitives first; the inventory order is the
-extraction order. Slugs are lowercase with dashes; names are what the
-product's own code calls the thing.
+extraction order and the order the library shows. Slugs are lowercase
+with dashes; names are what the product's own code calls the thing.
 
 ## Reading the page
 
@@ -292,9 +306,14 @@ writes only there. The loop:
 5. **Or skip it honestly.** A component you can't isolate cleanly
    (portals, canvas you cannot reproduce, a state you can't reach)
    is skipped: `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h>
-   screenshot.png` for the card, and one plain sentence for the user
-   in the product's own terms: what blocked you and whether queueing
-   it could work. Never silently dropped, never faked.
+   screenshot.png` for the card, cropped to the component's own rect
+   (never the viewport: a page-tall screenshot is not a card), and
+   one plain sentence for the user in the product's own terms, at
+   most 140 characters, no import voice: "The flowers are drawn with
+   p5 on a canvas, which the library cannot rebuild yet", not "could
+   not be measured or pixel-verified". `library.mjs` refuses both a
+   longer reason and a skip without the crop. Never silently dropped,
+   never faked.
 
 State files must stand alone: the app frames them in an iframe at the
 recorded height, so the product's styles never touch the library's
@@ -314,7 +333,7 @@ you call `library.mjs`**. A sub-agent writes inside its unit folder
 and nowhere else, and reports. Its brief is short and complete, in
 this shape:
 
-> Extract `<Name>` (`<slug>`), `<category>`, into
+> Extract `<Name>` (`<slug>`) into
 > `<run>/units/<slug>/`. This skill, `docs/cdp-traps.md` and the
 > source files are already in your context: do not search for them or
 > read them again. Live tab: `<liveUrl>` in the Proto window on port

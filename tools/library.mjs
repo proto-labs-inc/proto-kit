@@ -12,16 +12,20 @@
  * or just the codebase id, which resolves to that folder. <json> is a
  * JSON literal or @path to a file holding one.
  *
- *   init <library> <codebase> <source>
+ *   init <library> <codebase> <source> --page-url <url> --page-title "<title>" [--product-name "<name>"]
  *       A fresh run when no run is open (resets everything), a resume
- *       when one is; prints which. Appends "Reading the source".
+ *       when one is; prints which. Appends "Reading the source". The
+ *       product's name comes from --product-name, else from the page
+ *       title ("Expenses · Meridian" names Meridian), else from the
+ *       codebase's display name in codebase.json, never from its id.
  *   token <library> <json>            one { name, value, group, role? }
  *   type <library> <json>             one { name, family, size, weight, lineHeight, sample }
- *   inventory <library> <json>        every component at once, [{ slug, name, category }], all "found"
+ *   inventory <library> <json>        every component at once, [{ slug, name }], all "found"
  *   component <library> <slug> status <found|extracting|done|skipped|queued>
  *       [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
- *       skipped takes the reason and the product crop (copied to
- *       components/<slug>/screenshot.png); queued clears both.
+ *       skipped needs both: the reason, one plain sentence of at most
+ *       140 characters in the product's terms, and the product crop
+ *       (copied to components/<slug>/screenshot.png); queued clears both.
  *   state <library> <slug> <name> <file> <height>
  *       Copies <file> to components/<slug>/<basename> and appends the state.
  *   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
@@ -48,7 +52,7 @@ import {
 import { basename, join, resolve } from "node:path";
 
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
-  init <library> <codebase> <source>
+  init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>]
   token <library> <json>
   type <library> <json>
   inventory <library> <json array>
@@ -59,8 +63,8 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
   take-queued <library>
   complete <library>`;
 const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
-const CATEGORIES = ["primitive", "composite"];
 const HISTORY_CAP = 10;
+const REASON_CAP = 140;
 const STATE_CAP = 6;
 
 // Thrown, not exited: a failure inside the lock must still release
@@ -129,7 +133,7 @@ const paths = {
 };
 const now = () => new Date().toISOString();
 
-const EMPTY = { codebase: null, source: null, startedAt: null, completedAt: null, tokens: [], type: [], components: [] };
+const EMPTY = { codebase: null, source: null, product: null, startedAt: null, completedAt: null, tokens: [], type: [], components: [] };
 
 function readManifest() {
   try {
@@ -205,6 +209,30 @@ const componentIn = (manifest, slug) => {
 const folderOf = (slug) => join(paths.components, slug);
 const relative = (slug, ...parts) => ["components", slug, ...parts].join("/");
 
+// One plain sentence for the user, in the product's terms: a paragraph
+// or an agent's voice ("could not be pixel-verified") is refused.
+function requireReason(reason) {
+  if (!reason) fail("skipped needs --reason, one plain sentence for the user");
+  if (reason.length > REASON_CAP) fail(`--reason is ${reason.length} characters; the cap is ${REASON_CAP}: one plain sentence in the product's terms, no agent voice`);
+  if (/\n/.test(reason)) fail("--reason is one sentence on one line");
+  if (/verif|pixel|extract|cdp|replica|measur/i.test(reason)) fail("--reason is written for the user in the product's terms, not in the import's (no verifying, pixels, extracting, replicas)");
+}
+
+// The product's name: given, else the last part of the page title
+// ("Expenses · Meridian", "Meridian | Expenses" both name Meridian),
+// else the codebase's display name in codebase.json, never its id.
+function productName(codebase, pageTitle, given) {
+  if (given) return given;
+  const parts = pageTitle.split(/\s+[·|]\s+|\s+-\s+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length > 1) return parts[parts.length - 1];
+  if (parts.length === 1) return parts[0];
+  try {
+    const record = JSON.parse(readFileSync(join(libraryDir, "..", "codebase.json"), "utf8"));
+    if (typeof record.name === "string" && record.name.trim() !== "" && record.name !== codebase) return record.name;
+  } catch {}
+  fail("the page has no title and codebase.json names no display name; pass --product-name");
+}
+
 function requireString(value, what) {
   if (typeof value !== "string" || value.trim() === "") fail(`${what} must be a non-empty string`);
   return value;
@@ -215,20 +243,24 @@ function requireString(value, what) {
 const commands = {
   init() {
     const [codebase, source] = positional;
-    if (!codebase || !source) fail(USAGE);
+    if (!codebase || !source || !options["page-url"] || options["page-title"] === undefined) fail(USAGE);
+    const product = {
+      name: productName(codebase, options["page-title"], options["product-name"]),
+      pageUrl: options["page-url"],
+      pageTitle: options["page-title"],
+    };
     mkdirSync(paths.components, { recursive: true });
     const outcome = change((manifest) => {
       const open = manifest.startedAt !== null && manifest.completedAt === null;
       if (open) {
-        manifest.codebase = codebase;
-        manifest.source = source;
+        Object.assign(manifest, { codebase, source, product });
         return { kind: "resumed", activity: "Resuming the import" };
       }
       rmSync(paths.components, { recursive: true, force: true });
       mkdirSync(paths.components, { recursive: true });
       writeFileSync(paths.events, "");
       writeJsonAtomic(paths.queue, { requests: [] });
-      Object.assign(manifest, { ...EMPTY, codebase, source, startedAt: now(), tokens: [], type: [], components: [] });
+      Object.assign(manifest, { ...EMPTY, codebase, source, product, startedAt: now(), tokens: [], type: [], components: [] });
       return { kind: "fresh", activity: "Reading the source" };
     });
     console.log(`${outcome.kind}: ${libraryDir}`);
@@ -266,17 +298,16 @@ const commands = {
 
   inventory() {
     const list = readJsonArg(positional[0]);
-    if (!Array.isArray(list) || list.length === 0) fail("inventory takes a non-empty JSON array of { slug, name, category }");
+    if (!Array.isArray(list) || list.length === 0) fail("inventory takes a non-empty JSON array of { slug, name }");
     for (const item of list) {
       requireString(item.slug, "slug");
       requireString(item.name, "name");
       if (!/^[a-z0-9][a-z0-9-]*$/.test(item.slug)) fail(`slug "${item.slug}" must be lowercase letters, digits and dashes`);
-      if (!CATEGORIES.includes(item.category)) fail(`category of "${item.slug}" must be one of ${CATEGORIES.join(", ")}`);
     }
     change((manifest) => {
       for (const item of list) {
         if (manifest.components.some((c) => c.slug === item.slug)) continue;
-        manifest.components.push({ slug: item.slug, name: item.name, category: item.category, status: "found", states: [], history: [] });
+        manifest.components.push({ slug: item.slug, name: item.name, status: "found", states: [], history: [] });
         mkdirSync(folderOf(item.slug), { recursive: true });
       }
       return { activity: `Found ${manifest.components.length} components` };
@@ -286,8 +317,8 @@ const commands = {
   component() {
     const [slug, keyword, status] = positional;
     if (!slug || keyword !== "status" || !STATUSES.includes(status)) fail(USAGE);
-    if (status === "skipped" && !options.reason) fail("skipped needs --reason, one plain sentence for the user");
-    if (status === "skipped" && !options.screenshot) fail("skipped needs --screenshot, the component cropped from the live page (tools/cdp/crop.mjs)");
+    if (status === "skipped") requireReason(options.reason);
+    if (status === "skipped" && !options.screenshot) fail("skipped needs --screenshot, the component cropped to its own rect from the live page at 2x (tools/cdp/crop.mjs)");
     change((manifest) => {
       const entry = componentIn(manifest, slug);
       const folder = folderOf(slug);

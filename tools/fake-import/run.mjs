@@ -69,7 +69,7 @@ const TYPE = [
 // is the default. `history` is the button's three verification passes.
 const COMPONENTS = [
   {
-    slug: "button", name: "Button", category: "primitive",
+    slug: "button", name: "Button",
     states: [
       { name: "Default", file: "default.html", height: 110 },
       { name: "Hover", file: "hover.html", height: 110 },
@@ -83,7 +83,7 @@ const COMPONENTS = [
     ],
   },
   {
-    slug: "input", name: "Input", category: "primitive",
+    slug: "input", name: "Input",
     states: [
       { name: "Default", file: "default.html", height: 150 },
       { name: "Focused", file: "focused.html", height: 110 },
@@ -91,23 +91,23 @@ const COMPONENTS = [
     ],
   },
   {
-    slug: "badge", name: "Status badge", category: "primitive",
+    slug: "badge", name: "Status badge",
     states: [{ name: "Default", file: "default.html", height: 90 }],
   },
   {
-    slug: "date-picker", name: "Date picker", category: "primitive",
+    slug: "date-picker", name: "Date picker",
     skip: "Rendered inside a portal, so it could not be isolated cleanly. Queue it to try again with the calendar open.",
     states: [{ name: "Default", file: "default.html", height: 270 }],
   },
   {
-    slug: "card", name: "Expense card", category: "composite",
+    slug: "card", name: "Expense card",
     states: [
       { name: "Default", file: "default.html", height: 190 },
       { name: "Selected", file: "selected.html", height: 190 },
     ],
   },
   {
-    slug: "table", name: "Expense table", category: "composite",
+    slug: "table", name: "Expense table",
     states: [
       { name: "Default", file: "default.html", height: 250 },
       { name: "Empty", file: "empty.html", height: 160 },
@@ -152,9 +152,9 @@ async function skip(spec) {
 
 // The skill's order: open the run, flush the whole inventory, fan out,
 // then stream tokens and type styles while the units run.
-lib("init", libraryDir, "meridian", "meridian-web");
+lib("init", libraryDir, "meridian", "meridian-web", "--page-url", "https://app.meridian.example/expenses", "--page-title", "Expenses · Meridian");
 await sleep(1800);
-lib("inventory", libraryDir, JSON.stringify(COMPONENTS.map((c) => ({ slug: c.slug, name: c.name, category: c.category }))));
+lib("inventory", libraryDir, JSON.stringify(COMPONENTS.map((c) => ({ slug: c.slug, name: c.name }))));
 await sleep(600);
 
 // Four lanes at most, each a beat behind the last, the way the real

@@ -34,7 +34,7 @@ library/                          the app, scaffolded from template/library/
 ## The writer
 
 ```
-node tools/library.mjs init <library> <codebase> <source>
+node tools/library.mjs init <library> <codebase> <source> --page-url <url> --page-title "…" [--product-name "…"]
 node tools/library.mjs token <library> '<json>'
 node tools/library.mjs type <library> '<json>'
 node tools/library.mjs inventory <library> '<json array>'
@@ -68,7 +68,8 @@ import, never rewritten from scratch mid-run.
   "codebase": "meridian",          // codebase slug; null until the import starts
   "source": "meridian-web",       // where it came from (repo name / host); null until start
   "product": {                    // the product as the live page presents it; null until start
-    "name": "Meridian",           // the page title's product name: the app's page heading
+    "name": "Meridian",           // the page title's product name: the app's page heading;
+                                  //   a page with no title gives the codebase's display name, never its id
     "pageUrl": "https://app.meridian.example/expenses",  // the live page the import read
     "pageTitle": "Expenses · Meridian"                   // that page's <title>, verbatim
   },
@@ -94,7 +95,6 @@ import, never rewritten from scratch mid-run.
     {
       "slug": "button",               // folder name under components/ and the route
       "name": "Button",
-      "category": "primitive",        // "primitive" | "composite"
       "status": "done",               // see the lifecycle below
       "states": [                     // the first is the default; empty until extracted; at most six
         { "name": "Default", "file": "components/button/default.html", "height": 110 },
@@ -109,8 +109,8 @@ import, never rewritten from scratch mid-run.
           "mismatch": 388                                    // differing pixels
         }
       ],
-      "reason": "…",                  // only when skipped: one plain sentence for the user
-      "screenshot": "components/date-picker/screenshot.png"  // only when skipped: the real product
+      "reason": "…",                  // only when skipped: one plain sentence for the user, at most 140 characters
+      "screenshot": "components/date-picker/screenshot.png"  // only when skipped: the component cropped from the product at 2x
     }
   ]
 }
@@ -126,9 +126,12 @@ import, never rewritten from scratch mid-run.
   hover and disabled states where the product has them, then any other
   state the product shows, at most six. A single-state component still
   lists that one state.
-- `skipped`: could not be rebuilt. `reason` says why in the product's own terms
-  and `screenshot` shows the component cropped from the live product at 2x,
-  so the card is not an absence. `states` is empty.
+- `skipped`: could not be rebuilt. `reason` says why in one plain sentence
+  in the product's own terms (at most 140 characters, no import voice; the
+  writer refuses longer) and `screenshot` shows the component cropped to
+  its own rect from the live product at 2x (never a viewport shot; the
+  writer refuses a skip without it), so the card is not an absence.
+  `states` is empty.
 - `queued`: the user pressed "Queue it" and the import has taken the request
   (`take-queued`; see queue.json). `reason` and `screenshot` are removed;
   the component goes on to `extracting` and then `done` or `skipped` again.
