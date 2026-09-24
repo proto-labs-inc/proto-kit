@@ -1,9 +1,25 @@
-/** Wall-clock formatting shared by the overview and the history reveal. */
+/**
+ * Wall-clock formatting, one shape everywhere: a 24-hour clock with
+ * seconds for activity lines, and a dated stamp for the import itself.
+ * Written by hand rather than from the locale, so two browsers never
+ * show the same log in two formats.
+ */
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const two = (n: number) => String(n).padStart(2, "0");
+
+/** "13:01:40"; "" when the instant is unreadable. */
 export function clock(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+}
+
+/** "24 Sep 2026, 13:01"; "" when the instant is unreadable. */
+export function stamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}, ${two(date.getHours())}:${two(date.getMinutes())}`;
 }
 
 /** "2 min 38 s" between two instants; "" when either is unreadable. */

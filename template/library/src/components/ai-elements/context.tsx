@@ -56,18 +56,24 @@ export const Context = ({ done, total, ...props }: ContextProps) => (
   </ContextContext.Provider>
 );
 
-const ContextIcon = () => {
+/**
+ * The ring that fills as components land: the Context trigger's icon,
+ * and the same ring at the head of the Queue rail, so both carry the
+ * import's progress.
+ */
+export const ProgressRing = ({ done, total, size = 20, className }: ContextSchema & { size?: number; className?: string }) => {
   const circumference = 2 * Math.PI * ICON_RADIUS;
-  const dashOffset = circumference * (1 - fraction(useContextValue()));
+  const dashOffset = circumference * (1 - fraction({ done, total }));
 
   return (
     <svg
-      aria-label="Import progress"
-      height="20"
+      aria-label={`${done} of ${total} settled`}
+      className={className}
+      height={size}
       role="img"
       style={{ color: "currentcolor" }}
       viewBox={`0 0 ${ICON_VIEWBOX} ${ICON_VIEWBOX}`}
-      width="20"
+      width={size}
     >
       <circle
         cx={ICON_CENTER}
@@ -94,6 +100,8 @@ const ContextIcon = () => {
     </svg>
   );
 };
+
+const ContextIcon = () => <ProgressRing {...useContextValue()} />;
 
 export type ContextTriggerProps = ComponentProps<typeof Button>;
 

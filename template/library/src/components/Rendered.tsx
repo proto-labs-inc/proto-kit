@@ -14,7 +14,7 @@ import type { ComponentState } from "@/library";
 // Imported modules are the PascalCase files; the app's own components
 // under ui/ and ai-elements/ are lowercase and never match.
 const MODULES = import.meta.glob<{ default: ComponentType<Record<string, unknown>> }>("/src/components/*/[A-Z]*.tsx");
-const STATES = import.meta.glob<{ default: ComponentState[] }>("/src/components/*/states.json");
+const UNITS = import.meta.glob<{ default: { states: ComponentState[] } }>("/src/components/*/component.json");
 const loaded = new Map<string, ComponentType<Record<string, unknown>>>();
 
 /** The module path of the component in src/components/<slug>/, whether or not the manifest names it yet. */
@@ -24,11 +24,11 @@ export function moduleOf(slug: string): string | null {
   return key.slice(1);
 }
 
-/** The unit's own states.json, so the render route can show a state before it is landed. */
+/** The states in the unit's own component.json, so the render route can show a state before it is landed. */
 export async function statesOf(slug: string): Promise<ComponentState[] | null> {
-  const load = STATES[`/src/components/${slug}/states.json`];
+  const load = UNITS[`/src/components/${slug}/component.json`];
   if (!load) return null;
-  return (await load()).default;
+  return (await load()).default.states;
 }
 
 function componentFor(module: string): ComponentType<Record<string, unknown>> | null {

@@ -1,6 +1,14 @@
-import type { Token } from "@/library";
+import type { Component, Token } from "@/library";
+import { href } from "@/route";
 
-export function TokenSwatches({ tokens }: { tokens: Token[] }) {
+type Props = { tokens: Token[]; components: Component[] };
+
+/**
+ * The palette, grouped the way the product groups it, each swatch
+ * naming the built components that use it, so a colour and the
+ * things made of it are one click apart in both directions.
+ */
+export function TokenSwatches({ tokens, components }: Props) {
   const groups = new Map<string, Token[]>();
   for (const token of tokens) {
     const list = groups.get(token.group) ?? [];
@@ -26,11 +34,27 @@ export function TokenSwatches({ tokens }: { tokens: Token[] }) {
                     {token.value}
                     {token.role && <span className="ml-1">· {token.role}</span>}
                   </div>
+                  <UsedBy token={token} components={components} />
                 </div>
               </div>
             ))}
           </div>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function UsedBy({ token, components }: { token: Token; components: Component[] }) {
+  const users = components.filter((c) => c.status === "done" && c.tokens.includes(token.name));
+  if (users.length === 0) return null;
+  return (
+    <div className="mt-1 text-muted-foreground">
+      {users.map((c, i) => (
+        <span key={c.slug}>
+          {i > 0 && ", "}
+          <a href={href.component(c.slug)} className="hover:text-foreground hover:underline">{c.name}</a>
+        </span>
       ))}
     </div>
   );

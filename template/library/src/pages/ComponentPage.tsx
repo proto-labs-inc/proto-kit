@@ -1,113 +1,143 @@
-import { ArrowLeftIcon, ChevronDownIcon } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useState } from "react";
+import { ArrowLeftIcon } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { HistoryView } from "@/components/HistoryView";
+import { MatchedView } from "@/components/MatchedView";
+import { NotBuilt } from "@/components/NotBuilt";
+import { ProductCrop } from "@/components/ProductCrop";
 import { Rendered } from "@/components/Rendered";
-import { SkippedNotice } from "@/components/SkippedNotice";
-import { componentView, type ActivityEvent, type Component, type ComponentView, type Library, type QueueOutcome } from "@/library";
+import { componentView, rebuiltNote, type Component, type ComponentView, type Courier, type Library, type Token } from "@/library";
 import { href } from "@/route";
 
 type Props = {
   slug: string;
+  /** The state the address names, or null for the default. */
+  state: string | null;
   library: Library;
-  queue: (slug: string) => Promise<QueueOutcome>;
+  courier: Courier;
 };
 
-export function ComponentPage({ slug, library, queue }: Props) {
-  const { manifest, events, requests } = library;
+export function ComponentPage({ slug, state, library, courier }: Props) {
+  const { manifest } = library;
   const component = manifest.components.find((c) => c.slug === slug);
   if (!component) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-10 text-sm text-muted-foreground">
-        <a href={href.overview()} className="hover:underline">Library</a> has no component called {slug}.
+        <a href={href.overview()} className="hover:underline">Design system</a> has no component called {slug}.
       </main>
     );
   }
-  const look = componentView(component, events, requests);
-  const moving = look.kind === "shimmer";
+  const view = componentView(component, library);
+  const moving = view.kind === "working";
+  const note = rebuiltNote(component, manifest.components);
   return (
     <main className="mx-auto grid max-w-5xl gap-10 px-6 py-10 md:grid-cols-[1fr_12rem]">
       <div className="flex min-w-0 flex-col gap-8">
         <header className="flex flex-col gap-3">
           <a href={href.overview()} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeftIcon className="size-4" /> Library
+            <ArrowLeftIcon className="size-4" /> Design system
           </a>
           <h1 className="text-2xl font-medium">{component.name}</h1>
+          {note && <p className="m-0 text-sm text-muted-foreground">{note}</p>}
         </header>
-        <States component={component} look={look} queue={queue} />
-        <Underneath component={component} events={events} moving={moving} />
+        <States component={component} view={view} state={state} courier={courier} />
+        {component.tokens.length > 0 && <Colours component={component} tokens={manifest.tokens} />}
+        <MatchedView component={component} library={library} moving={moving} />
       </div>
       <SubNavigation components={manifest.components} current={slug} />
     </main>
   );
 }
 
-function States({ component, look, queue }: { component: Component; look: ComponentView; queue: Props["queue"] }) {
-  switch (look.kind) {
-    case "shimmer":
-      return (
-        <div className="flex h-40 items-center justify-center rounded-xl bg-muted/60">
-          <Shimmer className="text-sm">{look.activity}</Shimmer>
-        </div>
-      );
-    case "skipped":
-      return (
-        <div className="flex flex-col gap-2">
-          {look.screenshot && (
-            <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">
-              <img src={look.screenshot} alt={`${component.name} in the product`} className="mx-auto block max-w-full" />
-            </div>
-          )}
-          <SkippedNotice component={component} reason={look.reason} queue={queue} />
-        </div>
-      );
-    case "preview":
-      return (
-        <Tabs defaultValue={component.states[0].name} className="gap-4">
-          <TabsList variant="line">
-            {component.states.map((state) => (
-              <TabsTrigger key={state.name} value={state.name}>{state.name}</TabsTrigger>
-            ))}
-          </TabsList>
-          {component.states.map((state) => (
-            <TabsContent key={state.name} value={state.name}>
-              <div className="overflow-hidden rounded-xl bg-white p-5 ring-1 ring-foreground/10">
-                <Rendered name={component.name} module={component.module} state={state} />
-              </div>
-            </TabsContent>
-          ))}
-        </Tabs>
-      );
-  }
-}
+type StatesProps = { component: Component; view: ComponentView; state: string | null; courier: Courier };
 
 /**
- * What happened underneath the component (MAA-163): the import's
- * iterations and activity for it, revealed beneath the preview rather
- * than shown on a page of its own. Open by itself while the component
- * is still moving, since that is when there is something to watch.
+ * The component in each of its states, one tab per state and the state
+ * in the address, so "look at the empty table" can be sent; a component
+ * with one state shows it without a tab strip. A component that is not
+ * built shows the product's own crop and the strip that says why.
  */
-function Underneath({ component, events, moving }: { component: Component; events: ActivityEvent[]; moving: boolean }) {
-  const passes = component.history.length;
-  const lines = events.filter((e) => e.component === component.slug).length;
-  let summary = "nothing recorded yet";
-  if (passes > 0 || lines > 0) summary = `${passes} ${passes === 1 ? "pass" : "passes"}, ${lines} activity ${lines === 1 ? "line" : "lines"}`;
+function States({ component, view, state, courier }: StatesProps) {
+  const [comparing, setComparing] = useState(false);
+  if (view.kind !== "preview") {
+    return (
+      <div className="flex flex-col gap-2">
+        <Frame>
+          {view.kind === "working" && view.screenshot === null ? (
+            <div className="flex h-40 items-center justify-center bg-muted/60">
+              <Shimmer className="text-sm">{view.activity}</Shimmer>
+            </div>
+          ) : (
+            <ProductCrop name={component.name} screenshot={view.screenshot} />
+          )}
+        </Frame>
+        <NotBuilt component={component} view={view} courier={courier} />
+      </div>
+    );
+  }
+  const names = component.states.map((s) => s.name);
+  let current = names[0];
+  if (state !== null && names.includes(state)) current = state;
+  const show = (name: string) => {
+    window.location.hash = href.component(component.slug, name);
+  };
   return (
-    <Collapsible defaultOpen={moving} className="group/underneath">
-      <CollapsibleTrigger
-        render={<button type="button" className="flex w-full items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground" />}
-      >
-        <ChevronDownIcon className="size-3.5 transition-transform group-data-[panel-open]/underneath:rotate-180" />
-        <span>Underneath: {summary}</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-3 rounded-xl bg-muted/50 p-5">
-          <HistoryView component={component} events={events} moving={moving} />
+    <div className="flex flex-col gap-4">
+      <Tabs value={current} onValueChange={(value) => show(String(value))} className="gap-4">
+        {names.length > 1 && (
+          <TabsList variant="line">
+            {names.map((name) => (
+              <TabsTrigger key={name} value={name}>{name}</TabsTrigger>
+            ))}
+          </TabsList>
+        )}
+        {component.states.map((look) => (
+          <TabsContent key={look.name} value={look.name}>
+            <Frame>
+              <div className="p-5">
+                <Rendered name={component.name} module={component.module} state={look} />
+              </div>
+            </Frame>
+          </TabsContent>
+        ))}
+      </Tabs>
+      {component.screenshot && (
+        <div className="flex flex-col gap-2">
+          <button type="button" className="self-start text-sm text-muted-foreground hover:text-foreground" onClick={() => setComparing((was) => !was)}>
+            {comparing ? "Hide the product's own" : "Compare with the product"}
+          </button>
+          {comparing && (
+            <Frame>
+              <ProductCrop name={component.name} screenshot={component.screenshot} />
+            </Frame>
+          )}
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+      )}
+    </div>
+  );
+}
+
+function Frame({ children }: { children: React.ReactNode }) {
+  return <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">{children}</div>;
+}
+
+/** The colours the component is made of, from the palette, each a swatch with its name. */
+function Colours({ component, tokens }: { component: Component; tokens: Token[] }) {
+  const used = component.tokens.map((name) => tokens.find((t) => t.name === name)).filter((t): t is Token => t !== undefined);
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-medium text-muted-foreground">Colours it uses</h2>
+      <ul className="m-0 flex list-none flex-wrap gap-x-5 gap-y-2 p-0 text-xs">
+        {used.map((token) => (
+          <li key={token.name} className="flex items-center gap-2">
+            <span className="size-4 rounded ring-1 ring-foreground/10" style={{ background: token.value }} />
+            <span className="font-medium">{token.name}</span>
+            <span className="text-muted-foreground">{token.value}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

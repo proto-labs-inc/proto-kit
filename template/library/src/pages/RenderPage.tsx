@@ -31,7 +31,7 @@ export function RenderPage({ slug, state, placement, library }: Props) {
     statesOf(slug).then((states) => {
       if (!current) return;
       const look = states?.find((s) => s.name === state);
-      if (!look) setLookup({ kind: "missing", why: `no state "${state}" in src/components/${slug}/states.json` });
+      if (!look) setLookup({ kind: "missing", why: `no state "${state}" in src/components/${slug}/component.json` });
       else setLookup({ kind: "ready", module, look });
     });
     return () => {

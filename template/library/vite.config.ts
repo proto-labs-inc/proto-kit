@@ -13,10 +13,14 @@ const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 // at start-up or through its watcher, and the watcher reloads the page
 // for every new file, so the data is served here instead, with
 // no-store, and the watcher leaves public/ alone. The same middleware
-// takes the app's "Queue it": a POST of { slug } appends a request to
-// public/queue.json, where the import polls for it. A published build
-// has no server behind it, so there the POST fails and the app says so.
+// is the app's courier for now (src/courier.ts): a POST to queue.json
+// of { action: "add" | "remove", slug } adds a request to, or takes one
+// out of, public/queue.json, where the import polls for it; the slug
+// "*" asks for the whole import again. A published build has no server
+// behind it, so there the POST fails and the app says so.
 const DATA = /^\/(manifest\.json|events\.jsonl|queue\.json|components\/)/;
+type QueueRequest = { slug: string; at: string };
+type QueueMessage = { action: "add" | "remove"; slug: string };
 // The contract's data files: the manifest, the event stream, the queue,
 // and each component's crop and history images.
 const TYPES: Record<string, string> = {
@@ -38,10 +42,12 @@ function libraryData(): Plugin {
         if (req.method === "POST" && path === "/queue.json") {
           let body = "";
           for await (const chunk of req) body += chunk;
-          const { slug } = JSON.parse(body) as { slug: string };
+          const { action, slug } = JSON.parse(body) as QueueMessage;
           const file = join(publicDir, "queue.json");
-          const queue = JSON.parse(await readFile(file, "utf8")) as { requests: { slug: string; at: string }[] };
-          if (!queue.requests.some((r) => r.slug === slug)) {
+          const queue = JSON.parse(await readFile(file, "utf8")) as { requests: QueueRequest[] };
+          if (action === "remove") {
+            queue.requests = queue.requests.filter((r) => r.slug !== slug);
+          } else if (!queue.requests.some((r) => r.slug === slug)) {
             queue.requests.push({ slug, at: new Date().toISOString() });
           }
           await writeFile(file, JSON.stringify(queue, null, 2) + "\n");

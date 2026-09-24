@@ -1,15 +1,19 @@
+import { useState } from "react";
 import { ArrowRightIcon, ExternalLinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import type { Component, ComponentView, QueueOutcome } from "@/library";
+import { rebuiltNote, type Component, type ComponentView, type Courier } from "@/library";
 import { href } from "@/route";
+import { NotBuilt } from "./NotBuilt";
+import { ProductCrop } from "./ProductCrop";
 import { Rendered } from "./Rendered";
-import { SkippedNotice } from "./SkippedNotice";
 
 type Props = {
   component: Component;
+  all: Component[];
   view: ComponentView;
-  queue: (slug: string) => Promise<QueueOutcome>;
+  courier: Courier;
+  justAdded: boolean;
 };
 
 const PLACEHOLDER_HEIGHT = 120;
@@ -19,26 +23,34 @@ const PLACEHOLDER_HEIGHT = 120;
  * lays out a block: a slim header line, then the preview at full width
  * in a bordered frame. Hovering the block reveals its actions; "See
  * states" opens the component's page. The preview is the component
- * itself in its default state, rendered from its module. A skipped
- * component carries its notice under the frame, not inside it.
+ * itself in its default state, rendered from its module; a component
+ * that is not built shows the product's own crop of it, with the strip
+ * that says why under the frame, not inside it.
  */
-export function ComponentBlock({ component, view, queue }: Props) {
+export function ComponentBlock({ component, all, view, courier, justAdded }: Props) {
+  const [comparing, setComparing] = useState(false);
+  const note = rebuiltNote(component, all);
   return (
     <section id={component.slug} className="group flex scroll-mt-8 flex-col gap-2">
       <div className="flex min-h-7 items-center gap-3 text-sm">
         <a href={href.component(component.slug)} className="font-medium hover:underline">
           {component.name}
         </a>
-        <Summary component={component} view={view} />
+        {justAdded && <span className="text-muted-foreground">Just added</span>}
+        {view.kind === "preview" && component.screenshot && (
+          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setComparing((was) => !was)}>
+            {comparing ? "Hide the product's own" : "Compare with the product"}
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           {view.kind === "preview" && (
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="Open the default state on its own"
+              aria-label={`Open ${component.name} in a new tab`}
               className="text-muted-foreground"
               nativeButton={false}
-              render={<a href={href.render(component.slug, view.state.name)} target="_blank" rel="noreferrer" />}
+              render={<a href={href.component(component.slug, view.state.name)} target="_blank" rel="noreferrer" />}
             >
               <ExternalLinkIcon />
             </Button>
@@ -54,20 +66,21 @@ export function ComponentBlock({ component, view, queue }: Props) {
           </Button>
         </div>
       </div>
+      {note && <p className="m-0 text-sm text-muted-foreground">{note}</p>}
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">
         <Body component={component} view={view} />
       </div>
-      {view.kind === "skipped" && <SkippedNotice component={component} reason={view.reason} queue={queue} />}
+      {comparing && component.screenshot && (
+        <div className="flex flex-col gap-1">
+          <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">
+            <ProductCrop name={component.name} screenshot={component.screenshot} />
+          </div>
+          <span className="text-xs text-muted-foreground">In the product</span>
+        </div>
+      )}
+      {view.kind !== "preview" && <NotBuilt component={component} view={view} courier={courier} />}
     </section>
   );
-}
-
-function Summary({ component, view }: { component: Component; view: ComponentView }) {
-  if (view.kind !== "preview") return null;
-  const n = component.states.length;
-  let label = `${n} states`;
-  if (n === 1) label = "1 state";
-  return <span className="text-muted-foreground">{label}</span>;
 }
 
 function Body({ component, view }: { component: Component; view: ComponentView }) {
@@ -78,24 +91,15 @@ function Body({ component, view }: { component: Component; view: ComponentView }
           <Rendered name={component.name} module={component.module} state={view.state} />
         </div>
       );
-    case "shimmer":
+    case "working":
+      if (view.screenshot !== null) return <ProductCrop name={component.name} screenshot={view.screenshot} />;
       return (
         <div className="flex items-center justify-center bg-muted/60" style={{ height: PLACEHOLDER_HEIGHT }}>
           <Shimmer className="text-sm">{view.activity}</Shimmer>
         </div>
       );
+    case "pending":
     case "skipped":
-      return <ProductShot component={component} screenshot={view.screenshot} />;
+      return <ProductCrop name={component.name} screenshot={view.screenshot} />;
   }
-}
-
-/**
- * MAA-164: the real product's screenshot stands in for the states. The
- * import crops it to the component's own rect; the height cap is the
- * safety net for a crop that is not, so a page-tall shot never
- * dominates the overview.
- */
-function ProductShot({ component, screenshot }: { component: Component; screenshot: string | null }) {
-  if (screenshot === null) return <div className="bg-muted/60" style={{ height: PLACEHOLDER_HEIGHT }} />;
-  return <img src={screenshot} alt={`${component.name} in the product`} className="mx-auto block max-h-80 max-w-full object-contain" />;
 }

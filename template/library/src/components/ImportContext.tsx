@@ -8,7 +8,7 @@ import {
   ContextTrigger,
 } from "@/components/ai-elements/context";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { importInProgress, latestActivity, type Library } from "@/library";
+import { coverage, latestActivity, progress, type Library } from "@/library";
 import { clock, elapsed } from "@/time";
 
 /**
@@ -18,10 +18,9 @@ import { clock, elapsed } from "@/time";
  */
 export function ImportContext({ library }: { library: Library }) {
   const { manifest, events } = library;
-  const settled = manifest.components.filter((c) => c.status === "done" || c.status === "skipped").length;
-  const running = importInProgress(library);
+  const running = manifest.completedAt === null;
   return (
-    <Context done={settled} total={manifest.components.length}>
+    <Context {...progress(library)}>
       <ContextTrigger className="-mr-2">{manifest.source ?? "Import"}</ContextTrigger>
       <ContextContent align="end" className="w-80">
         <ContextContentHeader>
@@ -48,7 +47,7 @@ export function ImportContext({ library }: { library: Library }) {
           <Finished startedAt={manifest.startedAt} completedAt={manifest.completedAt} />
         </ContextContentBody>
         <ContextContentFooter>
-          <Footer running={running} activity={latestActivity(events)} />
+          {running ? <Shimmer as="span">{latestActivity(events) ?? "Starting the import"}</Shimmer> : <span className="text-muted-foreground">{coverage(library)}</span>}
         </ContextContentFooter>
       </ContextContent>
     </Context>
@@ -72,9 +71,4 @@ function Finished({ startedAt, completedAt }: { startedAt: string | null; comple
       {clock(completedAt)}, {elapsed(startedAt, completedAt)}
     </Row>
   );
-}
-
-function Footer({ running, activity }: { running: boolean; activity: string | null }) {
-  if (!running) return <span className="text-muted-foreground">Import complete</span>;
-  return <Shimmer as="span">{activity ?? "Starting the import"}</Shimmer>;
 }

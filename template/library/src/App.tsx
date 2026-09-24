@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { useLibrary } from "./library";
-import { useRoute } from "./route";
+import { useLibrary, type Library } from "./library";
+import { placeOf, useRoute, type Route } from "./route";
 import { paintSurface, surfaceFromTokens } from "./surface";
 import { Overview } from "./pages/Overview";
 import { ComponentPage } from "./pages/ComponentPage";
@@ -16,9 +16,21 @@ export function App() {
     paintSurface(document.documentElement, surfaceFromTokens(tokens));
   }, [tokens]);
 
+  // A new page starts at the top; a state tab on the same page does not
+  // move, and neither does a reload (the dev server reloads the page
+  // when a component's files land): the browser keeps the reading
+  // position then, and this must not undo it.
+  const place = placeOf(route);
+  const opened = useRef(false);
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [route]);
+    if (opened.current) window.scrollTo(0, 0);
+    opened.current = true;
+  }, [place]);
+
+  const library = load.phase === "ready" ? load.library : null;
+  useEffect(() => {
+    document.title = titleFor(route, library);
+  }, [route, library]);
 
   if (load.phase === "loading") {
     return (
@@ -35,10 +47,30 @@ export function App() {
     );
   }
   if (route.page === "component") {
-    return <ComponentPage slug={route.slug} library={load.library} queue={load.queue} />;
+    return <ComponentPage slug={route.slug} state={route.state} library={load.library} courier={load.courier} />;
   }
   if (route.page === "render") {
     return <RenderPage slug={route.slug} state={route.state} placement={route.placement} library={load.library} />;
   }
-  return <Overview library={load.library} queue={load.queue} />;
+  return <Overview library={load.library} courier={load.courier} />;
+}
+
+/**
+ * The document's title: the product's name and "Design system" on the
+ * overview, and the product, the component and the state on a
+ * component's page, so a state opened in a new tab is a titled page.
+ */
+export function titleFor(route: Route, library: Library | null): string {
+  const product = library?.manifest.product?.name ?? null;
+  const parts: string[] = [];
+  if (product !== null) parts.push(product);
+  if (route.page === "overview") {
+    parts.push("Design system");
+    return parts.join(" · ");
+  }
+  const component = library?.manifest.components.find((c) => c.slug === route.slug);
+  parts.push(component?.name ?? route.slug);
+  const state = route.state ?? component?.states[0]?.name ?? null;
+  if (state !== null) parts.push(state);
+  return parts.join(" · ");
 }
