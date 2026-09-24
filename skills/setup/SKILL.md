@@ -182,9 +182,10 @@ A codebase is one codebase being prototyped, keyed everywhere by a
 cloud-minted id: `~/.proto/<id>/` on the laptop, and the id in every
 later call. Its display name is separate and renamable; never derive
 a path or slug from it. The codebase is the team's. Tunnels are
-never named after it: they use per-laptop ids the cloud mints at
-courier registration (`c-<courierId>`, and the library's
-`libraryId`), stored in the run dir.
+provisioned by target, never by a name you compose: the courier's by
+the per-laptop `courierId` the cloud mints at courier registration
+(stored in the run dir with the library's `libraryId`), the library's
+by the codebase id. The site chooses and stores every address.
 
 **The codebase is created here**, once the codebase is found: call
 `set_codebase_source` with **no `codebase` field**. The server

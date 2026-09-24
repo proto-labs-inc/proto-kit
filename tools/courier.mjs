@@ -2,7 +2,8 @@
 /**
  * The courier listener (MAA-130, amendment 2): the website→laptop
  * doorbell. Receives bearer-authed enumerated JSON commands on a local
- * port (exposed publicly via the codebase's agent-<codebase> tunnel),
+ * port (exposed publicly via this laptop's courier tunnel, provisioned
+ * by the site for { kind: "courier", courierId }),
  * validates them, and appends each ACCEPTED command as one JSON line to
  * <run-dir>/commands.jsonl — the durable feed the listening session
  * consumes (see skills/listen/ and
