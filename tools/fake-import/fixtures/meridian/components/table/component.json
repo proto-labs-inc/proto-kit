@@ -1,0 +1,30 @@
+{
+  "states": [
+    {
+      "name": "Default",
+      "props": {}
+    },
+    {
+      "name": "Hover",
+      "props": {
+        "hoverRow": 0
+      }
+    },
+    {
+      "name": "Empty",
+      "props": {
+        "rows": []
+      }
+    }
+  ],
+  "tokens": [
+    "slate-50",
+    "slate-100",
+    "slate-200",
+    "slate-500",
+    "slate-900",
+    "emerald-700",
+    "amber-700",
+    "red-700"
+  ]
+}

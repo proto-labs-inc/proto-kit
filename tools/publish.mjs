@@ -19,9 +19,11 @@
  * --kind is required and names what is published. For a prototype,
  * --dist defaults to dist/; the folder must contain index.html and
  * prototype.json; codebase and slug default from the workspace path
- * (~/.proto/<codebase>/prototypes/<slug>/). The library is uploaded
- * as it stands (no slug): --dir defaults to ~/.proto/<codebase>/library
- * and must contain index.html and manifest.json. account comes from
+ * (~/.proto/<codebase>/prototypes/<slug>/). The library is an app
+ * too (ADR 0003) and is uploaded as its build (no slug): --dir
+ * defaults to ~/.proto/<codebase>/library/dist, produced by `pnpm
+ * build` in the library folder, and must contain index.html and a
+ * manifest.json naming a codebase. account comes from
  * ~/.proto/config.json. --dry-run prints the upload plan without
  * touching the cloud.
  */
@@ -78,7 +80,7 @@ if (kind === "prototype") {
   if (!slug) slug = JSON.parse(readFileSync(join(dist, "prototype.json"), "utf8")).name;
 } else {
   if (!codebase) fail(`--kind library needs --codebase <id>\n${USAGE}`);
-  dist = resolve(options.dir ?? join(process.env.HOME ?? "", ".proto", codebase, "library"));
+  dist = resolve(options.dir ?? join(process.env.HOME ?? "", ".proto", codebase, "library", "dist"));
 }
 if (!codebase && !dryRun) fail("cannot derive codebase from the workspace path; pass --codebase <id>");
 
@@ -86,11 +88,15 @@ if (!codebase && !dryRun) fail("cannot derive codebase from the workspace path; 
 // build script. A publishable folder has an index.html, and a build
 // that lives under a path must reference its assets relatively.
 if (!existsSync(join(dist, "index.html"))) {
-  if (kind === "library") fail(`${dist} has no index.html; is this a scaffolded library?`);
+  if (kind === "library") fail(`${dist} has no index.html; build the library first (pnpm build in its folder), or pass --dir <folder>`);
   else fail(`${dist} has no index.html; build the workspace first (its own build script), or pass --dist <folder>`);
 }
-if (kind === "library" && !existsSync(join(dist, "manifest.json"))) {
-  fail(`${dist} has no manifest.json; a library without one has nothing imported yet`);
+if (kind === "library") {
+  const manifestPath = join(dist, "manifest.json");
+  if (!existsSync(manifestPath)) fail(`${dist} has no manifest.json; the library's public/ folder should carry it`);
+  if (JSON.parse(readFileSync(manifestPath, "utf8")).codebase === null) {
+    fail(`${dist}/manifest.json names no codebase; a library with nothing imported has nothing to publish`);
+  }
 }
 const indexHtml = readFileSync(join(dist, "index.html"), "utf8");
 const rootAbsolute = [...indexHtml.matchAll(/(?:src|href)="(\/[^\/"][^"]*)"/g)].map((m) => m[1]);

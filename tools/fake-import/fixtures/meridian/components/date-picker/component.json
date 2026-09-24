@@ -1,0 +1,22 @@
+{
+  "states": [
+    {
+      "name": "Default",
+      "props": {}
+    },
+    {
+      "name": "Nothing picked",
+      "props": {
+        "picked": 0
+      }
+    }
+  ],
+  "tokens": [
+    "slate-200",
+    "slate-300",
+    "slate-500",
+    "slate-700",
+    "slate-900",
+    "indigo-600"
+  ]
+}
