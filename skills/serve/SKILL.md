@@ -168,13 +168,13 @@ Setup:
 2. Pick a free local port for the listener; generate a command
    secret (`openssl rand -hex 24`).
 3. Provision the tunnel: `provision_tunnel { kind: "courier",
-   courierId, port: <the listener's port> }`. Its answer's `hostname`
-   is the courier's public address.
-4. **Endpoint**: `register_courier { courierId, host, secret,
-   account }`: `host` the `hostname` from step 3 (a full URL is
-   accepted for local dev couriers), `secret` from step 2. This
-   call is repeatable, keyed on courierId: re-provisioned tunnel or
-   rotated secret just overwrites. The user never sees or touches a
+   courierId, port: <the listener's port> }`. The site chooses the
+   courier's public address, stores it on the courier's row, and
+   returns it as `hostname` with the `connectorToken`. Re-provisioning
+   overwrites the stored address.
+4. **Secret**: `register_courier { courierId, secret, account }`,
+   `secret` from step 2. This call is repeatable, keyed on courierId:
+   a rotated secret just overwrites. The user never sees or touches a
    credential.
 5. Write `~/.proto/<codebase>/run/courier/courier.json`
    (`chmod 600`): `{ codebase, port, secret, courierId, libraryId,
