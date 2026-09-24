@@ -34,7 +34,7 @@ export function App() {
     );
   }
   if (route.page === "component") {
-    return <ComponentPage slug={route.slug} view={route.view} library={load.library} queue={load.queue} />;
+    return <ComponentPage slug={route.slug} library={load.library} queue={load.queue} />;
   }
   return <Overview library={load.library} queue={load.queue} />;
 }

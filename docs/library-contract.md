@@ -114,7 +114,7 @@ One JSON object per line, appended only, never rewritten:
 `component` is the slug the line is about; lines without it are about the
 import as a whole. The app shows the last line overall as the page's status,
 the last line per component inside that component's card while it moves, and
-the whole per-component stream in the component's history view.
+the whole per-component stream in the "Underneath" reveal on the component's page.
 
 ### Activity voice
 
@@ -150,8 +150,8 @@ Webfonts the product uses are copied beside the file and declared with
 
 The replica screenshot and diff image of every verification pass, named by
 the manifest's `history` entries (`<n>.png`, `<n>-diff.png` by convention).
-Kept for every component, done or skipped: the history view plays them in
-order so the mismatch visibly falls.
+Kept for every component, done or skipped: the "Underneath" reveal on the
+component's page plays them in order so the mismatch visibly falls.
 
 ## The choreography
 
