@@ -94,10 +94,21 @@ function pending() {
 function driveOne({ offset, line }) {
   const session = readJson(sessionPath, { sessionId: null });
   const instruction = agent.instruction.replaceAll("{command}", line);
-  const argv = session.sessionId
-    ? [...agent.args.slice(0, 1), ...agent.resumeArgs.map((a) => a.replaceAll("{sessionId}", session.sessionId)), ...agent.args.slice(1), instruction]
-    : [...agent.args, instruction];
-  console.log(`drive: ${session.sessionId ? `resume ${session.sessionId}` : "fresh session"} <- ${line.slice(0, 80)}`);
+  let argv;
+  let launch;
+  if (session.sessionId) {
+    argv = [
+      ...agent.args.slice(0, 1),
+      ...agent.resumeArgs.map((a) => a.replaceAll("{sessionId}", session.sessionId)),
+      ...agent.args.slice(1),
+      instruction,
+    ];
+    launch = `resume ${session.sessionId}`;
+  } else {
+    argv = [...agent.args, instruction];
+    launch = "fresh session";
+  }
+  console.log(`drive: ${launch} <- ${line.slice(0, 80)}`);
   const res = spawnSync(agent.bin, argv, { cwd: config.productDir ?? runDir, encoding: "utf8" });
   const sid = captureSessionId(res.stdout ?? "", agent.sessionIdKeys ?? ["session_id", "thread_id", "id"]);
   if (sid && sid !== session.sessionId) writeFileSync(sessionPath, JSON.stringify({ sessionId: sid }));

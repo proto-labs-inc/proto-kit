@@ -82,7 +82,7 @@ checkout root.
         again before you report `done`, and whenever the current
         state is worth keeping. To publish, build the workspace with
         its own build script, then upload the output with `node
-        <kit>/tools/publish.mjs <workspace>`. The published build is
+        <kit>/tools/publish.mjs --kind prototype <workspace>`. The published build is
         what viewers see when the laptop is gone.
      4. Any failure → `report_progress` `"failed"` with a **plain
         one-sentence message a non-engineer can read** — never a

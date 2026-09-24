@@ -13,15 +13,15 @@
  * path is ever overwritten.
  *
  * Usage:
- *   node publish.mjs <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
- *   node publish.mjs --library <codebase> [--dir <folder>] [--dry-run]
+ *   node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
+ *   node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]
  *
- * Prototype mode: --dist defaults to dist/; the folder must contain
- * index.html and prototype.json; codebase and slug default from the
- * workspace path (~/.proto/<codebase>/prototypes/<slug>/). Library
- * mode uploads the library as it stands (kind "library", no slug):
- * --dir defaults to ~/.proto/<codebase>/library and must contain
- * index.html and manifest.json. account comes from
+ * --kind is required and names what is published. For a prototype,
+ * --dist defaults to dist/; the folder must contain index.html and
+ * prototype.json; codebase and slug default from the workspace path
+ * (~/.proto/<codebase>/prototypes/<slug>/). The library is uploaded
+ * as it stands (no slug): --dir defaults to ~/.proto/<codebase>/library
+ * and must contain index.html and manifest.json. account comes from
  * ~/.proto/config.json. --dry-run prints the upload plan without
  * touching the cloud.
  */
@@ -29,40 +29,58 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, relative, extname, sep } from "node:path";
 import { callTool } from "./mcp-call.mjs";
 
-const args = process.argv.slice(2);
-const flag = (name) => {
-  const i = args.indexOf(`--${name}`);
-  return i === -1 ? null : args[i + 1];
+const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
+       node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
+const KINDS = ["prototype", "library"];
+const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug"];
+const fail = (message) => {
+  console.error(message);
+  process.exit(1);
 };
-const dryRun = args.includes("--dry-run");
-const libraryProduct = flag("library");
-const kind = libraryProduct ? "library" : "prototype";
-const workspace = libraryProduct ? null : resolve(args.find((a) => !a.startsWith("--")) ?? "");
-if (!args[0]) {
-  console.error("usage: node publish.mjs <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]\n       node publish.mjs --library <codebase> [--dir <folder>] [--dry-run]");
-  process.exit(1);
-}
 
-// codebase/slug from the canonical layout, overridable for tests.
-const parts = (workspace ?? "").split(sep);
-const protoIdx = parts.lastIndexOf(".proto");
-const codebase =
-  libraryProduct ??
-  flag("codebase") ??
-  (protoIdx !== -1 && parts[protoIdx + 2] === "prototypes" ? parts[protoIdx + 1] : null);
-const dist = libraryProduct
-  ? resolve(flag("dir") ?? join(process.env.HOME ?? "", ".proto", libraryProduct, "library"))
-  : resolve(workspace, flag("dist") ?? "dist");
-const slug = libraryProduct
-  ? null
-  : flag("slug") ??
-    (protoIdx !== -1 && parts[protoIdx + 2] === "prototypes"
-      ? parts[protoIdx + 3]
-      : JSON.parse(readFileSync(join(dist, "prototype.json"), "utf8")).name);
-if (!codebase && !dryRun) {
-  console.error("cannot derive codebase from the workspace path; pass --codebase <id>");
-  process.exit(1);
+const options = {};
+const positional = [];
+const args = process.argv.slice(2);
+for (let i = 0; i < args.length; i += 1) {
+  const arg = args[i];
+  if (arg === "--dry-run") {
+    options.dryRun = true;
+  } else if (arg.startsWith("--")) {
+    const name = arg.slice(2);
+    if (!VALUE_OPTIONS.includes(name) || args[i + 1] === undefined) fail(`unknown or valueless option ${arg}\n${USAGE}`);
+    options[name] = args[i + 1];
+    i += 1;
+  } else {
+    positional.push(arg);
+  }
 }
+const kind = options.kind;
+if (!KINDS.includes(kind)) fail(`--kind must be one of ${KINDS.join(", ")}; got ${kind ?? "nothing"}\n${USAGE}`);
+const dryRun = options.dryRun === true;
+
+// What is uploaded and where it belongs, by kind. A prototype's
+// codebase and slug default from the canonical layout
+// (~/.proto/<codebase>/prototypes/<slug>/), overridable for tests.
+let codebase = options.codebase ?? null;
+let workspace = null;
+let slug = null;
+let dist;
+if (kind === "prototype") {
+  if (!positional[0]) fail(USAGE);
+  workspace = resolve(positional[0]);
+  const parts = workspace.split(sep);
+  const protoIdx = parts.lastIndexOf(".proto");
+  const canonical = protoIdx !== -1 && parts[protoIdx + 2] === "prototypes";
+  if (!codebase && canonical) codebase = parts[protoIdx + 1];
+  dist = resolve(workspace, options.dist ?? "dist");
+  slug = options.slug ?? null;
+  if (!slug && canonical) slug = parts[protoIdx + 3];
+  if (!slug) slug = JSON.parse(readFileSync(join(dist, "prototype.json"), "utf8")).name;
+} else {
+  if (!codebase) fail(`--kind library needs --codebase <id>\n${USAGE}`);
+  dist = resolve(options.dir ?? join(process.env.HOME ?? "", ".proto", codebase, "library"));
+}
+if (!codebase && !dryRun) fail("cannot derive codebase from the workspace path; pass --codebase <id>");
 
 const config = (() => {
   try {
@@ -76,16 +94,11 @@ const config = (() => {
 // build script. A publishable folder has an index.html, and a build
 // that lives under a path must reference its assets relatively.
 if (!existsSync(join(dist, "index.html"))) {
-  console.error(
-    libraryProduct
-      ? `${dist} has no index.html; is this a scaffolded library?`
-      : `${dist} has no index.html; build the workspace first (its own build script), or pass --dist <folder>`,
-  );
-  process.exit(1);
+  if (kind === "library") fail(`${dist} has no index.html; is this a scaffolded library?`);
+  else fail(`${dist} has no index.html; build the workspace first (its own build script), or pass --dist <folder>`);
 }
-if (libraryProduct && !existsSync(join(dist, "manifest.json"))) {
-  console.error(`${dist} has no manifest.json; a library without one has nothing imported yet`);
-  process.exit(1);
+if (kind === "library" && !existsSync(join(dist, "manifest.json"))) {
+  fail(`${dist} has no manifest.json; a library without one has nothing imported yet`);
 }
 const indexHtml = readFileSync(join(dist, "index.html"), "utf8");
 const rootAbsolute = [...indexHtml.matchAll(/(?:src|href)="(\/[^\/"][^"]*)"/g)].map((m) => m[1]);
@@ -139,7 +152,9 @@ const manifest = files.map((f) => ({
   size: statSync(f).size,
 }));
 const totalBytes = manifest.reduce((n, f) => n + f.size, 0);
-console.log(`${manifest.length} files, ${(totalBytes / 1024).toFixed(0)} KB in ${workspace ? relative(workspace, dist) || "dist" : dist}`);
+let distLabel = dist;
+if (kind === "prototype") distLabel = relative(workspace, dist) || "dist";
+console.log(`${manifest.length} files, ${(totalBytes / 1024).toFixed(0)} KB in ${distLabel}`);
 const problems = [];
 if (kind === "prototype" && !manifest.some((f) => f.path === "prototype.json"))
   problems.push("the build has no prototype.json (the workspace's public/ folder should carry it)");
@@ -175,14 +190,15 @@ const unwrap = (result) => {
 };
 
 const account = config.account?.user;
+// The target both publish tools key on: the kind and codebase, plus
+// the slug for a prototype.
+let target;
+if (kind === "prototype") target = { kind, codebase, slug };
+else target = { kind, codebase };
 const opened = unwrap(
-  await callTool("begin_publish", {
-    codebase,
-    ...(slug ? { slug } : {}),
-    ...(kind === "library" ? { kind } : {}),
-    account,
-    files: manifest,
-  }).catch((e) => ({ content: [{ text: e.message }] })),
+  await callTool("begin_publish", { ...target, account, files: manifest }).catch((e) => ({
+    content: [{ text: e.message }],
+  })),
 );
 if (!opened.buildId || !Array.isArray(opened.uploads)) {
   console.error(`begin_publish did not open a build: ${opened.error ?? JSON.stringify(opened)}`);
@@ -216,13 +232,9 @@ if (failed.length > 0) {
 }
 
 const finished = unwrap(
-  await callTool("finish_publish", {
-    codebase,
-    ...(slug ? { slug } : {}),
-    ...(kind === "library" ? { kind } : {}),
-    buildId,
-    account,
-  }).catch((e) => ({ content: [{ text: e.message }] })),
+  await callTool("finish_publish", { ...target, buildId, account }).catch((e) => ({
+    content: [{ text: e.message }],
+  })),
 );
 if (!finished.publishedUrl) {
   console.error(`finish_publish did not confirm: ${finished.error ?? JSON.stringify(finished)}`);

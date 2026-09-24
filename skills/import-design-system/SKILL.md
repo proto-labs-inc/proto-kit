@@ -136,8 +136,8 @@ the import.)
       processes, exactly as the serve skill does for a prototype:
       `node tools/serve.mjs <library-dir> <port>`, the tunnel
       connector from the provisioning result, and the liveness beat
-      `node tools/prototype-heartbeat.mjs <run-dir> <codebase>
-      --library`. Then `supervise.mjs start`. A library run without a
+      `node tools/prototype-heartbeat.mjs --kind library <run-dir>
+      <codebase>`. Then `supervise.mjs start`. A library run without a
       tunnel process is a bug: the beat stays silent without one, so
       the site would never call it live anyway.
    4. Verify through Cloudflare's edge only, once: `curl --resolve
@@ -188,7 +188,7 @@ contract:
    - `completedAt` is set and `progress.json` says
      `{"status": "complete", "activity": "Import complete"}`;
    - the library is published so it outlives the laptop:
-     `node tools/publish.mjs --library <codebase>`;
+     `node tools/publish.mjs --kind library --codebase <codebase>`;
    - one line to the user: the library is published and stays
      viewable after this laptop closes;
    - then continue into the next thing setup asked for (a prototype

@@ -43,13 +43,20 @@ try {
   session = JSON.parse(readFileSync(sessionPath, "utf8"));
 } catch {}
 
-const resuming = Boolean(session.sessionId);
-const argv = [
-  ...config.args,
-  ...(resuming ? config.resumeArgs.map((a) => a.replaceAll("{sessionId}", session.sessionId)) : []),
-  resuming ? (config.resumeInstruction ?? config.instruction) : config.instruction,
-];
-console.log(`agent ${resuming ? `resuming ${session.sessionId}` : "starting fresh"}`);
+let argv;
+let launch;
+if (session.sessionId) {
+  argv = [
+    ...config.args,
+    ...config.resumeArgs.map((a) => a.replaceAll("{sessionId}", session.sessionId)),
+    config.resumeInstruction ?? config.instruction,
+  ];
+  launch = `resuming ${session.sessionId}`;
+} else {
+  argv = [...config.args, config.instruction];
+  launch = "starting fresh";
+}
+console.log(`agent ${launch}`);
 
 const child = spawn(config.bin, argv, { stdio: ["ignore", "pipe", "inherit"] });
 let buffer = "";

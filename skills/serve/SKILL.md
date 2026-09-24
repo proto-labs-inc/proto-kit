@@ -41,7 +41,7 @@ directory, which is also the proto-kit checkout root.
        // are up; its lifetime is the serving lifetime, so stopping the
        // run silences it and staleness tells the Frame to use the
        // published build. No "is live" flag exists anywhere.
-       { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "<run-dir>", "<codebase>", "<slug>"] }
+       { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "--kind", "prototype", "<run-dir>", "<codebase>", "<slug>"] }
      ]
    }
    ```
@@ -82,7 +82,7 @@ directory, which is also the proto-kit checkout root.
    own build script (`pnpm build`; the templates configure relative
    asset paths, which a published build needs because it lives under
    a path). Then upload the output folder: `node tools/publish.mjs
-   <workspace>` (`--dist <folder>` when the framework's output is
+   --kind prototype <workspace>` (`--dist <folder>` when the framework's output is
    not `dist/`). It uploads to a fresh path and prints the published
    URL. The Frame falls back to that URL when the laptop is gone, so
    viewers see the last checkpoint instead of nothing.
