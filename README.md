@@ -15,7 +15,6 @@ agent installs and drives.
 | `agents/`, `codex-agents/`, `cursor-agents/` | The subagent roles (importer, builder, verifier, and the headless listen session), one folder per harness format. |
 | `hooks/`, `monitors/`, `codex-hooks/`, `cursor-hooks/` | Per-harness packaging: the session-start health line and the post-edit marker check as each harness declares hooks, plus the Claude Code `courier-feed` monitor. |
 | `docs/` | `library-contract.md` (the frozen manifest/progress/components contract both the fake driver and the real import write), `harness-mechanics.md` (verified facts about Claude Code, Codex and Cursor that the skills stand on), `cdp-traps.md` (what bites when reading live pages over CDP). |
-| `bin/` | The `proto` CLI shim: `status`, `verify`, `serve`, thin wrappers over `tools/`. |
 | `assets/` | The logo the plugin manifests reference. |
 
 Plugin manifests wrap `skills/` + `tools/` for Claude Code, Codex, and

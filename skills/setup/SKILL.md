@@ -103,7 +103,7 @@ cloudflared`); tell them what you installed.
 
 ### `~/.proto/config.json`
 
-The account link, the one file every other skill and the CLI reads
+The account link, the one file every other skill and tool reads
 for "who am I and where is the app":
 
 ```jsonc
