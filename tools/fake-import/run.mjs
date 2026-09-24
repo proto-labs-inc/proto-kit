@@ -137,18 +137,15 @@ await sleep(1800);
 lib("inventory", libraryDir, JSON.stringify(COMPONENTS.map((c) => ({ slug: c.slug, name: c.name }))));
 await sleep(600);
 
-// Four lanes at most, each a beat behind the last, the way the real
-// import fans out.
-const pending = [...COMPONENTS];
-const lane = async (delay) => {
-  await sleep(delay);
-  while (pending.length > 0) {
-    const spec = pending.shift();
+// One lane per component, every one of them started at once, each a
+// beat behind the last, the way the real import fans out.
+const lanes = Promise.all(
+  COMPONENTS.map(async (spec, i) => {
+    await sleep(i * 350);
     if (spec.skip) await skip(spec);
     else await extract(spec);
-  }
-};
-const lanes = Promise.all([lane(0), lane(700), lane(1400), lane(2100)]);
+  }),
+);
 
 const stream = async () => {
   await sleep(400);

@@ -198,10 +198,10 @@ call; chain the short ones in one shell line.
    Every component is `found` and the user sees the whole queue.
    This comes *before* tokens and type styles: the fan-out is the
    critical path and it waits on nothing but this list.
-5. **Fan out, in one turn.** Issue every sub-agent spawn in the same
-   turn (see **Fan out**), at most four extracting at once; the rest
-   start as lanes free up. Mark each `component <slug> status
-   extracting` as you spawn it.
+5. **Fan out, in one turn.** Start a unit for every component the
+   inventory lists, every spawn issued in the same turn (see **Fan
+   out**), as many as the harness runs in parallel. Mark each
+   `component <slug> status extracting` as you spawn it.
 6. **Tokens and type styles, while the units run.** Push each token
    and each type style as you confirm it, one `token`/`type` line
    each (chain a dozen in one shell line): the source has the names
@@ -357,11 +357,13 @@ a global rule in a module is a bug, not a shortcut.
 ## Fan out: this is a parallel job
 
 Extraction is embarrassingly parallel and the user is watching the
-library fill. Dispatch one sub-agent per component, **all spawns in
-one turn**, four extracting at a time (the fifth starts when one
-reports). Use the cheap importer role: `importer` on Claude Code
-(Haiku), `spawn_agent` with `proto-importer` on Codex. Serial
-extraction is wrong unless one unit remains.
+library fill. Dispatch one sub-agent per component, every component in
+the inventory, **all spawns in one turn**, and let the harness run as
+many of them at once as it will: a component waiting for a lane is a
+component the user is watching an empty card for. Use the cheap
+importer role: `importer` on Claude Code (Haiku), `spawn_agent` with
+`proto-importer` on Codex. Serial extraction is wrong unless one unit
+remains.
 
 One orchestrator, you, owns the run and the contract files: **only
 you call `library.mjs`**. A sub-agent writes inside its unit folder
@@ -408,8 +410,7 @@ node tools/library.mjs history <library> <slug> --screenshot passes/1.png --diff
 stylesheet or `states.json` is not what the contract says; a refusal
 goes back to the unit as one line. A skip is `component <slug> status
 skipped --reason "…" --screenshot passes/screenshot.png`, after its
-`history` lines if it made passes. Then spawn the next waiting
-component, if any.
+`history` lines if it made passes.
 
 ## The queue
 
