@@ -11,23 +11,18 @@ const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 // The import writes the contract files into public/ while this server
 // runs (docs/library-contract.md). Vite only serves public files it saw
 // at start-up or through its watcher, and the watcher reloads the page
-// for every new state .html, so the data is served here instead, with
+// for every new file, so the data is served here instead, with
 // no-store, and the watcher leaves public/ alone. The same middleware
 // takes the app's "Queue it": a POST of { slug } appends a request to
 // public/queue.json, where the import polls for it. A published build
 // has no server behind it, so there the POST fails and the app says so.
 const DATA = /^\/(manifest\.json|events\.jsonl|queue\.json|components\/)/;
+// The contract's data files: the manifest, the event stream, the queue,
+// and each component's crop and history images.
 const TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".jsonl": "application/x-ndjson; charset=utf-8",
   ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".svg": "image/svg+xml",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
 };
 
 function libraryData(): Plugin {
@@ -66,9 +61,9 @@ function libraryData(): Plugin {
           res.setHeader("Access-Control-Allow-Origin", "*");
           res.end(body);
         } catch {
-          // A state file that is not there yet is a 404, never the SPA
-          // fallback: the browser would cache the app's own page under
-          // the state's URL and keep showing it inside the frame.
+          // A crop or history image that is not there yet is a 404, never
+          // the SPA fallback: the browser would cache the app's own page
+          // under the image's URL and keep showing it.
           res.statusCode = 404;
           res.end();
         }
