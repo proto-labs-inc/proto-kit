@@ -168,8 +168,13 @@ for (const f of manifest) {
 // literal in application data is invisible to it and ships unchanged.
 // This is the gate every build passes through, so the rule lives here: a
 // root-absolute reference naming a file this build carries is a certain
-// 404 once published. Authoring rule, in the create-prototype skill:
-// prefix a public/ file with import.meta.env.BASE_URL, or import it.
+// 404 once published. Match against the build's own files and nothing
+// else. Flagging every root-absolute path that merely looks like an
+// asset condemns prototype.json's previews and references too, which the
+// Frame resolves on its own side and the browser never fetches from the
+// build: that reading refuses a working variant set. Authoring rule, in
+// the create-prototype skill: prefix a public/ file with
+// import.meta.env.BASE_URL, or import it.
 const SCANNED = new Set([".html", ".js", ".mjs", ".css", ".json"]);
 const carried = new Set(manifest.map((f) => f.path));
 const misrooted = new Map();
