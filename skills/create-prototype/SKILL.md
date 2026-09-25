@@ -1,6 +1,6 @@
 ---
 name: create-prototype
-description: Build a prototype from your product's own code. A prototype is one screen or flow of your product, built in its own workspace with your design system, with preview states, variants, and comment markers, ready to review in Proto. Use when the user asks to create or build a prototype, mock up a flow or screen from their product, or compare design variants on a page.
+description: Build a new prototype from your product's own code, optionally with its initial variant sets. Use when the user asks to create or build a new prototype or mock up a new flow or screen. Do not use for variant work in an existing prototype; use create-variant-set, add-variants, or edit-variant instead.
 ---
 
 # Create a prototype
@@ -204,6 +204,13 @@ question being decided. Drive the code with `useVariant`.
 New variants always go at the top of the list. When adding variants to
 an existing set, prepend them to the `variants` array; never append them,
 and preserve the existing variants' relative order.
+
+After every edit that changes a variant's UI, metadata, ordering, or
+baseline, run an SVG-preview consistency pass over the entire affected
+variant set. Regenerate any stale previews, then check that every preview
+is component-only, uses the same padding and framing, and renders on the
+prototype's page background. Do not finish the edit while its preview or
+any sibling preview in the set is missing, stale, or formatted differently.
 
 Ground variants in reality: for each direction, find a real product
 that does it well, capture or draw a small reference image into
