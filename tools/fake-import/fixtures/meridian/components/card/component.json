@@ -1,0 +1,30 @@
+{
+  "states": [
+    {
+      "name": "Default",
+      "props": {}
+    },
+    {
+      "name": "Hover",
+      "props": {
+        "hover": true
+      }
+    },
+    {
+      "name": "Selected",
+      "props": {
+        "selected": true
+      }
+    }
+  ],
+  "tokens": [
+    "slate-100",
+    "slate-200",
+    "slate-500",
+    "slate-900",
+    "indigo-100",
+    "indigo-500",
+    "indigo-600",
+    "amber-700"
+  ]
+}

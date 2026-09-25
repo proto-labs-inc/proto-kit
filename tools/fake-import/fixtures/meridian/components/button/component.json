@@ -1,0 +1,64 @@
+{
+  "states": [
+    {
+      "name": "Default",
+      "props": {}
+    },
+    {
+      "name": "Hover",
+      "props": {
+        "hover": true
+      }
+    },
+    {
+      "name": "Disabled",
+      "props": {
+        "disabled": true
+      }
+    },
+    {
+      "name": "Loading",
+      "props": {
+        "loading": true
+      }
+    },
+    {
+      "name": "Secondary",
+      "props": {
+        "variant": "secondary",
+        "children": "Request changes"
+      }
+    },
+    {
+      "name": "Ghost",
+      "props": {
+        "variant": "ghost",
+        "children": "Cancel"
+      }
+    },
+    {
+      "name": "Danger",
+      "props": {
+        "variant": "danger",
+        "children": "Reject"
+      }
+    },
+    {
+      "name": "Small",
+      "props": {
+        "size": "sm",
+        "children": "Add receipt"
+      }
+    }
+  ],
+  "tokens": [
+    "indigo-600",
+    "indigo-700",
+    "slate-50",
+    "slate-100",
+    "slate-300",
+    "slate-600",
+    "slate-900",
+    "red-700"
+  ]
+}

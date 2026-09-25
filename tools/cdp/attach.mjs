@@ -1,5 +1,7 @@
-// Attach to the person's running Chrome (started with --remote-debugging-port).
-// We never launch Chrome for them and never steal focus.
+// Attach to the visible Proto window (tools/cdp/chrome.mjs, port 9333):
+// the product page the user is signed into. Read from it, never
+// navigate it, never steal focus. Replicas and diffs go to the
+// headless Chrome (tools/cdp/headless.mjs) instead.
 import { connect } from "./cdp.mjs";
 
 const base = (port) => `http://localhost:${port}`;
@@ -10,25 +12,11 @@ export async function listPages(port = 9333) {
   return targets.filter((t) => t.type === "page");
 }
 
-// Base URL of our own static server (tools/serve.mjs). Only pages from
-// this origin are "our own". Do not widen this to all of localhost:
-// target apps often run on localhost ports during development.
-export const TOOL_BASE = "http://localhost:8123";
-
-// Find the target tab whose URL contains `match`. Pages from our own
-// server are excluded — otherwise a match like "wikipedia" can hit our
-// own wireframe/diff pages and the tool reads its own output.
-// Chrome takes a moment after launch to list tabs — an empty list right
-// after startup means retry.
-export async function findPage(match, port = 9333, toolBase = TOOL_BASE) {
+// Find the tab whose URL contains `match`. Chrome takes a moment after
+// launch to list tabs: an empty list right after startup means retry.
+export async function findPage(match, port = 9333) {
   const pages = await listPages(port);
-  return pages.find((t) => t.url.includes(match) && !t.url.startsWith(toolBase));
-}
-
-// Find one of our own served pages (diff view, wireframe view).
-export async function findToolPage(match, port = 9333, toolBase = TOOL_BASE) {
-  const pages = await listPages(port);
-  return pages.find((t) => t.url.startsWith(toolBase) && t.url.includes(match));
+  return pages.find((t) => t.url.includes(match));
 }
 
 export async function browser(port = 9333) {
@@ -37,7 +25,7 @@ export async function browser(port = 9333) {
   return connect(info.webSocketDebuggerUrl);
 }
 
-// Open a tab WITHOUT raising the window. (PUT /json/new steals focus — never use it.)
+// Open a tab WITHOUT raising the window. (PUT /json/new steals focus: never use it.)
 // Waits for the document to finish loading before returning: the target
 // appears in /json/list while its document is still null, and evaluating
 // against it throws.
@@ -66,8 +54,8 @@ export async function openBackground(url, port = 9333) {
   throw new Error("created target never appeared in /json/list");
 }
 
-// Reuse a worker tab. Navigation never raises focus. This waits for the
-// load event — Page.navigate returns before the document is ready, and
+// Navigate a tab the kit opened (never the user's). This waits for the
+// load event: Page.navigate returns before the document is ready, and
 // evaluating against a mid-navigation document races or hangs.
 export async function navigate(page, url) {
   await page.send("Page.enable");

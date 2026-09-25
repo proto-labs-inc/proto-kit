@@ -1,18 +1,20 @@
 #!/usr/bin/env node
-/** Static server for laptop-served Proto surfaces (library viewer, static
- *  prototypes). CORS on (the Proto app probes manifests cross-origin) and
- *  no-store (live population must never fight a cache). */
+/** Static server for laptop-served static folders (an import's unit
+ *  folder, static prototypes). CORS on and no-store (files rewritten
+ *  mid-run must never fight a cache). Port 0 picks a free one, so
+ *  parallel units never collide; the port is printed either way.
+ *  Usage: node serve.mjs <dir> [port] */
 import { createServer } from "node:http";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
 const [dirArg, portArg] = process.argv.slice(2);
 if (!dirArg) {
-  console.error("usage: node serve.mjs <dir> [port]");
+  console.error("usage: node serve.mjs <dir> [port]   (port 0 picks a free one)");
   process.exit(1);
 }
 const root = resolve(dirArg);
-const port = Number(portArg ?? 5210);
+const port = Number(portArg ?? 0);
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -26,31 +28,13 @@ const TYPES = {
   ".woff2": "font/woff2",
 };
 
-createServer(async (req, res) => {
+async function handle(req, res) {
   const url = new URL(req.url, "http://localhost");
   let path = normalize(decodeURIComponent(url.pathname));
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Cache-Control": "no-store",
   };
-  // ?ls on a directory returns its entries as JSON — used by tool pages
-  // (e.g. tools/cdp/history.html) to walk a run's stage files.
-  if (url.searchParams.has("ls")) {
-    const dir = join(root, path);
-    if (!dir.startsWith(root)) {
-      res.writeHead(403).end();
-      return;
-    }
-    try {
-      const entries = await readdir(dir);
-      res.writeHead(200, { ...headers, "Content-Type": TYPES[".json"] });
-      res.end(JSON.stringify(entries));
-    } catch {
-      res.writeHead(404, headers);
-      res.end("[]");
-    }
-    return;
-  }
   if (path.endsWith("/")) path += "index.html";
   const file = join(root, path);
   if (!file.startsWith(root)) {
@@ -70,6 +54,8 @@ createServer(async (req, res) => {
     res.writeHead(404, headers);
     res.end("not found");
   }
-}).listen(port, () => {
-  console.log(`serving ${root} on http://localhost:${port}`);
+}
+
+const server = createServer(handle).listen(port, () => {
+  console.log(`serving ${root} on http://localhost:${server.address().port}`);
 });

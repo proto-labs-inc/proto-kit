@@ -1,0 +1,40 @@
+{
+  "states": [
+    {
+      "name": "Default",
+      "props": {}
+    },
+    {
+      "name": "Focused",
+      "props": {
+        "focused": true,
+        "value": "Figma In"
+      }
+    },
+    {
+      "name": "Error",
+      "props": {
+        "error": true,
+        "label": "Amount",
+        "value": "forty five",
+        "hint": "Enter an amount, like 45.00"
+      }
+    },
+    {
+      "name": "Disabled",
+      "props": {
+        "disabled": true
+      }
+    }
+  ],
+  "tokens": [
+    "slate-50",
+    "slate-300",
+    "slate-500",
+    "slate-700",
+    "slate-900",
+    "indigo-600",
+    "red-500",
+    "red-700"
+  ]
+}
