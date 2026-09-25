@@ -26,8 +26,9 @@ After a PR is successfully created or updated, edit the prototype's `public/prot
 
 - `pullRequestUrl`: the canonical URL of the created or updated PR.
 - `branchUrl`: a URL that opens the actual source branch in the hosting service.
+- `status`: the verified current PR state: `"draft"` for a draft PR, `"in-review"` for an open non-draft PR, `"merged"` for a merged PR, or `"closed"` for a closed unmerged PR.
 - `previewUrl`: the deployed preview URL, only when a usable preview exists; omit it otherwise.
 
-Preserve the entry's title, description, state, wireframe, target, and ordering. Link only verified URLs; never invent a PR, branch, or preview URL. Save and serve/register the updated prototype using the repo's established workflow so the links appear in the PR Plan UI. If the prototype manifest is not in a writable workspace or registration cannot be completed, report the exact manifest change needed and why it remains unapplied.
+Read the PR state from the hosting service at the same time you verify its URL, and update `status` whenever you refresh the PR or branch links. Preserve the entry's title, description, state, wireframe, target, and ordering. Link only verified URLs; never invent a PR, branch, or preview URL. Save and serve/register the updated prototype using the repo's established workflow so the links and status appear in the PR Plan UI. If the prototype manifest is not in a writable workspace or registration cannot be completed, report the exact manifest change needed and why it remains unapplied.
 
-Finish with a compact per-entry summary: PR URL, branch URL, preview URL if available, verification performed, and any remaining blocker. A local commit or pushed branch without a PR is not a completed pull request.
+Finish with a compact per-entry summary: PR URL, branch URL, status, preview URL if available, verification performed, and any remaining blocker. A local commit or pushed branch without a PR is not a completed pull request.
