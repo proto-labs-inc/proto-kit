@@ -86,6 +86,23 @@ isn't one. Then make it this prototype's own:
 lazy-imports it from the prototype's own node_modules for comment
 capture. Removing it breaks comment screenshots silently.
 
+## Images and other public files
+
+`public/` ships to the build root, and a published build is served from
+under a path (`<codebase>/<slug>/<buildId>/`). Reference its files
+against the build's base:
+
+```tsx
+<img src={`${import.meta.env.BASE_URL}portraits/soleio.jpg`} />
+```
+
+Written root-absolutely (`/portraits/soleio.jpg`) an image renders in dev
+and through the tunnel, where the workspace is the host root, then 404s
+once published. The template's vite `base: "./"` rewrites every reference
+the bundler sees (HTML attributes, CSS `url()`, imported assets); a path
+written as a string literal in component data stays exactly as typed.
+`publish.mjs` refuses such a build, naming the file and the reference.
+
 ## The live URL is the visual source of truth
 
 When there is a source URL, the prototype must look like that page,

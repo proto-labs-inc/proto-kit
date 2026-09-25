@@ -98,13 +98,6 @@ if (kind === "library") {
     fail(`${dist}/manifest.json names no codebase; a library with nothing imported has nothing to publish`);
   }
 }
-const indexHtml = readFileSync(join(dist, "index.html"), "utf8");
-const rootAbsolute = [...indexHtml.matchAll(/(?:src|href)="(\/[^\/"][^"]*)"/g)].map((m) => m[1]);
-if (rootAbsolute.length > 0) {
-  console.error(`warning: index.html references root-absolute asset paths (${rootAbsolute.slice(0, 3).join(", ")}${rootAbsolute.length > 3 ? ", …" : ""}).`);
-  console.error("A published build lives under a path; set relative asset paths in the workspace's build config (the templates use base \"./\").");
-}
-
 const files = [];
 (function walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -165,6 +158,36 @@ for (const f of manifest) {
   if (!f.path.split("/").every((seg) => SEGMENT.test(seg)))
     problems.push(`${f.path} has a path segment the published host refuses (letters, digits, dot, dash, underscore; no leading dot)`);
 }
+// Every asset reference must resolve against the build's own base. A
+// published build lives under <codebase>/<slug>/<buildId>/, so a
+// root-absolute reference ("/portraits/soleio.jpg") resolves against the
+// host root instead and 404s, while the same build serves fine in dev and
+// through the tunnel, where the workspace is the host root. The templates'
+// vite base "./" rewrites every reference the bundler sees (HTML
+// attributes, CSS url(), imported assets); a path written as a string
+// literal in application data is invisible to it and ships unchanged.
+// This is the gate every build passes through, so the rule lives here: a
+// root-absolute reference naming a file this build carries is a certain
+// 404 once published. Authoring rule, in the create-prototype skill:
+// prefix a public/ file with import.meta.env.BASE_URL, or import it.
+const SCANNED = new Set([".html", ".js", ".mjs", ".css", ".json"]);
+const carried = new Set(manifest.map((f) => f.path));
+const misrooted = new Map();
+for (const f of manifest) {
+  if (!SCANNED.has(extname(f.path))) continue;
+  const text = readFileSync(join(dist, f.path), "utf8");
+  for (const [, ref] of text.matchAll(/["'`(](\/[A-Za-z0-9._][A-Za-z0-9._\-/]*)/g)) {
+    if (!carried.has(ref.slice(1))) continue;
+    if (!misrooted.has(ref)) misrooted.set(ref, new Set());
+    misrooted.get(ref).add(f.path);
+  }
+}
+for (const [ref, sources] of misrooted) {
+  problems.push(
+    `${[...sources].sort().join(", ")} reference${sources.size > 1 ? "" : "s"} ${ref} root-absolutely; the build carries that file, so published it resolves to the host root and 404s. Write it relative to import.meta.env.BASE_URL`,
+  );
+}
+
 if (problems.length > 0) {
   for (const p of problems) console.error(`cannot publish: ${p}`);
   process.exit(1);
@@ -172,6 +195,7 @@ if (problems.length > 0) {
 
 if (dryRun) {
   for (const f of manifest) console.log(`  would upload ${f.path}  (${f.contentType}, ${f.size} bytes)`);
+  console.log(`every asset reference resolves against the build's base (${manifest.filter((f) => SCANNED.has(extname(f.path))).length} text files scanned)`);
   console.log("dry run: skipped begin_publish, uploads, finish_publish");
   process.exit(0);
 }
