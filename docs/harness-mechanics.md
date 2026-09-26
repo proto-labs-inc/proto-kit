@@ -73,13 +73,12 @@ against this plugin yet.
   substituted in MCP `command`, `args`, `env`, `cwd` and `headers`.
   Substitution in `url` is not documented, and every official plugin
   uses a fixed url, so the kit ships its server as a stdio bridge
-  (`tools/mcp-stdio.mjs`) whose endpoint and bearer come from env
-  (the variables) or `~/.proto/config.json`. Verified: the bridge
-  completes initialize, tools/list and a `whoami` call against the
-  real app over stdio; started unconfigured it answers initialize and
-  an empty tools/list, then emits `notifications/tools/list_changed`
-  once config.json appears and serves the real tools; a literal
-  `${VAR}` left in env is treated as unset.
+  (`tools/mcp-stdio.mjs`) whose endpoint and laptop token come from
+  `~/.proto/config.json`. Verified: the bridge completes initialize,
+  tools/list and a `whoami` call against the real app over stdio;
+  started unconfigured it answers initialize and an empty tools/list,
+  then emits `notifications/tools/list_changed` once config.json
+  appears and serves the real tools.
 - Agents: markdown with `name` and `description`, optional `model`
   (`inherit` or a Cursor model id), `readonly`, `is_background`;
   invoked as `/name`. Claude's `agents/*.md` carry Claude-only keys
@@ -235,11 +234,13 @@ interactive-session-only) + this kit's own architecture, 2026-09-20.
   `${CLAUDE_PLUGIN_ROOT}`.
 - Plugin hooks live at `hooks/hooks.json` (default location,
   auto-loaded).
-- A bundled `.mcp.json` substitutes `${user_config.<key>}` in
-  url/headers/env from the plugin's `userConfig` (declared in
-  plugin.json; the user is prompted at enable time, `sensitive`
-  fields masked): this is how the kit ships its `proto` server
-  without a domain in code. Plugin MCP tools are scoped
+- A bundled `.mcp.json` can substitute `${user_config.<key>}` in
+  url/headers/env from the plugin's `userConfig` (the user is prompted
+  at enable time). The kit does not use it: the laptop's credential is
+  minted after the plugin is installed (ADR 0004 in the proto repo),
+  so `.mcp.json` runs the same stdio bridge as Cursor,
+  `node ${CLAUDE_PLUGIN_ROOT}/tools/mcp-stdio.mjs`, reading
+  `~/.proto/config.json`. Plugin MCP tools are scoped
   `mcp__plugin_<plugin>_<server>__<tool>`. `${VAR}` shell-env
   expansion also works, with a denylist of credential vars
   (ANTHROPIC_API_KEY etc.) that read as empty in remote

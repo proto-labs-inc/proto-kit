@@ -67,7 +67,7 @@ checkout root.
 
      **With a `briefId`** (the site's Execute path):
      1. Fetch the work: `get_brief {briefId}` → `{id, codebase,
-        account, title, description, url, referenceHtml, status}`.
+        title, description, url, referenceHtml, status}`.
      2. Report `report_progress {briefId, status: "started"}` before
         any slow work, then keep the site honest at each phase
         change: `"building"` when the workspace work begins,
@@ -75,9 +75,8 @@ checkout root.
         live and registered. The other statuses: `"failed"` and
         `"needs-input"`.
      3. Follow the named skill with the brief's fields (title,
-        description, url, referenceHtml). Register with the brief's
-        `account` as owner (fall back to config.json's
-        `account.user`).
+        description, url, referenceHtml). Registration is credited
+        to this laptop's account by the site.
         Publish at the checkpoints: when you report `serving`,
         again before you report `done`, and whenever the current
         state is worth keeping. To publish, build the workspace with
