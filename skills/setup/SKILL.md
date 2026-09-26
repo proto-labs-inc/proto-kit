@@ -40,11 +40,14 @@ Set up Proto for <name> (<id>) at <org>.
 Fetch <app>/api/setup/<code> and follow it; the link is valid for 10 minutes and works once.
 ```
 
-A `, codebase <id>` suffix on the first line appears only when
-resuming an unfinished setup; a new setup has none, and creating the
-codebase is this skill's job (below). Everything else comes from the
-document the second line points at. Run the whole flow without
-re-asking for anything the document already says.
+A `, codebase <id>` suffix on the first line appears when resuming an
+unfinished setup; a new setup has none, and creating the codebase is
+this skill's job (below). A `, codebase <id>, prototype <slug>` suffix
+is the **Edit prompt**, copied from a prototype's Frame by its creator
+when their agent was not listening: see "Editing a prototype" at the
+end. Everything else comes from the document the second line points
+at. Run the whole flow without re-asking for anything the document
+already says.
 
 ### The setup document, and linking the laptop
 
@@ -86,11 +89,14 @@ Proto site again, and wait for the new prompt. The document is JSON:
   },
   "source": { "folderPath": "..." },           // or { "fingerprint": { "name", "tree": [...] } }, or absent
   "productUrl": "https://...",                 // the product page to parse, or absent
-  "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" }  // New prototype prompts only
+  "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" },  // New prototype prompts only
+  "prototype": { "slug": "...", "title": "..." }   // Edit prompts only
 }
 ```
 
-The document carries no credential. **Never print `auth.secret`**
+The link tool keeps a credential that already works for this account
+(it checks `whoami` first), so an Edit prompt on a laptop that is set
+up spends the code on the document alone. The document carries no credential. **Never print `auth.secret`**
 from config.json, not in a summary, not in a command the user sees.
 Hold the brief for the handoff.
 
@@ -376,9 +382,32 @@ Report what you set up, leading with which account they're set up
 as, what you found vs. were told, and anything you skipped because
 it already existed.
 
+## Editing a prototype
+
+The Edit prompt (`prototype` in the document) means: the creator of
+that prototype wants their agent on it again, and the site assumed no
+session was listening. Only the creator's account can edit a
+prototype; the site refuses every other laptop's writes to it in one
+sentence, so a document naming a prototype is always the creator's.
+Do the machine steps above (the link tool keeps a working credential;
+the plugin update still applies), skip the codebase steps when
+`~/.proto/<codebase>/codebase.json` exists (else do them: the
+codebase id is in the document), then:
+
+1. Open the workspace `~/.proto/<codebase>/prototypes/<slug>/`. If it
+   does not exist on this laptop, say so in one sentence: the
+   prototype was built on another laptop of theirs, and a copy of the
+   workspace is needed here before editing.
+2. Tell the user, in one line, that you are on "<title>" and ask what
+   to change. Wait. Every change follows the create-prototype and
+   serve skills as usual (the serve run, registration, publish at
+   checkpoints), and this session keeps listening for the site's
+   commands afterwards (the listen skill).
+
 ## Handoff
 
-Setup ends by continuing, not by stopping:
+Setup ends by continuing, not by stopping (an Edit prompt ends at
+"Editing a prototype" above instead):
 
 1. Run **import-design-system** against the found source + the Proto
    window's live page: the library filling in is the first thing the

@@ -9,8 +9,11 @@
  * origin, the account and the token (mode 600), confirms with `whoami`,
  * and prints the document as JSON for the setup skill to follow. The
  * token never appears on stdout or in the conversation: it goes from
- * the app to config.json inside this process. Exit 1 with one plain
- * sentence on stderr when the link has expired or was already used.
+ * the app to config.json inside this process. A laptop whose
+ * config.json already holds a working credential for the same app and
+ * account (an Edit prompt on a laptop that is set up) keeps it: the code
+ * then only served the document. Exit 1 with one plain sentence on
+ * stderr when the link has expired or was already used.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
@@ -32,6 +35,23 @@ if (!fetched.ok || !document) {
   process.exit(1);
 }
 const app = document.app ?? origin;
+
+// A laptop that is already linked to this account keeps its credential.
+if (existsSync(CONFIG_PATH)) {
+  try {
+    const current = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    if (current.app === app && current.auth?.secret) {
+      const me = unwrap(await callTool("whoami", {}));
+      if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
+        console.error(`This laptop is already linked to ${me.user.name} at ${me.org.name}.`);
+        process.stdout.write(JSON.stringify(document, null, 2) + "\n");
+        process.exit(0);
+      }
+    }
+  } catch {
+    // Unreadable or stale: link afresh below.
+  }
+}
 
 const linked = unwrap(
   await callTool("link_laptop", { code, label: hostname() }, { app, secret: null }).catch((e) => ({
