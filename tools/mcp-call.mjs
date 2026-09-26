@@ -7,7 +7,8 @@
  * when the server issues one, read answers that come as plain JSON or
  * as SSE frames. `readConfig` is the one reader of
  * ~/.proto/config.json for every kit process; `callTool` takes the
- * endpoint and bearer from it (`app`, `auth.secret`).
+ * endpoint and the laptop token from it (`app`, `auth.secret`) and sends
+ * the token as the bearer.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,6 +16,13 @@ import { join } from "node:path";
 export const CONFIG_PATH = join(process.env.HOME ?? "", ".proto", "config.json");
 export const NOT_SET_UP =
   "Proto is not set up on this laptop yet: run the Proto setup skill, then try again.";
+export const STALE_CREDENTIAL =
+  "This laptop's Proto credential no longer works (it was removed on the Laptops page, or the account left the org): run the Proto setup skill again to link it afresh.";
+
+function configTarget() {
+  const config = readConfig();
+  return { app: config.app, secret: config.auth.secret };
+}
 
 /**
  * ~/.proto/config.json, the account link setup writes (shape in
@@ -63,13 +71,15 @@ export function parseMessages(text) {
  * POST one JSON-RPC message to the app's MCP endpoint. Returns the
  * HTTP status, the session id the server issued (if any), and the
  * parsed messages of a successful answer (empty for 202 or errors).
+ * `secret` is the laptop token, sent as the bearer; null sends none,
+ * which only link_laptop accepts.
  */
 export async function post({ app, secret }, body, sessionId) {
   const headers = {
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
-    Authorization: `Bearer ${secret}`,
   };
+  if (secret) headers.Authorization = `Bearer ${secret}`;
   if (sessionId) headers["Mcp-Session-Id"] = sessionId;
   const res = await fetch(`${app}/api/mcp`, {
     method: "POST",
@@ -85,10 +95,11 @@ export async function post({ app, secret }, body, sessionId) {
   };
 }
 
-export async function callTool(name, args) {
-  const config = readConfig();
-  const target = { app: config.app, secret: config.auth.secret };
-
+/** Call one tool as this laptop (the target from config.json), or, with
+ *  an explicit target, as whoever that says: link_laptop is called with
+ *  { app, secret: null } before config.json exists. Throws on a JSON-RPC
+ *  error and on 401, with the sentence the setup skill tells the user. */
+export async function callTool(name, args, target = configTarget()) {
   const init = await post(target, {
     jsonrpc: "2.0",
     id: 1,
@@ -105,6 +116,7 @@ export async function callTool(name, args) {
     { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } },
     init.sessionId,
   );
+  if (res.status === 401) throw new Error(STALE_CREDENTIAL);
   const body = res.messages.find((m) => m.id === 2) ?? res.messages[0];
   if (!body) throw new Error(`${name}: the Proto app answered ${res.status}`);
   if (body.error) throw new Error(`${name}: ${body.error.message ?? JSON.stringify(body.error)}`);

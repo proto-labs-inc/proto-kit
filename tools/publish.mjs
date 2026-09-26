@@ -23,7 +23,7 @@
  * too (ADR 0003) and is uploaded as its build (no slug): --dir
  * defaults to ~/.proto/<codebase>/library/dist, produced by `pnpm
  * build` in the library folder, and must contain index.html and a
- * manifest.json naming a codebase. account comes from
+ * manifest.json naming a codebase. The laptop's credential comes from
  * ~/.proto/config.json. --dry-run prints the upload plan without
  * touching the cloud.
  */
@@ -223,7 +223,6 @@ try {
 } catch (e) {
   fail(e.message);
 }
-const account = config.account?.user;
 // The target both publish tools key on: the kind and codebase, plus
 // the slug for a prototype.
 let target;
@@ -243,7 +242,7 @@ if (kind === "prototype") {
   if (!rigVersion) fail(`${rigPackage} has no version`);
 }
 const opened = unwrap(
-  await callTool("begin_publish", { ...target, account, files: manifest }).catch((e) => ({
+  await callTool("begin_publish", { ...target, files: manifest }).catch((e) => ({
     content: [{ text: e.message }],
   })),
 );
@@ -278,7 +277,7 @@ if (failed.length > 0) {
   process.exit(1);
 }
 
-const finishInput = { ...target, buildId, account };
+const finishInput = { ...target, buildId };
 if (kind === "prototype") finishInput.rigVersion = rigVersion;
 const finished = unwrap(
   await callTool("finish_publish", finishInput).catch((e) => ({

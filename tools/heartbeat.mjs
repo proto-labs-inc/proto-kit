@@ -5,7 +5,7 @@
  * the app's `heartbeat` tool with a target that says what is being
  * served: { kind: "prototype", codebase, slug }, { kind: "library",
  * codebase } or { kind: "courier", courierId, agentListening }; the
- * account comes from ~/.proto/config.json. The app owns the cadence:
+ * laptop's credential comes from ~/.proto/config.json. The app owns the cadence:
  * the tool answers with `staleAfterSeconds`, the silence after which
  * it treats the laptop as gone, and this loop beats at a third of that
  * window, so the app still sees a beat inside it when one goes
@@ -15,7 +15,7 @@
  * learned and never crashes the process: staleness is the signal, and
  * a beat that cannot be sent is a missed beat.
  */
-import { callTool, readConfig } from "./mcp-call.mjs";
+import { callTool } from "./mcp-call.mjs";
 
 /** Between tries while the app has not yet answered with its window. */
 const RETRY_BEFORE_FIRST_ANSWER_MS = 5_000;
@@ -43,8 +43,7 @@ export function beatForever(targetNow) {
 /** One call of the heartbeat tool for `target`, or null when there is nothing to send. */
 function sendBeat(target) {
   if (target === null) return null;
-  const account = readConfig().account?.user;
-  return callTool("heartbeat", { ...target, account });
+  return callTool("heartbeat", target);
 }
 
 /** The `staleAfterSeconds` in the heartbeat tool's answer (JSON in content[0].text), or null. */
