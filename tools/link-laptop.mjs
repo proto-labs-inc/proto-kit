@@ -3,12 +3,15 @@
  * Redeem one Proto setup link without exposing the laptop token to the
  * agent. The setup document and laptop token use the same one-time code but
  * are consumed independently: fetch the document, exchange the code through
- * link_laptop, then write the token directly to ~/.proto/config.json.
+ * link_laptop, then write the token directly to ~/.proto/config.json. A
+ * laptop whose config.json already holds a working token for the same app
+ * and member (an Edit prompt on a laptop that is set up) keeps it: the code
+ * then only served the document.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
-import { CONFIG_PATH, post } from "./mcp-call.mjs";
+import { CONFIG_PATH, callTool, post } from "./mcp-call.mjs";
 
 const fail = (message) => {
   console.error(message);
@@ -45,6 +48,23 @@ try {
 }
 const app = typeof document.app === "string" ? document.app.replace(/\/+$/, "") : "";
 if (!app) fail("the setup document has no Proto app address");
+
+// A laptop already linked to this member keeps its token.
+if (existsSync(CONFIG_PATH)) {
+  try {
+    const current = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    if (current.app === app && current.auth?.secret) {
+      const answer = await callTool("whoami", {});
+      const me = JSON.parse(answer?.content?.[0]?.text ?? "{}");
+      if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
+        console.log(JSON.stringify({ setup: document, linkedAs: { user: me.user, org: me.org, laptop: me.laptop } }));
+        process.exit(0);
+      }
+    }
+  } catch {
+    // Unreadable, stale or refused: link afresh below.
+  }
+}
 
 const target = { app, secret: null };
 const initialized = await post(target, {
