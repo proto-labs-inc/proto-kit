@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 /**
- * The proto MCP server as a stdio process, what every harness's plugin
- * manifest points at (the credential lives in config.json, minted after
- * the plugin is installed, so no manifest can carry it). Bridges MCP over stdio
+ * The proto MCP server as a stdio process, for hosts whose plugin
+ * config launches a local process (Claude Code and Cursor). Bridges MCP over stdio
  * to the app's Streamable HTTP endpoint (<app>/api/mcp) over the
- * transport in mcp-call.mjs. The endpoint and the laptop token come
- * from ~/.proto/config.json (`app`, `auth.secret`), which the setup
- * skill writes after linking the laptop. Resolved on every request, so
- * a config.json written after the host started this process is picked
- * up without a restart; the bridge tells the host with
- * notifications/tools/list_changed.
+ * transport in mcp-call.mjs. The endpoint and bearer come from
+ * ~/.proto/config.json (`app`, `auth.secret`), which setup writes.
+ * Resolved on every request, so a config.json written after the host
+ * started this process is picked up without a restart; the bridge
+ * tells the host with notifications/tools/list_changed.
  *
  * Until it is configured, the bridge answers initialize and an empty
  * tools/list itself and refuses everything else with a plain
@@ -23,7 +21,7 @@ import { NOT_SET_UP, post, readConfig } from "./mcp-call.mjs";
 const PROTOCOL_VERSION = "2025-03-26";
 const CLIENT_INFO = { name: "proto-kit", version: "0" };
 
-/** The endpoint and bearer, or null while config.json does not exist. */
+/** The endpoint and bearer, or null while nothing configures them. */
 function resolveConfig() {
   try {
     const config = readConfig();

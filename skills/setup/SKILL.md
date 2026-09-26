@@ -1,6 +1,13 @@
 ---
 name: setup
-description: Set up Proto on this laptop and connect a codebase. Starts from the setup prompt copied from the Proto site, two lines whose second is a one-time link to the setup document: it records your account, finds your codebase folder, creates the codebase in Proto, opens your product page in a Proto browser window, and hands over to the design-system import. Use when a message starts "Set up Proto for account", when installing Proto or connecting a new codebase, or when other Proto skills find no config.json or codebase.json.
+description: >-
+  Set up Proto on this laptop and connect a codebase. Starts from the setup
+  prompt copied from the Proto site, two lines whose second is a one-time link
+  to the setup document: it links this laptop, finds your codebase folder,
+  creates the codebase in Proto, opens your product page in a Proto browser
+  window, and hands over to the design-system import. Use when a message starts
+  "Set up Proto for", when installing Proto or connecting a new
+  codebase, or when other Proto skills find no config.json or codebase.json.
 ---
 
 # Setup
@@ -28,9 +35,9 @@ setup skill from the chat's `/` menu on Cursor (or just asks to set
 up Proto, in the terminal, the Claude Code desktop app, the Codex
 app, or Cursor's chat). Nothing was pasted, so ask for the one thing
 setup can't derive: the setup prompt, copied from the Proto site's
-setup steps or its New prototype dialog (its link carries the
-account, the laptop's credential and everything else below). One
-question, then proceed exactly as below once they paste it.
+setup steps or its New prototype dialog (it carries the identity and
+everything else below). One question, then proceed
+exactly as below once they paste it.
 
 **As the prompt**: pasted from the Proto site. It is two lines. The
 first is the sentence the recognizer keys on:
@@ -49,37 +56,20 @@ end. Everything else comes from the document the second line points
 at. Run the whole flow without re-asking for anything the document
 already says.
 
-### The setup document, and linking the laptop
+### The setup document
 
-The link does two things, each once, within ten minutes of the site
-making it: it answers the setup document, and its code is exchanged
-for this laptop's credential. **The kit's link tool does both**, so
-the credential never passes through the conversation:
-
-```
-node <kit>/tools/link-laptop.mjs <link>
-```
-
-(resolve `<kit>` from the installed host's `PLUGIN_ROOT`,
-`CLAUDE_PLUGIN_ROOT`, or `CURSOR_PLUGIN_ROOT`; otherwise the root
-above this skill's `skills/` directory). It fetches the document,
-calls the app's `link_laptop` tool with the code and this laptop's
-hostname, writes `~/.proto/config.json` (below), confirms with
-`whoami`, prints one line naming the account on stderr, and prints
-the document as JSON on stdout. Run it exactly once. When the plugin
-is not installed yet (the prompt was pasted into a bare session),
-fetch the document first with `curl -fsS <link>` to learn the
-install command, install, and then run the link tool with the same
-link: the fetch and the link are separate uses of one code, so this
-works once each. A `410` from the fetch, or the link tool's one
-sentence on stderr, means the link has expired or was already used:
-tell the user, in that sentence, to copy the setup prompt from the
-Proto site again, and wait for the new prompt. The document is JSON:
+Run `node <kit>/tools/link-laptop.mjs <link>` exactly once. The helper
+fetches the setup document, exchanges the same code for this laptop's
+token, writes the token directly to `~/.proto/config.json`, and prints
+only the non-secret document and linked identity. The link expires ten
+minutes after the site made it. If it says the link expired or was
+already used, tell the user to copy the setup prompt from the Proto site
+again and wait for the new prompt. The printed setup document is JSON:
 
 ```jsonc
 {
   "instructions": "...",                       // what to do with the document, one paragraph
-  "account": { "id": "<id>", "name": "<name>", "org": "<org name>" },
+  "account": { "id": "<id>", "name": "<name>", "org": "<org>" },
   "codebase": "<id>",                          // only when resuming
   "app": "https://...",                        // the Proto app's origin
   "install": {                                 // the plugin command per harness
@@ -94,11 +84,10 @@ Proto site again, and wait for the new prompt. The document is JSON:
 }
 ```
 
-The link tool keeps a credential that already works for this account
-(it checks `whoami` first), so an Edit prompt on a laptop that is set
-up spends the code on the document alone. The document carries no credential. **Never print `auth.secret`**
-from config.json, not in a summary, not in a command the user sees.
-Hold the brief for the handoff.
+The helper keeps a token that already works for this member (it asks
+`whoami` first), so an Edit prompt on a laptop that is set up spends the
+code on the document alone. The setup document carries no credential. Never print or read back
+`auth.secret` from config.json. Hold the brief for the handoff.
 
 ## Machine
 
@@ -133,55 +122,45 @@ cloudflared`); tell them what you installed.
 
 ### `~/.proto/config.json`
 
-The account link, written by the link tool above: the one file every
-other skill and tool reads for "who am I and where is the app":
+The laptop link, the one file every other skill and tool reads
+for "who am I and where is the app":
 
 ```jsonc
 {
   "schemaVersion": 2,
   "app": "https://…",              // the document's app
-  "account": { "user": "<id>", "name": "<name>", "org": "<org name>" },
-  "auth": { "kind": "laptop-token", "secret": "…" },   // this laptop's token, minted by link_laptop
+  "auth": { "kind": "laptop-token", "secret": "…" },
+  "user": { "id": "<id>", "name": "<name>", "email": "…" },
+  "org": { "id": "<id>", "name": "<name>" },
+  "laptop": { "id": "<id>", "label": "<hostname>" },
   "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
 }
 ```
 
-The credential is this laptop's own token (ADR 0004 in the proto
-repo): one per laptop, no expiry, revoked from the site's Laptops
-page or when the account leaves the org. Nothing downstream reads
-`auth.kind`; everything reads `auth` opaquely and sends
-`Authorization: Bearer <auth.secret>`. An existing config.json on
-this laptop is a resume: keep it when `whoami` still answers, and
-run the link tool again with a fresh prompt when it answers 401 (the
-kit's tools say so in one sentence: "This laptop's Proto credential
-no longer works"). When setup started as a command with no prompt
-and there is no config.json, **ask the user to copy the setup prompt
-from the Proto site and stop until they paste it**. Never search the
-disk for a credential: a `.env` file belonging to some checkout is
-not this user's, even if it would work. Then **tell the user which
-account they're set up as**, by name and org.
-
-The file is mode 600: it holds a credential. The site credits every
-registration and cloud call to the laptop's account itself; no tool
-takes an account argument.
+The link helper writes this file with mode 600. When setup started as
+a command with no prompt, ask the user to copy the setup prompt from
+the Proto site and stop until they paste it. Never search the disk for
+a credential: a `.env` file belonging to a checkout is not this
+laptop's credential. Every cloud call sends `Authorization: Bearer
+<auth.secret>`; the server derives the member and org from that token.
 
 ### The proto MCP server
 
 The `proto` MCP server is how every kit skill talks to Proto
-(tunnels, registration, source registry, comments). In Claude Code
-and Cursor it ships in the plugin as the kit's own stdio bridge
-(`tools/mcp-stdio.mjs`), which reads config.json: once the link tool
-has written it, the server works with nothing to add by hand. The
-bridge announces its tools when config.json appears; if they still
-do not show, the user restarts the session (Claude Code) or toggles
-the Proto MCP server off and on in Customize (Cursor). Its tools may
-appear under a host-specific scoped name; this and the other skills
-refer to them by bare tool name. The kit's plain tools (courier,
-supervisor, publish) read the same config.json.
+(tunnels, registration, source registry, comments). In Claude Code and
+Cursor it ships as the kit's stdio bridge (`tools/mcp-stdio.mjs`), which
+reads config.json, so once the link helper has written the file the server
+works with nothing else to add. The bridge announces its tools when
+config.json appears; if they still do not show, the user toggles the
+Proto MCP server off and on in Customize. Its tools may appear under a host-specific scoped name; this and the
+other skills refer to them by bare tool name. The kit's plain tools
+(courier, supervisor, publisher) read the same config.json.
 
-Running from a bare checkout instead, add the server manually in
-Claude Code: `claude mcp add proto -- node <kit>/tools/mcp-stdio.mjs`.
+Running from a bare checkout instead, add the server manually in Claude
+Code:
+`claude mcp add --transport http proto <app>/api/mcp --header
+"Authorization: Bearer <auth.secret>"`.
 
 **On Codex** the server is added at setup time (its plugin config
 can't read config.json): write to `~/.codex/config.toml`, values
@@ -269,10 +248,9 @@ system it extracts."**
    once the repo exists, and mean it (re-running setup resumes from
    files, not memory).
 6. **Create or record the codebase** once confirmed:
-   `set_codebase_source { sourcePath, repoRemote }`. With no
-   `codebase` field the server creates the codebase in this laptop's
-   org, names it after the source folder, and returns the id that
-   keys everything from here on.
+   `set_codebase_source { sourcePath, repoRemote }`. With no `codebase`
+   field the server creates the codebase in the laptop token's org and names it after the source
+   folder, and returns the id that keys everything from here on.
    Resuming with a known id, pass `codebase` and the call records the
    source instead. The local `codebase.json` below stays the laptop's
    copy of the same pointers.
@@ -352,7 +330,7 @@ Proto window step, while the product's live page is open there:
    `src/app/icon.*`.
 3. Convert to a data URL (png/svg/ico, ≤ 256 KB: pick a size that
    fits) and call the `set_codebase_icon` MCP tool with
-   `{ codebase, image }`.
+   `{ codebase, image }`. The laptop token supplies the member and org.
 4. **Fail soft.** Nothing usable found → skip silently and move on;
    the site shows a letter fallback. No icon is ever worth a
    question or an error sentence.
@@ -374,11 +352,10 @@ without stopping anything.
   `package.json`/remote match the codebase (they can legitimately
   disagree with each other, a fork or renamed checkout, which is
   why confirmation beat validation above).
-- The `whoami` MCP tool answers `mode: "laptop-token"` with the
-  expected account, org and this laptop's label.
+- The `whoami` MCP tool answers with the expected org and grants.
 - `cloudflared --version` runs.
 
-Report what you set up, leading with which account they're set up
+Report what you set up, leading with which member and org they're linked
 as, what you found vs. were told, and anything you skipped because
 it already existed.
 
@@ -389,8 +366,8 @@ that prototype wants their agent on it again, and the site assumed no
 session was listening. Only the creator's account can edit a
 prototype; the site refuses every other laptop's writes to it in one
 sentence, so a document naming a prototype is always the creator's.
-Do the machine steps above (the link tool keeps a working credential;
-the plugin update still applies), skip the codebase steps when
+Do the machine steps above (the link helper keeps a working token; the
+plugin update still applies), skip the codebase steps when
 `~/.proto/<codebase>/codebase.json` exists (else do them: the
 codebase id is in the document), then:
 
@@ -419,6 +396,7 @@ Setup ends by continuing, not by stopping (an Edit prompt ends at
    verbatim: title, description, the brief document URL, the
    reference page (`productUrl`), the reference HTML (structure
    hints only: the live page wins) and whether to use real data.
+   Registration there uses the laptop token's member as creator.
 3. End by telling the user, plainly: **keep this session open, it's
    your codebase's agent.** And one more sentence once the first
    import has finished: the library is published, so it stays

@@ -26,6 +26,9 @@ full serve workflow, provision or restart a tunnel, or register the prototype.
 5. Finish the manifest entry with component, title, variants, `sourceFiles`,
    component-only SVG previews, default, baseline when there is a pre-set
    original, showcase state, and overview. Remove `status` when complete.
+   Store preview, reference-image, and wireframe paths relative to the build
+   root without a leading slash, for example `previews/example.svg` and
+   `references/example.png`.
 
 ## Verify and publish
 

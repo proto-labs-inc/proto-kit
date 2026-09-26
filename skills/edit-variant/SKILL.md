@@ -22,7 +22,9 @@ restart a tunnel, or register the prototype.
    variant. Do not rewrite unaffected variants.
 4. When appearance changes, update the target variant's component-only SVG
    preview and keep its `sourceFiles` accurate. Do not change references unless
-   the user asks.
+   the user asks. Keep preview, reference-image, and wireframe paths relative
+   to the build root without a leading slash, for example
+   `previews/example.svg`.
 
 ## Verify and publish
 

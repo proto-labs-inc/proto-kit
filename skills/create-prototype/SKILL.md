@@ -37,8 +37,8 @@ runtime.
 ## The gallery shows the build
 
 Before scaffolding, put a loading card in the user's gallery: call
-`begin_prototype_build { codebase, slug, title }` (the site credits it
-to this laptop's account) and keep the brief id it returns. One
+`begin_prototype_build { codebase, slug, title }` and keep the brief id it
+returns. The laptop token identifies the member. One
 guard: when this build was started by a website brief, you already
 have a brief id: use that one and do not call
 `begin_prototype_build` again.
@@ -102,6 +102,14 @@ once published. The template's vite `base: "./"` rewrites every reference
 the bundler sees (HTML attributes, CSS `url()`, imported assets); a path
 written as a string literal in component data stays exactly as typed.
 `publish.mjs` refuses such a build, naming the file and the reference.
+
+Asset paths stored in `public/prototype.json` are data consumed by the
+Frame, so write them build-relatively without a leading slash:
+`previews/example.svg`, `references/example.png`, and
+`wireframes/example.svg`. Do not write `/previews/...`, `/references/...`,
+or `/wireframes/...`; those root-absolute strings are also inlined into the
+prototype bundle and fail the publish check. The Frame resolves the relative
+value against the live or published prototype base.
 
 ## The live URL is the visual source of truth
 
@@ -246,16 +254,14 @@ a reference is a guess with styling.
 3. Reload the app at `?state=<id>` for each registered state and
    confirm the right mode renders.
 4. **Hand off to the serve skill, which registers the prototype.**
-   Registration (`register_prototype` with `{ codebase, slug, title }`,
-   credited to this laptop's account by the site) happens inside
+   Registration (`register_prototype` with `{ codebase, slug, title }`) happens inside
    the serve skill, after the tunnel is provisioned and the run is
    up, never here: a registered prototype is a tile on the site, and
    opening a tile whose hostname does not exist yet poisons the
    viewer's resolver for thirty minutes. `register_prototype`
    upserts on (codebase, slug), so re-registering after a title
-   change is correct and expected; a "not your codebase" error means
-   this laptop is linked to another org: fix it in setup, not here.
-   Registering
+   change is correct and expected; an authorization error means the
+   laptop must be relinked through setup. Registering
    also flips the build's brief to done, closing the gallery's
    loading card.
 

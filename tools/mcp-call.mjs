@@ -40,7 +40,15 @@ export function readConfig() {
   }
   const app = typeof config.app === "string" ? config.app.trim() : "";
   const secret = config.auth?.secret;
-  if (app.length === 0 || typeof secret !== "string" || secret.length === 0) throw new Error(NOT_SET_UP);
+  if (
+    config.schemaVersion !== 2 ||
+    config.auth?.kind !== "laptop-token" ||
+    app.length === 0 ||
+    typeof secret !== "string" ||
+    secret.length === 0
+  ) {
+    throw new Error(NOT_SET_UP);
+  }
   return { ...config, app: app.replace(/\/+$/, "") };
 }
 

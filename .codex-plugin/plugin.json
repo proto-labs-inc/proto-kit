@@ -1,6 +1,6 @@
 {
   "name": "proto",
-  "version": "0.1.0+codex.20260925073728",
+  "version": "0.1.0+codex.20260926052443",
   "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs, driven by your coding agent.",
   "author": {
     "name": "Proto Labs"
@@ -13,31 +13,6 @@
     "frontend"
   ],
   "skills": "./skills/",
-  "hooks": {
-    "hooks": {
-      "SessionStart": [
-        {
-          "hooks": [
-            {
-              "type": "command",
-              "command": "node \"$PLUGIN_ROOT/tools/health.mjs\""
-            }
-          ]
-        }
-      ],
-      "PostToolUse": [
-        {
-          "matcher": "Edit|Write",
-          "hooks": [
-            {
-              "type": "command",
-              "command": "node \"$PLUGIN_ROOT/tools/hooks/post-edit-markers.mjs\""
-            }
-          ]
-        }
-      ]
-    }
-  },
   "interface": {
     "displayName": "Proto",
     "shortDescription": "Prototypes from your product's own code",

@@ -75,8 +75,8 @@ checkout root.
         live and registered. The other statuses: `"failed"` and
         `"needs-input"`.
      3. Follow the named skill with the brief's fields (title,
-        description, url, referenceHtml). Registration is credited
-        to this laptop's account by the site.
+        description, url, referenceHtml). The laptop token identifies
+        the member and org for registration.
         Publish at the checkpoints: when you report `serving`,
         again before you report `done`, and whenever the current
         state is worth keeping. To publish, build the workspace with

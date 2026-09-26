@@ -1,103 +1,127 @@
 #!/usr/bin/env node
 /**
- * Link this laptop to a Proto account from the setup prompt's link
- * (ADR 0004): `node tools/link-laptop.mjs <app>/api/setup/<code>`.
- *
- * Fetches the setup document once, exchanges the same code for this
- * laptop's token with the app's `link_laptop` MCP tool (the one call
- * that needs no bearer), writes ~/.proto/config.json with the app
- * origin, the account and the token (mode 600), confirms with `whoami`,
- * and prints the document as JSON for the setup skill to follow. The
- * token never appears on stdout or in the conversation: it goes from
- * the app to config.json inside this process. A laptop whose
- * config.json already holds a working credential for the same app and
- * account (an Edit prompt on a laptop that is set up) keeps it: the code
- * then only served the document. Exit 1 with one plain sentence on
- * stderr when the link has expired or was already used.
+ * Redeem one Proto setup link without exposing the laptop token to the
+ * agent. The setup document and laptop token use the same one-time code but
+ * are consumed independently: fetch the document, exchange the code through
+ * link_laptop, then write the token directly to ~/.proto/config.json. A
+ * laptop whose config.json already holds a working token for the same app
+ * and member (an Edit prompt on a laptop that is set up) keeps it: the code
+ * then only served the document.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { dirname } from "node:path";
-import { CONFIG_PATH, callTool } from "./mcp-call.mjs";
+import { dirname, join } from "node:path";
+import { CONFIG_PATH, callTool, post } from "./mcp-call.mjs";
 
-const link = process.argv[2];
-const match = link?.match(/^(https?:\/\/[^/]+)\/api\/setup\/([A-Za-z0-9_-]+)$/);
-if (!match) {
-  console.error("usage: node tools/link-laptop.mjs <app>/api/setup/<code>  (the link in the setup prompt)");
+const fail = (message) => {
+  console.error(message);
   process.exit(1);
-}
-const [, origin, code] = match;
+};
 
-const fetched = await fetch(link, { headers: { Accept: "application/json" } });
-const document = await fetched.json().catch(() => null);
-if (!fetched.ok || !document) {
-  console.error(document?.error ?? `The setup link answered ${fetched.status}.`);
-  process.exit(1);
-}
-const app = document.app ?? origin;
+const setupLink = process.argv[2];
+if (!setupLink) fail("usage: node tools/link-laptop.mjs <setup-link>");
 
-// A laptop that is already linked to this account keeps its credential.
+let link;
+try {
+  link = new URL(setupLink);
+} catch {
+  fail("the setup link is not a valid URL");
+}
+const code = link.pathname.split("/").filter(Boolean).at(-1);
+if (!code) fail("the setup link has no linking code");
+
+const documentResponse = await fetch(link);
+const documentText = await documentResponse.text();
+if (!documentResponse.ok) {
+  let message = `the setup link answered ${documentResponse.status}`;
+  try {
+    message = JSON.parse(documentText).error ?? message;
+  } catch {}
+  fail(message);
+}
+
+let document;
+try {
+  document = JSON.parse(documentText);
+} catch {
+  fail("the setup link did not return a setup document");
+}
+const app = typeof document.app === "string" ? document.app.replace(/\/+$/, "") : "";
+if (!app) fail("the setup document has no Proto app address");
+
+// A laptop already linked to this member keeps its token.
 if (existsSync(CONFIG_PATH)) {
   try {
     const current = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
     if (current.app === app && current.auth?.secret) {
-      const me = unwrap(await callTool("whoami", {}));
+      const answer = await callTool("whoami", {});
+      const me = JSON.parse(answer?.content?.[0]?.text ?? "{}");
       if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
-        console.error(`This laptop is already linked to ${me.user.name} at ${me.org.name}.`);
-        process.stdout.write(JSON.stringify(document, null, 2) + "\n");
+        console.log(JSON.stringify({ setup: document, linkedAs: { user: me.user, org: me.org, laptop: me.laptop } }));
         process.exit(0);
       }
     }
   } catch {
-    // Unreadable or stale: link afresh below.
+    // Unreadable, stale or refused: link afresh below.
   }
 }
 
-const linked = unwrap(
-  await callTool("link_laptop", { code, label: hostname() }, { app, secret: null }).catch((e) => ({
-    content: [{ text: JSON.stringify({ error: e.message }) }],
-  })),
-);
-if (!linked.token) {
-  console.error(linked.error ?? "Linking this laptop failed.");
-  process.exit(1);
-}
+const target = { app, secret: null };
+const initialized = await post(target, {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "initialize",
+  params: {
+    protocolVersion: "2025-03-26",
+    capabilities: {},
+    clientInfo: { name: "proto-kit-link", version: "0" },
+  },
+});
+if (initialized.status >= 400) fail(`the Proto app answered ${initialized.status} while linking this laptop`);
 
-// Keep what an earlier setup recorded that the document does not carry
-// (the rig's source path, pre-npm); replace the account link outright.
+const linkedResponse = await post(
+  target,
+  {
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: { name: "link_laptop", arguments: { code, label: hostname() } },
+  },
+  initialized.sessionId,
+);
+const linkedMessage = linkedResponse.messages.find((message) => message.id === 2) ?? linkedResponse.messages[0];
+const contentText = linkedMessage?.result?.content?.[0]?.text;
+let linked;
+try {
+  linked = JSON.parse(contentText);
+} catch {
+  fail(contentText?.split("\n")[0] ?? `the Proto app answered ${linkedResponse.status} while linking this laptop`);
+}
+if (!linked.token) fail(linked.error ?? "the Proto app did not return a laptop token");
+
 let previous = {};
 if (existsSync(CONFIG_PATH)) {
   try {
     previous = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-  } catch {
-    previous = {};
-  }
+  } catch {}
 }
 const config = {
   schemaVersion: 2,
   app,
-  account: { user: linked.user.id, name: linked.user.name, org: linked.org.name },
   auth: { kind: "laptop-token", secret: linked.token },
+  user: linked.user,
+  org: linked.org,
+  laptop: linked.laptop,
   ...(previous.packages ? { packages: previous.packages } : {}),
   createdAt: new Date().toISOString(),
 };
 mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
-chmodSync(CONFIG_PATH, 0o600);
+const temporaryPath = join(dirname(CONFIG_PATH), `.config-${process.pid}.json`);
+writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+chmodSync(temporaryPath, 0o600);
+renameSync(temporaryPath, CONFIG_PATH);
 
-const me = unwrap(await callTool("whoami", {}));
-if (me.mode !== "laptop-token") {
-  console.error("The laptop was linked but whoami does not recognise the credential; run setup again.");
-  process.exit(1);
-}
-console.error(`Linked this laptop (${linked.laptop.label}) to ${me.user.name} at ${me.org.name}.`);
-process.stdout.write(JSON.stringify(document, null, 2) + "\n");
-
-/** The JSON in a tool answer's first text block. */
-function unwrap(result) {
-  try {
-    return JSON.parse(result?.content?.[0]?.text ?? "{}");
-  } catch {
-    return {};
-  }
-}
+console.log(JSON.stringify({
+  setup: document,
+  linkedAs: { user: linked.user, org: linked.org, laptop: linked.laptop },
+}));

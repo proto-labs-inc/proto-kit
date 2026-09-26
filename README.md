@@ -25,19 +25,19 @@ Cursor. The core stays harness-neutral: markdown protocols + plain scripts.
 Sign in to Proto and copy the setup prompt from the gallery's setup
 steps or its New prototype dialog. Paste it into your coding agent, in
 Claude Code, Codex, or Cursor: one paste. The prompt is two lines, your
-account and a one-time link. Your agent fetches the link and gets the
-setup document: the plugin command for its harness, the app's address,
-your codebase folder, your product page. It installs the Proto plugin
-and runs its setup skill, which links this laptop to your account
-through the same link (the laptop gets a credential of its own, listed
-on the site's Laptops page) and then sets up your codebase and your
-design system. The link works once and expires after 10 minutes; copy
-the prompt again for a fresh one.
+identity and a one-time link. Your agent installs the plugin, whose setup
+helper fetches the document and exchanges the link for a per-laptop token
+without exposing it in chat. The document carries the app's address, your
+codebase folder and your product page. The agent runs
+the Proto plugin and runs its setup skill: your account, your codebase,
+your design system. The link works once and expires after 10 minutes;
+copy the prompt again for a fresh one.
 
 Manual install, if you prefer the commands yourself. These are the
 words the setup document carries, copied verbatim from the site's
 `web/src/lib/setup-snippet.ts` (`installCommands`), which is the source:
-change them there first.
+change them there first. The plugin takes no credential at install time;
+the setup link mints the laptop token afterward.
 
 ```sh
 # Claude Code
@@ -62,10 +62,8 @@ git -C ~/.cursor/plugins/local/proto pull, then run "Developer: Reload Window" i
 
 Then run `/proto:setup` (Claude Code) or `$setup` (Codex) in any
 session; in Cursor, type `/` in the chat and pick the Proto setup
-skill, or paste the setup prompt. The plugin takes no configuration:
-its MCP server reads `~/.proto/config.json`, which setup writes after
-linking the laptop. On Codex, setup writes the MCP server entry and
-installs the agent roles itself. The skills and
+skill, or paste the setup prompt. On Codex, setup writes the MCP
+server entry and installs the agent roles itself. The skills and
 tools are one shared set; only the packaging differs per harness
 (`.claude-plugin/` + `hooks/` + `agents/` + `monitors/` for Claude;
 `plugin.json` + `codex-hooks/` + `codex-agents/` for Codex;
@@ -82,9 +80,9 @@ so either path works.
 **From the Customize panel.** Open **Customize** in Cursor's sidebar,
 choose **From GitHub Repository**, paste
 `https://github.com/proto-labs-inc/proto-kit`, and install **Proto**
-(user scope is the usual choice). Nothing to configure: setup writes
-`~/.proto/config.json` when it links the laptop, and the plugin's Proto
-MCP server reads it from there.
+(user scope is the usual choice). There is nothing to configure: setup
+writes the app address and laptop token to `~/.proto/config.json`, and
+the plugin's Proto MCP server reads them from there.
 
 **From a local folder.** Clone the kit into Cursor's local plugin
 folder (the `git clone` line above), then run **Developer: Reload
@@ -112,7 +110,7 @@ and on in Customize.
 
 ```
 ~/.proto/
-├─ config.json              account link (app origin, account, this laptop's token, rig source), shape in skills/setup
+├─ config.json              laptop link (app origin, member, org, auth, rig source), shape in skills/setup
 └─ <codebase>/               one per codebase being prototyped
    ├─ codebase.json          source pointers (repo path, remote, live URL)
    ├─ library/              the design-system library app; the import fills its public/

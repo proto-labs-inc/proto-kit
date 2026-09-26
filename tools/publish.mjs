@@ -23,8 +23,8 @@
  * too (ADR 0003) and is uploaded as its build (no slug): --dir
  * defaults to ~/.proto/<codebase>/library/dist, produced by `pnpm
  * build` in the library folder, and must contain index.html and a
- * manifest.json naming a codebase. The laptop's credential comes from
- * ~/.proto/config.json. --dry-run prints the upload plan without
+ * manifest.json naming a codebase. The laptop token in
+ * ~/.proto/config.json identifies the member and org. --dry-run prints the upload plan without
  * touching the cloud.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -167,14 +167,13 @@ for (const f of manifest) {
 // attributes, CSS url(), imported assets); a path written as a string
 // literal in application data is invisible to it and ships unchanged.
 // This is the gate every build passes through, so the rule lives here: a
-// root-absolute reference naming a file this build carries is a certain
-// 404 once published. Match against the build's own files and nothing
-// else. Flagging every root-absolute path that merely looks like an
-// asset condemns prototype.json's previews and references too, which the
-// Frame resolves on its own side and the browser never fetches from the
-// build: that reading refuses a working variant set. Authoring rule, in
-// the create-prototype skill: prefix a public/ file with
-// import.meta.env.BASE_URL, or import it.
+// root-absolute reference naming a file this build carries is unsafe once
+// published. Match against the build's own files and nothing else. In
+// application code, prefix a public/ file with import.meta.env.BASE_URL or
+// import it. In prototype.json, keep preview, reference-image and wireframe
+// values relative without a leading slash; the Frame resolves them against
+// the live or published prototype base, and Vite may also inline them into
+// the application bundle.
 const SCANNED = new Set([".html", ".js", ".mjs", ".css", ".json"]);
 const carried = new Set(manifest.map((f) => f.path));
 const misrooted = new Map();
@@ -189,7 +188,7 @@ for (const f of manifest) {
 }
 for (const [ref, sources] of misrooted) {
   problems.push(
-    `${[...sources].sort().join(", ")} reference${sources.size > 1 ? "" : "s"} ${ref} root-absolutely; the build carries that file, so published it resolves to the host root and 404s. Write it relative to import.meta.env.BASE_URL`,
+    `${[...sources].sort().join(", ")} reference${sources.size > 1 ? "" : "s"} ${ref} root-absolutely; the build carries that file, so published it can resolve to the host root and 404. Use import.meta.env.BASE_URL in application code, or remove the leading slash in prototype.json`,
   );
 }
 
