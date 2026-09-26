@@ -6,19 +6,117 @@ agent installs and drives.
 
 ## Layout
 
-| Path | What it is |
-| --- | --- |
-| `template/library/` | The design-system library: a Vite React app (shadcn + AI Elements). The import fills its `public/` folder with tokens, type styles and each component's product crop and iteration history, and writes each component as a typed React component with a scoped stylesheet and its states as prop sets into `src/components/<slug>/` (`docs/library-contract.md`); the app renders them live. Scaffolded to `~/.proto/<codebase>/library/`, served by its dev server through the library tunnel, built and published like a prototype (ADR 0003). |
-| `template/workspace-react/`, `template/workspace-vue/` | The prototype workspace scaffolds, one per framework (create-prototype picks by the source repo's framework): vite + the rig adapter (source-aliased via `PROTO_PACKAGES` until the rig packages publish), `prototype.json`, comment markers, `modern-screenshot` (the rig lazy-imports it for comment capture), and license-clean in-component SVG placeholder art. |
-| `tools/` | Deterministic helpers. `library.mjs` (the only writer of the library contract: one subcommand per write, atomic, locked), `host-library.mjs` (scaffold, install, tunnel, supervised run and edge check for the library in one call), `verify-replica.mjs` (one verification pass: capture the live element, render the replica headlessly, diff in node, write the pass's files), `serve.mjs` (static server with CORS + no-store, port 0 picks a free one, for an import's unit folder and other static folders), `supervise.mjs` (detached start/stop/status supervisor with crash-restart, for the dev server + tunnel pair), `courier.mjs` + `courier-http.mjs` (the website-to-laptop doorbell: bearer-authed enumerated commands validated onto a durable feed; the HTTP transport is one swappable file), `feed-tail.mjs`, `feed-watch-all.mjs`, `agent-launch.mjs` and `feed-drive.mjs` (the feed watches for the session running the listen skill: one run dir, every codebase's at once as the plugin monitor, and the two headless fallbacks, the resume-aware Claude Code launcher and the Codex driver; protocol in `skills/listen/`), `prototype-heartbeat.mjs` + `heartbeat.mjs` (the liveness beat for a prototype's or the library's serving run, and the beat loop it shares with the courier), `publish.mjs` (uploads a workspace's or the library's built output folder to a fresh published path over presigned PUT URLs; the workspace's own build script produces the folder), `publish-library.mjs` (build and publish the library in one call, serialised on its own lock, which the import runs after every landing), `health.mjs` (the session-start hook: one health line per codebase), `cdp/` (the CDP toolkit: the visible Proto window and the headless Chrome, attach, wireframe, stable captures, the 2x crop, a dependency-free PNG codec and pixel diff), `verify-markers.mjs` (checks a workspace's `data-proto-id` coverage), `verify-assets.mjs` (rejects malformed or non-UTF-8 SVG assets before serving or publishing), `hooks/` (the post-edit marker check and the Cursor hook adapters), `mcp-call.mjs` (the kit's own MCP-over-HTTP client and the one reader of `~/.proto/config.json`, for the plain processes that call the app), `mcp-stdio.mjs` (the same transport as a stdio MCP server, for hosts whose plugin config wants a local process: the Cursor plugin ships it), `mcp-headers.mjs` (prints the auth header for Codex's MCP config, so the credential stays in config.json), `link-laptop.mjs` (the setup link's two uses in one call: fetches the setup document and exchanges the code for this laptop's token, writing config.json), `fake-import/` (plays a recorded design-system import into a library app, for demos and UI work; the contract's executable reference). |
-| `skills/` | The agent protocols. `setup/` (account link + find-the-source-from-scraps, writing config.json and codebase.json), `import-design-system/` (source repo + live page over CDP, writing the library contract), `create-prototype/` (brief to workspace with states, variant sets, static SVG previews, and markers), `create-pr-plan/` (decompose existing prototype work into ordered PR slices), `implement-pr-plan/` (implement plan entries and link PR, branch, and preview URLs back in the Frame), `serve/` (tunnel provisioning + supervised serving + recovery), `publish-library/` (publish the library on demand), `listen/` (the session that runs it listens for website commands from the courier feed). |
-| `agents/`, `codex-agents/`, `cursor-agents/` | The subagent roles (importer, builder, verifier, and the headless listen session), one folder per harness format. |
-| `hooks/`, `monitors/`, `codex-hooks/`, `cursor-hooks/` | Per-harness packaging: the session-start health line and the post-edit marker check as each harness declares hooks, plus the Claude Code `courier-feed` monitor. |
-| `docs/` | `library-contract.md` (the frozen contract both the fake driver and the real import write into the library app's public folder: manifest, events, component states, histories, queue), `harness-mechanics.md` (verified facts about Claude Code, Codex and Cursor that the skills stand on), `cdp-traps.md` (what bites when reading live pages over CDP). |
-| `assets/` | The logo the plugin manifests reference. |
+```
+skills/          the agent protocols, one per skill
+tools/           the deterministic scripts skills run
+template/        the app scaffolds copied to a laptop
+agents/          subagent roles, Claude Code format
+codex-agents/    the same roles, Codex format
+cursor-agents/   the same roles, Cursor format
+hooks/           Claude Code hook declarations
+codex-hooks/     Codex hook declarations
+cursor-hooks/    Cursor hook declarations
+monitors/        the Claude Code courier-feed monitor
+docs/            frozen contracts, hard-won facts
+assets/          the logo plugin manifests reference
+```
 
-Plugin manifests wrap `skills/` + `tools/` for Claude Code, Codex, and
-Cursor. The core stays harness-neutral: markdown protocols + plain scripts.
+Plugin manifests wrap `skills/` + `tools/` for Claude Code, Codex and
+Cursor; the core stays harness-neutral.
+
+### skills/
+
+- `setup/`: link the laptop and the source repo, write codebase.json.
+- `import-design-system/`: read the source repo and live page, fill the library.
+- `create-prototype/`: brief to workspace: states, variant sets, previews, markers.
+- `create-variant-set/`: add a new variant set to an existing prototype.
+- `add-variants/`: add variants to a set that already exists.
+- `edit-variant/`: change one existing variant.
+- `serve/`: provision the tunnel, supervise serving, recover it.
+- `create-pr-plan/`: decompose prototype work into ordered pull-request slices.
+- `implement-pr-plan/`: build plan entries, link PRs and previews back.
+- `publish-library/`: publish the library on demand.
+- `listen/`: take the website's commands off the feed.
+
+### tools/
+
+The library and the import:
+
+- `library.mjs`: the one writer of the library contract, atomic and locked.
+- `host-library.mjs`: scaffold, install, tunnel and supervised run, one call.
+- `verify-replica.mjs`: capture the live element, render the replica, diff them.
+- `verify-markers.mjs`: check a workspace's `data-proto-id` coverage.
+- `fake-import/run.mjs`: play a recorded import into a library app.
+
+Serving and publishing:
+
+- `serve.mjs`: static server, CORS and no-store, port 0.
+- `supervise.mjs`: detached supervisor keeping dev server and tunnel alive.
+- `publish.mjs`: upload a built folder over presigned PUTs.
+- `publish-library.mjs`: build and publish the library in one serialised call.
+- `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
+- `heartbeat.mjs`: the beat loop those and the courier share.
+- `health.mjs`: the session-start check, one line per codebase.
+
+The courier and the feed:
+
+- `courier.mjs`: validate the website's commands onto a durable feed.
+- `courier-http.mjs`: the courier's HTTP transport, one swappable file.
+- `feed-tail.mjs`: follow one codebase's feed from the committed offset.
+- `feed-watch-all.mjs`: follow every codebase's feed at once, for monitors.
+- `agent-launch.mjs`: resume-aware headless launcher for a listen session.
+- `feed-drive.mjs`: the Codex fallback, resuming its saved conversation.
+
+Talking to the app, and the harness hooks:
+
+- `mcp-call.mjs`: MCP-over-HTTP client, the one reader of `~/.proto/config.json`.
+- `mcp-stdio.mjs`: that same transport as a stdio MCP server.
+- `mcp-headers.mjs`: print Codex's auth header from config.json.
+- `link-laptop.mjs`: fetch the setup document, mint this laptop's token.
+- `hooks/post-edit-markers.mjs`: re-run the marker check on an edited workspace file.
+- `hooks/cursor-session-start.mjs`, `hooks/cursor-post-tool-use.mjs`: those two checks, Cursor's shape.
+
+`cdp/`, the browser toolkit:
+
+- `chrome.mjs`: start or find the visible Proto window, unfocused.
+- `headless.mjs`: the headless Chrome that replicas and diffs render in.
+- `attach.mjs`: find a tab and read it, never navigate.
+- `cdp.mjs`: minimal CDP client over Node's WebSocket, no dependencies.
+- `capture.mjs`: clip screenshots behind a stability gate.
+- `crop.mjs`: crop an element from the live page at 2x.
+- `diff.mjs`: pixel diff two captures in node.
+- `png.mjs`: decode and encode just enough PNG.
+- `wireframe.mjs`: one labeled, depth-colored box per element of a tab.
+
+### template/
+
+- `library/`: the design-system library app the import fills.
+- `workspace-react/`, `workspace-vue/`: the prototype scaffolds, vite plus the rig adapter.
+
+### agents/, codex-agents/, cursor-agents/
+
+The subagent roles, one file per harness format.
+
+- `importer.md`, `proto-importer.toml`, `proto-importer.md`: extract one design-system unit.
+- `builder.md`, `proto-builder.toml`, `proto-builder.md`: build inside one prototype workspace.
+- `verifier.md`, `proto-verifier.toml`, `proto-verifier.md`: read-only checks of markers, pixels, state URLs.
+- `listen.md`, `proto-listen.toml`: the headless listen session, Claude Code and Codex.
+
+### hooks/, codex-hooks/, cursor-hooks/, monitors/
+
+- `hooks/hooks.json`, `codex-hooks/hooks.json`, `cursor-hooks/hooks.json`: the health line and marker check, per harness.
+- `monitors/monitors.json`: the `courier-feed` monitor, armed when the listen skill starts.
+
+### docs/
+
+- `library-contract.md`: the frozen contract import and library app share.
+- `harness-mechanics.md`: verified facts about Claude Code, Codex and Cursor.
+- `cdp-traps.md`: what bites when reading live pages over CDP.
+- `reviews/`: dated notes from reviewing a run.
+
+### assets/
+
+- `proto-logo.svg`, `proto-logo.png`: the logo the plugin manifests reference.
 
 ## Install
 
