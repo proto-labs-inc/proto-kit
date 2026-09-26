@@ -73,7 +73,7 @@ The writer, one line per write (`<library>` is the codebase id or
 the app's folder; JSON is a literal or `@file`):
 
 ```
-node tools/library.mjs init <library> <codebase> <source> --page-url <liveUrl> --page-title "<the page's title, verbatim>"
+node tools/library.mjs init <library> <codebase> <source> --page-url <liveUrl> --page-title "<the page's title, verbatim>" --favicon <icon file>
 node tools/library.mjs token <library> '{"name":"slate-900","value":"#0f172a","group":"gray","role":"text"}'
 node tools/library.mjs type <library> '{"name":"Heading L","family":"Inter","size":"24px","weight":650,"lineHeight":"32px","sample":"Expense report: September"}'
 node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button"}, …]'
@@ -180,10 +180,12 @@ call; chain the short ones in one shell line.
    the address. The site's Design system page loads that address (the
    one the site chose and stored), so hosting first is what lets the
    user watch. Also `node tools/cdp/headless.mjs start`.
-1. **Open the run.** Read the live tab's `document.title`, then
-   `node tools/library.mjs init <library> <codebase> <source>
-   --page-url <liveUrl> --page-title "<title>"` (`<source>` is the
-   repo name or the live host). This appends "Reading the source":
+1. **Open the run.** Read the live tab's `document.title` and its
+   icon (the `href` of `link[rel~="icon"]`, else `/favicon.ico`,
+   fetched to a file), then `node tools/library.mjs init <library>
+   <codebase> <source> --page-url <liveUrl> --page-title "<title>"
+   --favicon <icon file>` (`<source>` is the repo name or the live
+   host; leave `--favicon` out when the page has no icon). This appends "Reading the source":
    the line that tells the user the import is alive, and sets the
    product entry: the name is taken from the title ("Expenses ·
    Meridian" names Meridian), and when the page has no title the

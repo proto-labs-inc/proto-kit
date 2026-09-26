@@ -49,8 +49,10 @@ export type Component = {
   history: Pass[];
 };
 
-/** The product as its live page presents it: the name heads the library. */
-export type Product = { name: string; pageUrl: string; pageTitle: string };
+/** The product as its live page presents it: the name heads the library,
+ *  and the page (its title, its icon) is the sentence under it. The icon
+ *  is a path under public/, present only when the page has one. */
+export type Product = { name: string; pageUrl: string; pageTitle: string; favicon?: string };
 
 export type Manifest = {
   codebase: string | null;
@@ -62,6 +64,16 @@ export type Manifest = {
   type: TypeStyle[];
   components: Component[];
 };
+
+/** The product's heading face, from the first type style the import
+ *  read (the import lists them largest first): what the library's own
+ *  title is set in, so the page opens in the product's voice. Null until
+ *  a type style has landed. */
+export function headingStyle(manifest: Manifest): { family: string; weight: number } | null {
+  const first = manifest.type[0];
+  if (!first) return null;
+  return { family: first.family, weight: first.weight };
+}
 
 export type ActivityEvent = { at: string; component?: string; activity: string };
 export type QueueRequest = { slug: string; at: string };
@@ -122,28 +134,6 @@ export const requested = (requests: QueueRequest[], slug: string) => requests.so
 
 /** Whether the user asked for the whole import again and nothing has taken it yet. */
 export const importRequested = (requests: QueueRequest[]) => requested(requests, EVERYTHING);
-
-/**
- * How far the import got, in the one shape every line reads it:
- * "5 of 7 built, 1 skipped, 1 waiting". Built is done; skipped is
- * skipped and not asked for again; waiting is everything else.
- */
-export function coverage({ manifest, requests }: Library): string {
-  const { components } = manifest;
-  const built = components.filter((c) => c.status === "done").length;
-  const skipped = components.filter((c) => c.status === "skipped" && !requested(requests, c.slug)).length;
-  const waiting = components.length - built - skipped;
-  const parts = [`${built} of ${components.length} built`];
-  if (skipped > 0) parts.push(`${skipped} skipped`);
-  if (waiting > 0) parts.push(`${waiting} waiting`);
-  return parts.join(", ");
-}
-
-/** The ring's fraction: components that are built or skipped, over all of them. */
-export function progress({ manifest, requests }: Library): { done: number; total: number } {
-  const done = manifest.components.filter((c) => settled(c) && !requested(requests, c.slug)).length;
-  return { done, total: manifest.components.length };
-}
 
 type Load =
   | { kind: "loading" }
@@ -229,8 +219,8 @@ const NEXT_RUN = "Queued: your agent builds this next time it runs.";
 /**
  * What something queued is waiting for, in the one wording the whole
  * page uses: the running import takes it next, and a finished one
- * leaves it to the agent's next run. The header's re-import and a
- * component's block read it from here, so they never drift apart.
+ * leaves it to the agent's next run. A component's block and the queue
+ * rail read it from here, so they never drift apart.
  */
 export function queuedSentence(manifest: Manifest): string {
   if (manifest.completedAt === null) return NEXT;

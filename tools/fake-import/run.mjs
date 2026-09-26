@@ -190,7 +190,7 @@ async function skip(spec, { kind, reason }) {
 // then stream tokens and type styles while the units run. The tokens
 // land before any unit does, since `done` checks the ones it names.
 async function play() {
-  lib("init", libraryDir, "meridian", "meridian-web", "--page-url", "https://app.meridian.example/expenses", "--page-title", "Expenses · Meridian");
+  lib("init", libraryDir, "meridian", "meridian-web", "--page-url", "https://app.meridian.example/expenses", "--page-title", "Expenses · Meridian", "--favicon", join(FIXTURES, "favicon.svg"));
   await sleep(1800);
   lib("inventory", libraryDir, JSON.stringify(COMPONENTS.map((c) => ({ slug: c.slug, name: c.name }))));
   await sleep(600);
