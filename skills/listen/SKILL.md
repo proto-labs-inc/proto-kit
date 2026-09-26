@@ -67,16 +67,20 @@ checkout root.
 
      **With a `briefId`** (the site's Execute path):
      1. Fetch the work: `get_brief {briefId}` → `{id, codebase,
-        title, description, url, referenceHtml, status}`.
+        title, description, document_url, url, reference_html,
+        use_real_data, status}`.
      2. Report `report_progress {briefId, status: "started"}` before
         any slow work, then keep the site honest at each phase
         change: `"building"` when the workspace work begins,
         `"serving"` when the serve flow starts, `"done"` when it's
         live and registered. The other statuses: `"failed"` and
         `"needs-input"`.
-     3. Follow the named skill with the brief's fields (title,
-        description, url, referenceHtml). The laptop token identifies
-        the member and org for registration.
+     3. Follow the named skill with semantic fields: `codebase`,
+        `description`, `contextUrl = document_url`, `referenceUrl = url`,
+        `referenceHtml = reference_html`, and `useRealData = use_real_data`.
+        Do not pass the site's placeholder `title` as a requested title; the
+        create-prototype skill generates the real title from the brief. The
+        laptop token identifies the member and org for registration.
         Publish at the checkpoints: when you report `serving`,
         again before you report `done`, and whenever the current
         state is worth keeping. To publish, build the workspace with

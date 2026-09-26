@@ -20,8 +20,8 @@ full serve workflow, provision or restart a tunnel, or register the prototype.
    module with scoped styles under `src/variants/<component>/<variant-id>.*`.
    Shared files may contain only invariant structure, design-system imports,
    and tokens.
-4. Ground the directions in real references. Use supplied references first;
-   otherwise gather a small, relevant comparison set and register it under
+4. Ground the directions in real references. Use supplied references first,
+   then pull a small, relevant comparison set from Mobbin and register it under
    `references` with images, notes, and variant associations.
 5. Finish the manifest entry with component, title, variants, `sourceFiles`,
    component-only SVG previews, default, baseline when there is a pre-set

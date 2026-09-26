@@ -16,9 +16,9 @@ register the prototype, or change unrelated states or variant sets.
    source files recorded for the selected reference variants.
 2. Preserve all existing variants and their relative order. Put the new
    variants at the top of the set's `variants` array.
-3. Reuse the selected variants and registered references as design context.
-   Do not gather new external references unless the brief explicitly asks for
-   research.
+3. Reuse the selected variants and registered references as design context,
+   and pull relevant examples from Mobbin for the new directions. Register the
+   Mobbin references with images, notes, and variant associations.
 4. Put each new variant in its own module with scoped styles under
    `src/variants/<component>/<variant-id>.*`. Shared files may contain only
    genuinely invariant structure or tokens.
