@@ -12,12 +12,15 @@
  * or just the codebase id, which resolves to that folder. <json> is a
  * JSON literal or @path to a file holding one.
  *
- *   init <library> <codebase> <source> --page-url <url> --page-title "<title>" [--product-name "<name>"]
+ *   init <library> <codebase> <source> --page-url <url> --page-title "<title>" [--product-name "<name>"] [--favicon <file>]
  *       A fresh run when no run is open (resets everything), a resume
  *       when one is; prints which. Appends "Reading the source". The
  *       product's name comes from --product-name, else from the page
  *       title ("Expenses · Meridian" names Meridian), else from the
  *       codebase's display name in codebase.json, never from its id.
+ *       --favicon is the page's icon as a file; it is copied to
+ *       public/product/favicon.<ext> and named in the manifest, so the
+ *       app can show the page the way a browser tab does.
  *   token <library> <json>            one { name, value, group, role? }
  *   type <library> <json>             one { name, family, size, weight, lineHeight, sample }
  *   inventory <library> <json>        every component at once, [{ slug, name }], all "found"
@@ -61,7 +64,7 @@ import {
 import { join, resolve } from "node:path";
 
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
-  init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>]
+  init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>] [--favicon <file>]
   token <library> <json>
   type <library> <json>
   inventory <library> <json array>
@@ -142,6 +145,7 @@ const paths = {
   events: join(publicDir, "events.jsonl"),
   queue: join(publicDir, "queue.json"),
   components: join(publicDir, "components"),
+  product: join(publicDir, "product"),
   modules: join(libraryDir, "src", "components"),
   lock: join(publicDir, ".lock"),
 };
@@ -247,6 +251,18 @@ function productName(codebase, pageTitle, given) {
   fail("the page has no title and codebase.json names no display name; pass --product-name");
 }
 
+// The page's icon, kept beside the manifest as product/favicon.<ext>
+// (the file's own extension, lower-cased) so a PNG, an ICO and an SVG
+// each keep their type; the manifest names it relative to public/.
+function placeFavicon(file) {
+  if (!existsSync(file) || !statSync(file).isFile()) fail(`--favicon ${file} is not a file`);
+  const ext = (file.match(/\.([a-z0-9]+)$/i)?.[1] ?? "png").toLowerCase();
+  const name = `favicon.${ext}`;
+  mkdirSync(paths.product, { recursive: true });
+  copyFileSync(file, join(paths.product, name));
+  return `product/${name}`;
+}
+
 function requireString(value, what) {
   if (typeof value !== "string" || value.trim() === "") fail(`${what} must be a non-empty string`);
   return value;
@@ -263,6 +279,7 @@ const commands = {
       pageUrl: options["page-url"],
       pageTitle: options["page-title"],
     };
+    if (options.favicon !== undefined) product.favicon = placeFavicon(options.favicon);
     mkdirSync(paths.components, { recursive: true });
     const outcome = change((manifest) => {
       const open = manifest.startedAt !== null && manifest.completedAt === null;
@@ -272,6 +289,12 @@ const commands = {
       }
       rmSync(paths.components, { recursive: true, force: true });
       mkdirSync(paths.components, { recursive: true });
+      // A fresh run keeps only the icon it was given; an earlier run's goes.
+      if (existsSync(paths.product)) {
+        for (const name of readdirSync(paths.product)) {
+          if (product.favicon !== `product/${name}`) rmSync(join(paths.product, name), { force: true });
+        }
+      }
       for (const slug of importedModules()) rmSync(join(paths.modules, slug), { recursive: true, force: true });
       writeFileSync(paths.events, "");
       writeJsonAtomic(paths.queue, { requests: [] });

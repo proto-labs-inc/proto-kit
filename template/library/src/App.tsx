@@ -32,6 +32,17 @@ export function App() {
     document.title = titleFor(route, library);
   }, [route, library]);
 
+  // The tab wears the product's own icon, the one the import read from
+  // the page, so the library sits among the product's tabs as one of them.
+  const favicon = library?.manifest.product?.favicon ?? null;
+  useEffect(() => {
+    if (favicon === null) return;
+    const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']") ?? document.createElement("link");
+    link.rel = "icon";
+    link.href = favicon;
+    if (!link.parentNode) document.head.append(link);
+  }, [favicon]);
+
   if (load.phase === "loading") {
     return (
       <main className="mx-auto max-w-5xl px-6 py-16">

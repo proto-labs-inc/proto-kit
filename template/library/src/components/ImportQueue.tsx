@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { ArrowRightIcon, CheckIcon, CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
 import { Checkpoint, CheckpointIcon, CheckpointTrigger } from "@/components/ai-elements/checkpoint";
-import { ProgressRing } from "@/components/ai-elements/context";
 import {
   Queue,
   QueueItem,
@@ -16,75 +14,83 @@ import {
   QueueSectionLabel,
   QueueSectionTrigger,
 } from "@/components/ai-elements/queue";
-import { Shimmer } from "@/components/ai-elements/shimmer";
-import {
-  componentView,
-  coverage,
-  importInProgress,
-  latestActivity,
-  progress,
-  skipHeading,
-  type Component,
-  type ComponentView,
-  type Library,
-  type Manifest,
-} from "@/library";
+import { componentView, skipHeading, type Component, type ComponentView, type Library, type Manifest } from "@/library";
 import { href } from "@/route";
 import { clock, elapsed } from "@/time";
 
 /**
- * The import's live status, as the AI Elements Queue: the ring and the
- * count at its head carry the progress, every component below with
- * its state, each row a jump to its block. While the import runs the
- * import's latest line shimmers above it and the list is open; once it
- * finishes the list folds under a Checkpoint marking the end, and
- * reopens from there or when a queued component sets it moving.
+ * The import's components as the AI Elements Queue, one section per
+ * stage with a fixed title and a count ("2 Reading", "4 Built"), so
+ * nothing in the rail changes its words as the import moves: a
+ * component moves from one section to the next. Each row is a jump to
+ * its block. A finished import carries a Checkpoint marking the end.
+ * Nothing here shimmers; the header's "Importing" is the one moving
+ * word on the page, and a spinner marks each component being read.
  */
 export function ImportQueue({ library }: { library: Library }) {
-  const { manifest, events } = library;
-  const running = importInProgress(library);
-  // The import's own line shimmers only while the import is live; a
-  // finished import with a request waiting keeps its finish line, and
-  // the count under it says what is waiting.
-  const live = manifest.completedAt === null;
-  const [open, setOpen] = useState(running);
-  useEffect(() => setOpen(running), [running]);
-
+  const { manifest } = library;
+  const stages = byStage(library);
   return (
     <aside className="-order-1 flex flex-col gap-3 md:sticky md:top-8 md:order-none md:self-start">
-      {live ? (
-        <Shimmer className="px-3 text-sm">{latestActivity(events) ?? "Starting the import"}</Shimmer>
-      ) : (
-        <Finish manifest={manifest} onToggle={() => setOpen((was) => !was)} />
-      )}
+      <Finish manifest={manifest} />
       {manifest.components.length > 0 && (
         <Queue>
-          <QueueSection open={open} onOpenChange={setOpen}>
-            <QueueSectionTrigger>
-              <QueueSectionLabel icon={<ProgressRing {...progress(library)} size={16} />} label={coverage(library)} />
-            </QueueSectionTrigger>
-            <QueueSectionContent>
-              <QueueList>
-                {manifest.components.map((component) => (
-                  <Row key={component.slug} component={component} view={componentView(component, library)} />
-                ))}
-              </QueueList>
-            </QueueSectionContent>
-          </QueueSection>
+          {stages.map((stage) => (
+            <QueueSection key={stage.title}>
+              <QueueSectionTrigger>
+                <QueueSectionLabel count={stage.rows.length} label={stage.title} />
+              </QueueSectionTrigger>
+              <QueueSectionContent>
+                <QueueList>
+                  {stage.rows.map(({ component, view }) => (
+                    <Row key={component.slug} component={component} view={view} />
+                  ))}
+                </QueueList>
+              </QueueSectionContent>
+            </QueueSection>
+          ))}
         </Queue>
       )}
     </aside>
   );
 }
 
-function Finish({ manifest, onToggle }: { manifest: Manifest; onToggle: () => void }) {
+type Stage = "Reading" | "Queued" | "Built" | "Skipped";
+type StageRows = { title: Stage; rows: { component: Component; view: ComponentView }[] };
+
+/** The stage a component's view is at; the section it sits in. */
+function stageOf(view: ComponentView): Stage {
+  switch (view.kind) {
+    case "working":
+      return "Reading";
+    case "pending":
+      return "Queued";
+    case "preview":
+      return "Built";
+    case "skipped":
+      return "Skipped";
+  }
+}
+
+/** The stages in the order the import moves through them, only those with a component in them. */
+function byStage(library: Library): StageRows[] {
+  const order: Stage[] = ["Reading", "Queued", "Built", "Skipped"];
+  const stages = order.map((title) => ({ title, rows: [] as StageRows["rows"] }));
+  for (const component of library.manifest.components) {
+    const view = componentView(component, library);
+    stages.find((s) => s.title === stageOf(view))?.rows.push({ component, view });
+  }
+  return stages.filter((s) => s.rows.length > 0);
+}
+
+function Finish({ manifest }: { manifest: Manifest }) {
   if (manifest.completedAt === null || manifest.startedAt === null) return null;
   return (
     <Checkpoint>
       <CheckpointIcon>
         <CheckIcon className="size-4 shrink-0" />
       </CheckpointIcon>
-      <CheckpointTrigger tooltip={`Started ${clock(manifest.startedAt)}, took ${elapsed(manifest.startedAt, manifest.completedAt)}`} onClick={onToggle}>
+      <CheckpointTrigger tooltip={`Started ${clock(manifest.startedAt)}, took ${elapsed(manifest.startedAt, manifest.completedAt)}`}>
         Finished {clock(manifest.completedAt)}
       </CheckpointTrigger>
     </Checkpoint>
@@ -111,9 +117,7 @@ function Row({ component, view }: { component: Component; view: ComponentView })
           </QueueItemAction>
         </QueueItemActions>
       </div>
-      <QueueItemDescription className="line-clamp-1">
-        <Description component={component} view={view} />
-      </QueueItemDescription>
+      <QueueItemDescription className="line-clamp-1">{description(component, view)}</QueueItemDescription>
     </QueueItem>
   );
 }
@@ -134,10 +138,11 @@ function Mark({ component, view }: { component: Component; view: ComponentView }
   }
 }
 
-function Description({ component, view }: { component: Component; view: ComponentView }) {
+/** The row's second line: the import's latest word on it, its states, or why it is not built. */
+function description(component: Component, view: ComponentView): string {
   switch (view.kind) {
     case "working":
-      return <Shimmer as="span">{view.activity}</Shimmer>;
+      return view.activity;
     case "preview":
       return component.states.map((s) => s.name).join(" · ");
     case "pending":
