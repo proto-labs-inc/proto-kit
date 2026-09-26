@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 /**
  * The proto MCP server as a stdio process, for hosts whose plugin
- * config can only carry a fixed url (Cursor). Bridges MCP over stdio
+ * config launches a local process (Claude Code and Cursor). Bridges MCP over stdio
  * to the app's Streamable HTTP endpoint (<app>/api/mcp) over the
- * transport in mcp-call.mjs. Where the endpoint and bearer come from, in
- * order: PROTO_APP_URL and PROTO_PROVISION_SECRET in the environment
- * (Cursor substitutes the plugin's variables there), else
+ * transport in mcp-call.mjs. The endpoint and bearer come from
  * ~/.proto/config.json (`app`, `auth.secret`), which setup writes.
  * Resolved on every request, so a config.json written after the host
  * started this process is picked up without a restart; the bridge
@@ -23,14 +21,8 @@ import { NOT_SET_UP, post, readConfig } from "./mcp-call.mjs";
 const PROTOCOL_VERSION = "2025-03-26";
 const CLIENT_INFO = { name: "proto-kit", version: "0" };
 
-const usable = (value) =>
-  typeof value === "string" && value.trim().length > 0 && !value.includes("${");
-
 /** The endpoint and bearer, or null while nothing configures them. */
 function resolveConfig() {
-  const app = process.env.PROTO_APP_URL;
-  const secret = process.env.PROTO_PROVISION_SECRET;
-  if (usable(app) && usable(secret)) return { app: app.trim().replace(/\/+$/, ""), secret };
   try {
     const config = readConfig();
     return { app: config.app, secret: config.auth.secret };

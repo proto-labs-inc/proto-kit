@@ -11,20 +11,5 @@
     "design-systems",
     "frontend",
     "claude-code"
-  ],
-  "userConfig": {
-    "app_url": {
-      "type": "string",
-      "title": "Proto app URL",
-      "description": "Your Proto app's address, for example https://<your proto domain>: the setup document's app. The install command in that document fills it in.",
-      "required": true
-    },
-    "provision_secret": {
-      "type": "string",
-      "title": "Provisioning secret",
-      "description": "The provisioning secret: the setup document's provisionSecret. The install command in that document fills it in.",
-      "sensitive": true,
-      "required": true
-    }
-  }
+  ]
 }

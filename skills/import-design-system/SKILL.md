@@ -236,7 +236,7 @@ call; chain the short ones in one shell line.
 
 Side errand, once, while the live page is attached: if the codebase
 has no icon yet, take the page's `<link rel="icon">` (largest png or
-svg) and call `set_codebase_icon { account, codebase, image }` with a
+svg) and call `set_codebase_icon { codebase, image }` with a
 data URL of at most 256 KB. Fail soft; never let it interrupt.
 
 **If anything interrupts you** (the user asks for something else

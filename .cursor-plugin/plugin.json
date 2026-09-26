@@ -25,26 +25,7 @@
       "command": "node",
       "args": [
         "${CURSOR_PLUGIN_ROOT}/tools/mcp-stdio.mjs"
-      ],
-      "env": {
-        "PROTO_APP_URL": "${PROTO_APP_URL}",
-        "PROTO_PROVISION_SECRET": "${PROTO_PROVISION_SECRET}"
-      }
-    }
-  },
-  "variables": {
-    "type": "object",
-    "properties": {
-      "PROTO_APP_URL": {
-        "type": "string",
-        "title": "Proto app URL",
-        "description": "Your Proto app's address, for example https://<your proto domain>. Optional: setup writes it to ~/.proto/config.json from the setup document, and the plugin reads it from there."
-      },
-      "PROTO_PROVISION_SECRET": {
-        "type": "string",
-        "title": "Provisioning secret",
-        "description": "The provisioning secret. Optional: setup writes it to ~/.proto/config.json from the setup document, and the plugin reads it from there."
-      }
+      ]
     }
   }
 }

@@ -19,11 +19,11 @@ directory, which is also the proto-kit checkout root.
 ## Start
 
 1. **Register the prototype** first: `register_prototype { codebase,
-   slug, title, owner }`, owner = config.json's `account.user`. It
+   slug, title }`. The laptop token identifies the member and org. It
    upserts on (codebase, slug), so re-registering after a title change
    is correct. The row must exist before the next step: the site
-   stores the prototype's address on it. An unknown-owner error means
-   `account.user` is wrong: fix it in setup, not here. Registering
+   stores the prototype's address on it. An authorization error means
+   the laptop must be relinked through setup. Registering
    also flips the build's brief to done, closing the gallery's loading
    card; the tile waits for a heartbeat before it loads anything.
 
@@ -198,10 +198,10 @@ Setup, run by the import skill while its units extract (it depends
 only on the codebase id, so nothing waits on it):
 
 1. **Identity, once per laptop.** If the run dir has no `courierId`:
-   `register_courier { codebase, account }` → `{ courierId,
+   `register_courier { codebase }` → `{ courierId,
    libraryId }`: both cloud-minted, both stored in `courier.json`.
    Never call this when a courierId already exists (a reinstall
-   keeps its ids; one account with two laptops gets two couriers).
+   keeps its ids; one member with two laptops gets two couriers).
 2. Pick a free local port for the listener; generate a command
    secret (`openssl rand -hex 24`).
 3. Provision the tunnel: `provision_tunnel { kind: "courier",
@@ -209,7 +209,7 @@ only on the codebase id, so nothing waits on it):
    courier's public address, stores it on the courier's row, and
    returns it as `hostname` with the `connectorToken`. Re-provisioning
    overwrites the stored address.
-4. **Secret**: `register_courier { courierId, secret, account }`,
+4. **Secret**: `register_courier { courierId, secret }`,
    `secret` from step 2. This call is repeatable, keyed on courierId:
    a rotated secret just overwrites. The user never sees or touches a
    credential.
@@ -235,7 +235,7 @@ only on the codebase id, so nothing waits on it):
 answers with (fail-soft; `agentListening` from the feed watcher's local
 heartbeat). It is the same tool a prototype's or the library's serving
 run beats, with its own target. A courier whose beats have gone stale
-is offline; the site dispatches each brief to the account's freshest
+is offline; the site dispatches each brief to the org's freshest
 listening courier, and registered-but-not-listening falls back to the
 copyable prompt with "your agent isn't running".
 

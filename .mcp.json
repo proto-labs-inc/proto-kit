@@ -1,11 +1,9 @@
 {
   "mcpServers": {
     "proto": {
-      "type": "http",
-      "url": "${user_config.app_url}/api/mcp",
-      "headers": {
-        "Authorization": "Bearer ${user_config.provision_secret}"
-      }
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/tools/mcp-stdio.mjs"]
     }
   }
 }

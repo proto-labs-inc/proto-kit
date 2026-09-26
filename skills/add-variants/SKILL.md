@@ -24,6 +24,8 @@ register the prototype, or change unrelated states or variant sets.
    genuinely invariant structure or tokens.
 5. Register only the new variants and any requested set-level metadata change.
    Each variant needs accurate `sourceFiles` and a component-only SVG preview.
+   Store preview, reference-image, and wireframe paths relative to the build
+   root without a leading slash, for example `previews/example.svg`.
 
 ## Verify and publish
 
