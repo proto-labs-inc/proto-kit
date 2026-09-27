@@ -227,6 +227,6 @@ cd /tmp/demo-library && pnpm install --frozen-lockfile && pnpm dev
 # in another terminal: play the fake import into it
 node tools/fake-import/run.mjs /tmp/demo-library
 
-# open http://localhost:5210 and watch it fill in; press "Queue it" on
+# open the URL Vite prints and watch it fill in; press "Queue it" on
 # the skipped card and the driver extracts it
 ```

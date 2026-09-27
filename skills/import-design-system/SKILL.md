@@ -114,8 +114,9 @@ The readers and renderers:
   as labeled boxes. The map, not the understanding.
 - `tools/cdp/capture.mjs`: `stableShot(page, probeExpr, out, clip)`,
   clip screenshots behind the stability gate.
-- `node tools/verify-replica.mjs http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h> --out <dir>`:
-  one verification pass: captures the live element, renders the
+- `node tools/verify-replica.mjs <library-url> <slug> <state> <live-tab-url> <x,y,w,h> --out <dir>`:
+  `<library-url>` is the `local:` address `host-library.mjs` printed.
+  One verification pass: captures the live element, renders the
   library app's `#/render/<slug>/<state>` (the component alone, at
   those coordinates) headlessly at the same viewport and ratio, diffs
   in node, writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` into
@@ -179,7 +180,9 @@ call; chain the short ones in one shell line.
    it again anyway, it returns at once when the run is up and prints
    the address. The site's Design system page loads that address (the
    one the site chose and stored), so hosting first is what lets the
-   user watch. Also `node tools/cdp/headless.mjs start`.
+   user watch. Keep the `local:` line it prints: that is the
+   `<library-url>` every verification pass takes. Also
+   `node tools/cdp/headless.mjs start`.
 1. **Open the run.** Read the live tab's `document.title` and its
    icon (the `href` of `link[rel~="icon"]`, else `/favicon.ico`,
    fetched to a file), then `node tools/library.mjs init <library>
@@ -336,7 +339,7 @@ under the run). The loop:
    several variations side by side in its default state rather than
    one frozen instance.
 3. **Verify, one call per pass.** `node tools/verify-replica.mjs
-   http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h>
+   <library-url> <slug> <state> <live-tab-url> <x,y,w,h>
    --out passes`. It mounts your state alone at the instance's
    absolute coordinates (position matters for dash phase and
    gradient dithering; the traps doc says why) and diffs the clip.
@@ -405,7 +408,7 @@ this shape:
 > `<liveUrl>` in the Proto window on port 9333, read only; the
 > instance is `<selector>` at `<x,y,w,h>`; the states the product
 > shows are `<list>`. Tools, complete signatures:
-> `node <kit>/tools/verify-replica.mjs http://localhost:5210 <slug> <state> <liveUrl> <x,y,w,h> --out <run>/units/<slug>/passes`
+> `node <kit>/tools/verify-replica.mjs <library-url> <slug> <state> <liveUrl> <x,y,w,h> --out <run>/units/<slug>/passes`
 > (one pass of one state, prints mismatch and clusters);
 > `node <kit>/tools/cdp/crop.mjs <liveUrl> <x,y,w,h> screenshot.png`
 > (only if you skip, into your passes folder). Author from read
