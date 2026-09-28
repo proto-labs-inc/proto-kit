@@ -14,24 +14,49 @@ and state map; your job is only the app itself.
 
 ## The brief
 
-You need three things before scaffolding; ask only for what's missing:
+The site and copied prompts hand this skill fields, not workflow
+instructions:
 
-- **A short, specific title** — keep prototype names brief and to the
-  point, usually 2–5 words that identify the screen or flow. Avoid
-  filler such as "prototype," "concept," or "variant." Good examples:
-  "Checkout Review," "Invite Teammates," "Empty Inbox," and "Billing
-  Settings." Avoid names like "New Checkout Flow Prototype" or "Settings
-  Page Variant." Kebab-case the title into the slug (lowercase
-  letters, digits, hyphens; it becomes the subdomain label, so pick
-  something a person could read aloud).
-- **What it should show** — the feature, flow, or screen, and what is
-  being varied or decided.
-- **A live source URL** when the prototype replicates an existing page:
-  the page in the user's product it must look like.
+- `codebase`: the connected codebase.
+- `description`: what the prototype should show or decide. It may be empty
+  when `contextUrl` carries the product brief.
+- `contextUrl`: an optional document, issue, or meeting-notes link that
+  explains what to build.
+- `referenceUrl`: the live product screen to replicate and extend.
+- `referenceHtml`: optional structure hints captured by the site.
+- `useRealData`: whether to use the source app's live data; false means mock
+  realistic data.
 
-A brief may also carry **reference HTML** (a snapshot the site's
-dialog captured): use it to map structure and copy, but the live page
-wins on any disagreement, and never paste it into the prototype at
+Generate the title yourself from the brief's actual content. When the brief
+has a `contextUrl`, read it before naming the prototype. The resolved title is
+mandatory and must never be blank: when the context source has no title, an
+empty title, or only an unusable generic label, make up a fitting title from
+its content. Keep the title short and specific, usually 2–5 words that identify
+the screen or flow. Never derive it from a URL, hostname, path segment, or issue
+key. Treat an absent title or the placeholder `New prototype` as no title;
+honor a different title only when the user explicitly supplied it. Avoid filler
+such as "prototype," "concept," or "variant." Kebab-case the title into the
+slug (lowercase letters, digits, hyphens; it becomes the subdomain label, so
+pick something a person could read aloud). Do not ask the user for a title
+merely because the field is absent.
+
+Resolve `contextUrl` before scaffolding:
+
+1. Check whether a connector for that link's service is available to the
+   current agent.
+2. If no connector is available, open `contextUrl` in a browser and read it
+   there. Do not ask about connector setup.
+3. If a connector is available and already connected, confirm it can access
+   this link and use it.
+4. If the connector is available but not connected, ask the user whether they
+   want to set it up. If they agree, use the harness's supported connector
+   setup and then read the link through it. If they decline, open the link in
+   a browser and read it there.
+
+`contextUrl` is product context, not the visual source. `referenceUrl` is the
+live screen whose appearance and interactions govern the prototype. A brief
+may also carry `referenceHtml`; use it to map structure and copy, but the live
+page wins on any disagreement, and never paste it into the prototype at
 runtime.
 
 ## The gallery shows the build
@@ -219,26 +244,21 @@ state) and a branch in the code via `usePreviewState`.
 
 ## Variants
 
-When the brief asks "which direction?", add a variant set under
+Before building, infer one or two decisions in the prompt that would benefit
+from comparison (for example, layout, hierarchy, interaction pattern, or
+content density) and proactively create variant sets for them. Do this even
+when the brief does not explicitly ask for variants, but only where the prompt
+supports a meaningful choice; do not manufacture arbitrary differences.
+
+For each variant set, add it under
 `variantSets` in `prototype.json`: the `component` it varies, 2–4
 `variants` (id, title, a `note` saying what the direction is for), the
 `default`, the `baseline` (the UI as it exists today, so reviewers can
 always compare against current reality), and an `overview` framing the
 question being decided. Drive the code with `useVariant`.
 
-New variants always go at the top of the list. When adding variants to
-an existing set, prepend them to the `variants` array; never append them,
-and preserve the existing variants' relative order.
-
-After every edit that changes a variant's UI, metadata, ordering, or
-baseline, run an SVG-preview consistency pass over the entire affected
-variant set. Regenerate any stale previews, then check that every preview
-is component-only, uses the same padding and framing, and renders on the
-prototype's page background. Do not finish the edit while its preview or
-any sibling preview in the set is missing, stale, or formatted differently.
-
 Ground variants in reality: for each direction, find a real product
-that does it well, capture or draw a small reference image into
+that does it well on Mobbin, capture or draw a small reference image into
 `public/references/`, and register it under `references` with a note
 saying what to look at and which variant it informs. A variant without
 a reference is a guess with styling.
