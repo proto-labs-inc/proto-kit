@@ -19,10 +19,16 @@
 - Agent roles are TOML in `~/.codex/agents/` (plugins don't ship
   them; setup installs `codex-agents/*.toml`): all four proto roles
   listed by the session for `spawn_agent` after install.
-- MCP: `[mcp_servers.<name>]` in `~/.codex/config.toml` with `url` +
-  `http_headers_helper` (the kit's `tools/mcp-headers.mjs` reads
-  `~/.proto/config.json`). Verified: a Codex session called the
-  proto server's `whoami` through it. Headless `codex exec` denies MCP calls
+- MCP: `[mcp_servers.<name>]` in `~/.codex/config.toml`, either
+  `url` + `http_headers_helper` or, as the kit now uses, a stdio
+  server: `codex mcp add proto -- node <kit>/tools/mcp-stdio.mjs`
+  writes `command = "node"` + `args = [...]` (verified 2026-09-28,
+  codex 0.155.1; `codex mcp list` shows it enabled). The kit moved
+  off `http_headers_helper` because a headers helper is called once
+  per connection, and a laptop linked to several teams needs the
+  credential chosen per call (MAA-195). Verified earlier: a Codex
+  session called the proto server's `whoami` through the header
+  helper. Headless `codex exec` denies MCP calls
   under its default approval policy; `--sandbox
   danger-full-access` (or interactive approval) permits them.
 - NO push wake exists (nothing like the Monitor tool): an idle Codex

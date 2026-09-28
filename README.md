@@ -70,8 +70,7 @@ The courier and the feed:
 Talking to the app, and the harness hooks:
 
 - `mcp-call.mjs`: MCP-over-HTTP client, the one reader of `~/.proto/config.json`.
-- `mcp-stdio.mjs`: that same transport as a stdio MCP server.
-- `mcp-headers.mjs`: print Codex's auth header from config.json.
+- `mcp-stdio.mjs`: that same transport as a stdio MCP server, choosing the credential per call.
 - `link-laptop.mjs`: fetch the setup document, mint this laptop's token.
 - `hooks/post-edit-markers.mjs`: re-run the marker check on an edited workspace file.
 - `hooks/cursor-session-start.mjs`, `hooks/cursor-post-tool-use.mjs`: those two checks, Cursor's shape.
@@ -208,9 +207,9 @@ and on in Customize.
 
 ```
 ~/.proto/
-├─ config.json              laptop link (app origin, member, team, auth, rig source), shape in skills/setup
+├─ config.json              laptop links (app origin, one credential per team, rig source), shape in skills/setup
 └─ <codebase>/               one per codebase being prototyped
-   ├─ codebase.json          source pointers (repo path, remote, live URL)
+   ├─ codebase.json          the team that owns it and source pointers (repo path, remote, live URL)
    ├─ library/              the design-system library app; the import fills its public/
    ├─ prototypes/<slug>/    prototype workspaces (vite + rig + prototype.json)
    ├─ imports/<run>/        import working artifacts (wireframes, verify stages)
