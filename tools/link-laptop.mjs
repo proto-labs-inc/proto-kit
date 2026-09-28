@@ -8,16 +8,13 @@
  * One credential per team (MAA-195). A laptop that already holds a
  * working token for this app, member and team (an Edit prompt on a
  * laptop that is set up) keeps it: the code then only served the
- * document. A token for a team this laptop has not worked with before
- * is added beside the ones it holds; a second token for a team it
- * already holds replaces that one. Nothing else in config.json is
- * touched, so the credentials the laptop's other teams depend on
- * survive every link.
+ * document. Otherwise the token this code was exchanged for is handed
+ * to `addCredential`, which owns config.json. This file is one way of
+ * obtaining a credential, not the owner of the set.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { dirname, join } from "node:path";
-import { CONFIG_PATH, callTool, credentialsIn, post } from "./mcp-call.mjs";
+import { CONFIG_PATH, addCredential, callTool, credentialsIn, describeCredential, post } from "./mcp-call.mjs";
 
 const fail = (message) => {
   console.error(message);
@@ -69,14 +66,6 @@ function readPreviousConfig() {
   }
 }
 
-/** A credential without its secret: what the link step may report. */
-const describe = (credential) => ({
-  user: credential.user,
-  team: credential.team,
-  laptop: credential.laptop,
-  linkedAt: credential.linkedAt,
-});
-
 // A laptop already linked to this member for this team keeps that
 // token. The document names the team, so only the one credential that
 // could match is tried against the server.
@@ -94,7 +83,7 @@ if (candidate) {
           setup: document,
           linkedAs: { user: me.user, team: me.team, laptop: me.laptop },
           added: null,
-          kept: held.filter((credential) => credential !== candidate).map(describe),
+          kept: held.filter((credential) => credential !== candidate).map(describeCredential),
         }),
       );
       process.exit(0);
@@ -137,35 +126,24 @@ try {
 }
 if (!linked.token) fail(linked.error ?? "the Proto app did not return a laptop token");
 
-// The new credential joins the ones this laptop holds. A credential
-// for the same team is replaced, because a team has one laptop token
-// at a time; every other team's keeps working untouched.
-const added = {
-  kind: "laptop-token",
-  secret: linked.token,
-  user: linked.user,
-  team: linked.team,
-  laptop: linked.laptop,
-  linkedAt: new Date().toISOString(),
-};
-const kept = held.filter((credential) => credential.team?.id !== added.team?.id);
-const config = {
-  schemaVersion: 3,
+// The token joins the set, replacing only a credential for the same
+// team. Where it came from is this file's business; the set's shape
+// and the write are not.
+const { added, kept } = addCredential({
   app,
-  credentials: [...kept, added],
-  ...(previous.packages ? { packages: previous.packages } : {}),
-  createdAt: previous.createdAt ?? added.linkedAt,
-  updatedAt: added.linkedAt,
-};
-mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-const temporaryPath = join(dirname(CONFIG_PATH), `.config-${process.pid}.json`);
-writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-chmodSync(temporaryPath, 0o600);
-renameSync(temporaryPath, CONFIG_PATH);
+  credential: {
+    kind: "laptop-token",
+    secret: linked.token,
+    user: linked.user,
+    team: linked.team,
+    laptop: linked.laptop,
+    linkedAt: new Date().toISOString(),
+  },
+});
 
 console.log(JSON.stringify({
   setup: document,
   linkedAs: { user: linked.user, team: linked.team, laptop: linked.laptop },
-  added: describe(added),
-  kept: kept.map(describe),
+  added,
+  kept,
 }));

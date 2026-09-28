@@ -16,8 +16,8 @@
  * (`whoami`, `link_laptop`) use the only credential, or the most
  * recently linked when there are several.
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 export const CONFIG_PATH = join(process.env.HOME ?? "", ".proto", "config.json");
 export const NOT_SET_UP =
@@ -25,12 +25,15 @@ export const NOT_SET_UP =
 export const STALE_CREDENTIAL =
   "This laptop's Proto credential no longer works (it was removed on the Laptops page, or the account left the team): run the Proto setup skill again to link it afresh.";
 
-/** What this laptop holds for a codebase whose team it is not linked to.
- *  Named rather than generic, because the fix is specific: link this
- *  laptop from that team's Settings. */
-export function noCredentialFor(codebase, teamName) {
-  const team = teamName ? `team ${teamName}` : "a team";
-  return `This laptop is not linked to ${team}, which owns codebase ${codebase}: open Proto, Settings, Laptops while signed in to that team and paste the prompt it gives you.`;
+/** This laptop holds no credential for a team it is being asked to act
+ *  in. A local diagnosis, not a server refusal: nothing was asked of
+ *  the server and nothing is wrong with the credentials held. It lives
+ *  here so every caller says it the same way, whichever way that
+ *  caller would go on to obtain one. */
+export function noCredentialFor({ team, codebase } = {}) {
+  const which = team ? `team ${team}` : "that team";
+  const owns = codebase ? `, which owns codebase ${codebase}` : "";
+  return `This laptop is not linked to ${which}${owns}: open Proto, Settings, Laptops while signed in to that team and paste the prompt it gives you.`;
 }
 
 /** The credentials a config file holds, newest link last, whichever
@@ -101,7 +104,7 @@ export function pickCredential(config, { codebase } = {}) {
   const team = codebase ? codebaseTeam(codebase) : null;
   if (team) {
     const match = credentials.find((c) => c.team?.id === team.id);
-    if (!match) throw new Error(noCredentialFor(codebase, team.name));
+    if (!match) throw new Error(noCredentialFor({ team: team.name, codebase }));
     return { credential: match, why: "codebase" };
   }
   if (credentials.length === 1) return { credential: credentials[0], why: "only" };
@@ -118,6 +121,52 @@ export function credentialFor(config, options) {
 export function actingAs(codebase, credential) {
   const what = codebase ? `codebase ${codebase} names no team on this laptop` : "no codebase was named";
   return `proto: ${what}; acting as the most recently linked team, ${credential.team?.name ?? "unknown"}.`;
+}
+
+/** A credential without its secret: what a caller may report. */
+export const describeCredential = (credential) => ({
+  user: credential.user,
+  team: credential.team,
+  laptop: credential.laptop,
+  linkedAt: credential.linkedAt,
+});
+
+/** Add a credential to the set this laptop holds, replacing only one
+ *  for the same team, and write the file back with mode 600.
+ *
+ *  Its own operation on purpose. A credential is a credential however
+ *  it was obtained — exchanged for a pasted code, or handed over after
+ *  a person approved the request in a browser — so no way of obtaining
+ *  one owns this file or is recorded in an entry. A file in an older
+ *  shape is carried over here, at the moment something is added to it,
+ *  and never merely by being read.
+ *
+ *  Returns what was added and what was kept, without secrets. */
+export function addCredential({ app, credential }) {
+  let previous = {};
+  if (existsSync(CONFIG_PATH)) {
+    try {
+      previous = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    } catch {
+      previous = {}; // unreadable: this credential starts the file afresh
+    }
+  }
+  const held = previous.app === app ? credentialsIn(previous) : [];
+  const kept = held.filter((held) => held.team?.id !== credential.team?.id);
+  const config = {
+    schemaVersion: 3,
+    app,
+    credentials: [...kept, credential],
+    ...(previous.packages ? { packages: previous.packages } : {}),
+    createdAt: previous.createdAt ?? credential.linkedAt,
+    updatedAt: credential.linkedAt,
+  };
+  mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+  const temporaryPath = join(dirname(CONFIG_PATH), `.config-${process.pid}.json`);
+  writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(temporaryPath, 0o600);
+  renameSync(temporaryPath, CONFIG_PATH);
+  return { added: describeCredential(credential), kept: kept.map(describeCredential) };
 }
 
 /** The endpoint and bearer for one call. */
