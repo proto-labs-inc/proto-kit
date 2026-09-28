@@ -29,8 +29,8 @@
  *        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>
  *   --kind is required and is the heartbeat tool's kind: a
  *   prototype's serving run beats for { kind: "prototype", codebase,
- *   slug }; the codebase's library serving run beats for
- *   { kind: "library", codebase } (no slug).
+ *   slug, tunnelConnected }; the codebase's library serving run beats
+ *   for { kind: "library", codebase, tunnelConnected } (no slug).
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
