@@ -153,6 +153,7 @@ export function addCredential({ app, credential }) {
   }
   const held = previous.app === app ? credentialsIn(previous) : [];
   const kept = held.filter((held) => held.team?.id !== credential.team?.id);
+  const replaced = held.find((held) => held.team?.id === credential.team?.id) ?? null;
   const config = {
     schemaVersion: 3,
     app,
@@ -166,7 +167,36 @@ export function addCredential({ app, credential }) {
   writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   chmodSync(temporaryPath, 0o600);
   renameSync(temporaryPath, CONFIG_PATH);
-  return { added: describeCredential(credential), kept: kept.map(describeCredential) };
+  return {
+    added: describeCredential(credential),
+    replaced: replaced ? describeCredential(replaced) : null,
+    kept: kept.map(describeCredential),
+  };
+}
+
+/** One sentence for what a link did: what this laptop can now do, and
+ *  what it could already do and still can. Never promises that linking
+ *  is done with — a person links once per team, and the point of the
+ *  set is that doing so costs them nothing they already had.
+ *
+ *  Here beside `addCredential` because it describes the set, not the
+ *  way a credential arrived; a credential approved in a browser leaves
+ *  the same thing to say as a pasted one. */
+export function summarizeLink({ added = null, replaced = null, unchanged = null, kept = [] } = {}) {
+  const as = (credential) =>
+    `${credential.user?.email ?? credential.user?.name ?? "this laptop"} in ${credential.team?.name ?? "an unnamed team"}`;
+  const clauses = [];
+  if (added && replaced) clauses.push(`Relinked as ${as(added)}, replacing the previous credential for that team`);
+  else if (added) clauses.push(`Linked as ${as(added)}`);
+  else if (unchanged) clauses.push(`Already linked as ${as(unchanged)}`);
+  if (kept.length > 0) clauses.push(`still linked as ${inWords(kept.map(as))}`);
+  return clauses.length === 0 ? "" : `${clauses.join("; ")}.`;
+}
+
+/** "a", "a and b", "a, b and c". */
+function inWords(items) {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
 
 /** The endpoint and bearer for one call. */
