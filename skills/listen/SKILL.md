@@ -80,7 +80,7 @@ checkout root.
         `referenceHtml = reference_html`, and `useRealData = use_real_data`.
         Do not pass the site's placeholder `title` as a requested title; the
         create-prototype skill generates the real title from the brief. The
-        laptop token identifies the member and org for registration.
+        laptop token identifies the member and team for registration.
         Publish at the checkpoints: when you report `serving`,
         again before you report `done`, and whenever the current
         state is worth keeping. To publish, build the workspace with

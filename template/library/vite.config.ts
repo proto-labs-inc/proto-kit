@@ -94,7 +94,9 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
-    port: 5210,
+    // host-library.mjs picks a free port per run and passes it here; a
+    // bare `pnpm dev` in this folder takes 5210.
+    port: Number(process.env.PROTO_PORT ?? 5210),
     strictPort: true,
     cors: true, // the app's Design system page probes manifest.json cross-origin
     watch: { ignored: [`${publicDir}/**`] },

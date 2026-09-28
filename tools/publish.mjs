@@ -24,7 +24,7 @@
  * defaults to ~/.proto/<codebase>/library/dist, produced by `pnpm
  * build` in the library folder, and must contain index.html and a
  * manifest.json naming a codebase. The laptop token in
- * ~/.proto/config.json identifies the member and org. --dry-run prints the upload plan without
+ * ~/.proto/config.json identifies the member and team. --dry-run prints the upload plan without
  * touching the cloud.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";

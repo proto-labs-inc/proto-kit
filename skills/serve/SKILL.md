@@ -19,7 +19,7 @@ directory, which is also the proto-kit checkout root.
 ## Start
 
 1. **Register the prototype** first: `register_prototype { codebase,
-   slug, title }`. The laptop token identifies the member and org. It
+   slug, title }`. The laptop token identifies the member and team. It
    upserts on (codebase, slug), so re-registering after a title change
    is correct. The row must exist before the next step: the site
    stores the prototype's address on it. An authorization error means
@@ -114,15 +114,17 @@ node tools/host-library.mjs <codebase>
 ```
 
 It scaffolds the app from `template/library/` if the folder is not
-there, runs `pnpm install --frozen-lockfile` if `node_modules` is
-missing, calls `provision_tunnel { kind: "library", codebase, port:
-5210 }` (the port in the library's `vite.config.ts`; the site chooses
-the address), writes `~/.proto/<codebase>/run/library/spec.json` with
+there, refreshes the copy's `vite.config.ts` from the template, runs
+`pnpm install --frozen-lockfile` if `node_modules` is
+missing, takes a free port for this run, calls `provision_tunnel {
+kind: "library", codebase, port }` with it (the site chooses the
+address), writes `~/.proto/<codebase>/run/library/spec.json` with
 three processes (`dev` = `["pnpm", "dev"]` in the library folder with
-`PROTO_TUNNEL=1`; `tunnel` = cloudflared with the connector token;
+`PROTO_TUNNEL=1` and `PROTO_PORT=<port>`, which is what the library's
+`vite.config.ts` binds; `tunnel` = cloudflared with the connector token;
 `heartbeat` = `node <kit>/tools/prototype-heartbeat.mjs --kind library
 <run-dir> <codebase>`), `chmod 600`, starts it under `supervise.mjs`,
-waits for `http://localhost:5210/manifest.json`, verifies the public
+waits for `http://localhost:<port>/manifest.json`, verifies the public
 address through Cloudflare's edge with `--resolve` as step 5 above
 describes, and prints the public URL, the local URL and the run dir.
 It is idempotent: setup runs it in the background at codebase
@@ -235,7 +237,7 @@ only on the codebase id, so nothing waits on it):
 answers with (fail-soft; `agentListening` from the feed watcher's local
 heartbeat). It is the same tool a prototype's or the library's serving
 run beats, with its own target. A courier whose beats have gone stale
-is offline; the site dispatches each brief to the org's freshest
+is offline; the site dispatches each brief to the team's freshest
 listening courier, and registered-but-not-listening falls back to the
 copyable prompt with "your agent isn't running".
 

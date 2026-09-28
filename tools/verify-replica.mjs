@@ -11,7 +11,8 @@
  * it renders appears on screen, and nobody writes a diff page again.
  *
  * Usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <rect> [--out <dir>] [--pass <n>] [--port <visible-cdp-port>]
- *   <app-url>       the library app's dev server, http://localhost:5210.
+ *   <app-url>       the library app's dev server: the local URL
+ *                   host-library.mjs printed for this codebase.
  *   <slug> <state>  the component and the name of the state to render,
  *                   from its src/components/<slug>/component.json.
  *   <live-tab-url>  a substring of the live tab's URL in the Proto window.

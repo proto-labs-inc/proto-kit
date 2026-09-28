@@ -208,7 +208,7 @@ and on in Customize.
 
 ```
 ~/.proto/
-├─ config.json              laptop link (app origin, member, org, auth, rig source), shape in skills/setup
+├─ config.json              laptop link (app origin, member, team, auth, rig source), shape in skills/setup
 └─ <codebase>/               one per codebase being prototyped
    ├─ codebase.json          source pointers (repo path, remote, live URL)
    ├─ library/              the design-system library app; the import fills its public/
@@ -227,6 +227,6 @@ cd /tmp/demo-library && pnpm install --frozen-lockfile && pnpm dev
 # in another terminal: play the fake import into it
 node tools/fake-import/run.mjs /tmp/demo-library
 
-# open http://localhost:5210 and watch it fill in; press "Queue it" on
+# open the URL Vite prints and watch it fill in; press "Queue it" on
 # the skipped card and the driver extracts it
 ```
