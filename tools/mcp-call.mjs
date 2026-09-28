@@ -17,7 +17,7 @@ export const CONFIG_PATH = join(process.env.HOME ?? "", ".proto", "config.json")
 export const NOT_SET_UP =
   "Proto is not set up on this laptop yet: run the Proto setup skill, then try again.";
 export const STALE_CREDENTIAL =
-  "This laptop's Proto credential no longer works (it was removed on the Laptops page, or the account left the org): run the Proto setup skill again to link it afresh.";
+  "This laptop's Proto credential no longer works (it was removed on the Laptops page, or the account left the team): run the Proto setup skill again to link it afresh.";
 
 function configTarget() {
   const config = readConfig();

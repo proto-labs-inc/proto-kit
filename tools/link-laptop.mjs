@@ -57,7 +57,7 @@ if (existsSync(CONFIG_PATH)) {
       const answer = await callTool("whoami", {});
       const me = JSON.parse(answer?.content?.[0]?.text ?? "{}");
       if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
-        console.log(JSON.stringify({ setup: document, linkedAs: { user: me.user, org: me.org, laptop: me.laptop } }));
+        console.log(JSON.stringify({ setup: document, linkedAs: { user: me.user, team: me.team, laptop: me.laptop } }));
         process.exit(0);
       }
     }
@@ -110,7 +110,7 @@ const config = {
   app,
   auth: { kind: "laptop-token", secret: linked.token },
   user: linked.user,
-  org: linked.org,
+  team: linked.team,
   laptop: linked.laptop,
   ...(previous.packages ? { packages: previous.packages } : {}),
   createdAt: new Date().toISOString(),
@@ -123,5 +123,5 @@ renameSync(temporaryPath, CONFIG_PATH);
 
 console.log(JSON.stringify({
   setup: document,
-  linkedAs: { user: linked.user, org: linked.org, laptop: linked.laptop },
+  linkedAs: { user: linked.user, team: linked.team, laptop: linked.laptop },
 }));

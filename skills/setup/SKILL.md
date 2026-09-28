@@ -43,7 +43,7 @@ exactly as below once they paste it.
 first is the sentence the recognizer keys on:
 
 ```
-Set up Proto for <name> (<id>) at <org>.
+Set up Proto for <name> (<id>) at <team>.
 Fetch <app>/api/setup/<code> and follow it; the link is valid for 10 minutes and works once.
 ```
 
@@ -69,7 +69,7 @@ again and wait for the new prompt. The printed setup document is JSON:
 ```jsonc
 {
   "instructions": "...",                       // what to do with the document, one paragraph
-  "account": { "id": "<id>", "name": "<name>", "org": "<org>" },
+  "account": { "id": "<id>", "name": "<name>", "team": "<team>" },
   "codebase": "<id>",                          // only when resuming
   "app": "https://...",                        // the Proto app's origin
   "install": {                                 // the plugin command per harness
@@ -131,7 +131,7 @@ for "who am I and where is the app":
   "app": "https://…",              // the document's app
   "auth": { "kind": "laptop-token", "secret": "…" },
   "user": { "id": "<id>", "name": "<name>", "email": "…" },
-  "org": { "id": "<id>", "name": "<name>" },
+  "team": { "id": "<id>", "name": "<name>" },
   "laptop": { "id": "<id>", "label": "<hostname>" },
   "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
@@ -143,7 +143,7 @@ a command with no prompt, ask the user to copy the setup prompt from
 the Proto site and stop until they paste it. Never search the disk for
 a credential: a `.env` file belonging to a checkout is not this
 laptop's credential. Every cloud call sends `Authorization: Bearer
-<auth.secret>`; the server derives the member and org from that token.
+<auth.secret>`; the server derives the member and team from that token.
 
 ### The proto MCP server
 
@@ -177,7 +177,7 @@ Also install the agent roles (Codex plugins don't ship them): copy
 `<kit>/codex-agents/*.toml` into `~/.codex/agents/`.
 
 Either way, confirm with the `whoami` tool: it reports the auth
-mode, org, and grants. A connected server whose `whoami` fails means
+mode, team, and grants. A connected server whose `whoami` fails means
 the credential is stale: redo the auth step above.
 
 ## Codebase
@@ -233,7 +233,7 @@ system it extracts."**
 3. **Scraps are a full answer.** A PR link, a repo link, "we're
    acme, it's on GitHub": derive the repo yourself (a PR/issue URL
    names its repo; `gh pr view <url>` does too; a live URL's domain
-   often names the org). Don't ask for a path when a scrap will do.
+   often names the team). Don't ask for a path when a scrap will do.
 4. **Never ask two unanswerable questions in a row.** Every question
    must be answerable from what the user obviously knows, and must
    carry your best guess so a "yes" is enough.
@@ -249,7 +249,7 @@ system it extracts."**
    files, not memory).
 6. **Create or record the codebase** once confirmed:
    `set_codebase_source { sourcePath, repoRemote }`. With no `codebase`
-   field the server creates the codebase in the laptop token's org and names it after the source
+   field the server creates the codebase in the laptop token's team and names it after the source
    folder, and returns the id that keys everything from here on.
    Resuming with a known id, pass `codebase` and the call records the
    source instead. The local `codebase.json` below stays the laptop's
@@ -330,7 +330,7 @@ Proto window step, while the product's live page is open there:
    `src/app/icon.*`.
 3. Convert to a data URL (png/svg/ico, ≤ 256 KB: pick a size that
    fits) and call the `set_codebase_icon` MCP tool with
-   `{ codebase, image }`. The laptop token supplies the member and org.
+   `{ codebase, image }`. The laptop token supplies the member and team.
 4. **Fail soft.** Nothing usable found → skip silently and move on;
    the site shows a letter fallback. No icon is ever worth a
    question or an error sentence.
@@ -352,10 +352,10 @@ without stopping anything.
   `package.json`/remote match the codebase (they can legitimately
   disagree with each other, a fork or renamed checkout, which is
   why confirmation beat validation above).
-- The `whoami` MCP tool answers with the expected org and grants.
+- The `whoami` MCP tool answers with the expected team and grants.
 - `cloudflared --version` runs.
 
-Report what you set up, leading with which member and org they're linked
+Report what you set up, leading with which member and team they're linked
 as, what you found vs. were told, and anything you skipped because
 it already existed.
 

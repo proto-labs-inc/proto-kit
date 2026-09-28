@@ -208,7 +208,7 @@ and on in Customize.
 
 ```
 ~/.proto/
-├─ config.json              laptop link (app origin, member, org, auth, rig source), shape in skills/setup
+├─ config.json              laptop link (app origin, member, team, auth, rig source), shape in skills/setup
 └─ <codebase>/               one per codebase being prototyped
    ├─ codebase.json          source pointers (repo path, remote, live URL)
    ├─ library/              the design-system library app; the import fills its public/

@@ -19,7 +19,7 @@ directory, which is also the proto-kit checkout root.
 ## Start
 
 1. **Register the prototype** first: `register_prototype { codebase,
-   slug, title }`. The laptop token identifies the member and org. It
+   slug, title }`. The laptop token identifies the member and team. It
    upserts on (codebase, slug), so re-registering after a title change
    is correct. The row must exist before the next step: the site
    stores the prototype's address on it. An authorization error means
@@ -237,7 +237,7 @@ only on the codebase id, so nothing waits on it):
 answers with (fail-soft; `agentListening` from the feed watcher's local
 heartbeat). It is the same tool a prototype's or the library's serving
 run beats, with its own target. A courier whose beats have gone stale
-is offline; the site dispatches each brief to the org's freshest
+is offline; the site dispatches each brief to the team's freshest
 listening courier, and registered-but-not-listening falls back to the
 copyable prompt with "your agent isn't running".
 
