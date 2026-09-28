@@ -89,7 +89,11 @@ checkout root.
         what viewers see when the laptop is gone.
      4. Any failure → `report_progress` `"failed"` with a **plain
         one-sentence message a non-engineer can read**: never a
-        stack trace, never raw output. If the flow needs something
+        stack trace, never raw output. A network that blocks the
+        tunnel is one of these, and the serve skill has its exact
+        sentence: report it once, publish what exists, and carry on
+        with the rest of the work, because everything but the live
+        view still works. If the flow needs something
         only the user can give (a login, a decision), report
         `"needs-input"` with the question as the message, then park
         that command and move on; it resumes when the answer

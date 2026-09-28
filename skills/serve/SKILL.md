@@ -50,11 +50,13 @@ directory, which is also the proto-kit checkout root.
        // tells you): ["npm", "run", "dev"], ["pnpm", "dev"], …
        { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "<connectorToken>"] },
        // Liveness: beats the app's `heartbeat` tool for
-       // { kind: "prototype", codebase, slug } while dev and tunnel are
-       // up, at the cadence the app answers with; its lifetime is the
-       // serving lifetime, so stopping the run silences it and staleness
-       // tells the Frame to use the published build. No "is live" flag
-       // exists anywhere.
+       // { kind: "prototype", codebase, slug, tunnelConnected } while dev
+       // and tunnel are up, at the cadence the app answers with; its
+       // lifetime is the serving lifetime, so stopping the run silences it
+       // and staleness tells the Frame to use the published build. No "is
+       // live" flag exists anywhere. tunnelConnected is read from
+       // cloudflared's own log, and is how the site tells "the laptop is
+       // fine and its address is dead" from "the laptop is asleep".
        { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "--kind", "prototype", "<run-dir>", "<codebase>", "<slug>"] }
      ]
    }
@@ -87,6 +89,26 @@ directory, which is also the proto-kit checkout root.
      ordinary resolvers; that is normal and not yours to wait for.
      (The site itself never loads the address until the row has one
      and a fresh heartbeat, so registering first is safe.)
+
+   **Before you wait on the edge at all, ask cloudflared.** It writes
+   its own verdict into `<run-dir>/tunnel.log` within about fifteen
+   seconds of starting: `precheck complete hard_fail=true` means this
+   network cannot carry a tunnel, and `Registered tunnel connection`
+   means it can and has. `<kit>/tools/tunnel-state.mjs` is that reading
+   as a module: `tunnelState(runDir)` answers `connecting`, `connected`
+   or `blocked`, and the heartbeat and `host-library.mjs` both use it. On `blocked`, stop waiting and say this, once, in
+   these words:
+
+   > This network blocks the connection the tunnel needs (port 7844), so nothing here can go live on it. Publishing still works, and so does everything else this laptop sends to Proto; for a live view use a phone hotspot or another network.
+
+   Then carry on: the dev server is up, the prototype publishes over
+   443, and the Frame shows the published build. Do not stop, do not
+   retry the edge, and do not restart anything when the network
+   recovers: the beat carries the tunnel's state and flips on its own
+   the moment cloudflared registers a connection. If a brief is
+   running, `report_progress {briefId, status: "failed"}` with that
+   sentence as the message: the live view is what failed, and the
+   sentence says what still works.
 
 6. **Publish** a permanent snapshot. Build the workspace with its
    own build script (`pnpm build`; the templates configure relative
@@ -124,9 +146,15 @@ three processes (`dev` = `["pnpm", "dev"]` in the library folder with
 `vite.config.ts` binds; `tunnel` = cloudflared with the connector token;
 `heartbeat` = `node <kit>/tools/prototype-heartbeat.mjs --kind library
 <run-dir> <codebase>`), `chmod 600`, starts it under `supervise.mjs`,
-waits for `http://localhost:<port>/manifest.json`, verifies the public
-address through Cloudflare's edge with `--resolve` as step 5 above
-describes, and prints the public URL, the local URL and the run dir.
+waits for `http://localhost:<port>/manifest.json`, reads cloudflared's
+own log for whether it reached Cloudflare, verifies the public address
+through the edge with `--resolve` as step 5 above describes when it
+did, and prints the public URL, the local URL, the run dir and
+`tunnel: connected` or `tunnel: blocked`. Once the dev server answers
+it succeeds: a blocked tunnel prints the sentence above and returns
+`tunnel: blocked`, because the library is up locally and publishing
+works regardless, and failing here was how an import came to extract
+nothing at all.
 It is idempotent: setup runs it in the background at codebase
 creation, the import runs it again first thing and gets the address,
 and the app's recovery prompt ("serve ~/.proto/<codebase>/library and
@@ -154,6 +182,17 @@ half is down. Then the log for that process in the run dir:
   deprovisioned, re-provision (step 2) and rewrite the spec; connected
   but 502 at the edge → the dev server isn't listening on the spec'd
   port.
+- **tunnel "up" but the address answers Cloudflare 530, and
+  `tunnel.log` says `precheck complete hard_fail=true`**: this network
+  blocks the tunnel. Nothing on this laptop is broken and nothing here
+  can fix it; `supervise status` says "up" because the cloudflared
+  process is alive, which is not the same as connected. Say:
+
+  > This network blocks the connection the tunnel needs (port 7844), so nothing here can go live on it. Publishing still works, and so does everything else this laptop sends to Proto; for a live view use a phone hotspot or another network.
+
+  Leave the run up. When the laptop moves to a network that allows it,
+  cloudflared registers a connection by itself and the next beat says
+  so; nothing needs restarting.
 - **Both up but the page is wrong**: the Frame reads
   `prototype.json` cross-origin; check it parses and its `port`
   matches vite's.

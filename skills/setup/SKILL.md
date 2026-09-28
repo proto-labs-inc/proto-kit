@@ -132,6 +132,20 @@ document's `install.cursor.install` command, tell the user to run
 missing with the user's package manager (macOS: `brew install
 cloudflared`); tell them what you installed.
 
+**The network.** Everything this laptop sends to Proto goes over
+ordinary HTTPS on port 443 and works anywhere: linking, the design
+system import, publishing, every command. Going *live* is the other
+direction, and it needs outbound port 7844, which guest and corporate
+Wi-Fi commonly block. cloudflared says so in its own log within about
+fifteen seconds of starting (`precheck complete hard_fail=true`), and
+`host-library.mjs` prints `tunnel: blocked` and this sentence when it
+does:
+
+> This network blocks the connection the tunnel needs (port 7844), so nothing here can go live on it. Publishing still works, and so does everything else this laptop sends to Proto; for a live view use a phone hotspot or another network.
+
+Setup finishes either way, and so does the import. Say the sentence
+once, when it happens, and carry on.
+
 ### `~/.proto/config.json`
 
 The laptop link, the one file every other skill and tool reads
@@ -326,7 +340,10 @@ supervised run and verifies it through Cloudflare's edge. It runs
 while the Proto window and icon steps below proceed, so the first
 thing the import does, running the same call again, returns at once
 with the address. Never look the library's hostname up yourself
-meanwhile; the serve skill says why.
+meanwhile; the serve skill says why. Its last line is `tunnel:
+connected` or `tunnel: blocked`; on `blocked` the library is still up
+locally and the import still runs and publishes, so read the
+prerequisites' sentence to the user and go on.
 
 ### The reference page (the Proto window)
 
@@ -393,6 +410,9 @@ without stopping anything.
   why confirmation beat validation above).
 - The `whoami` MCP tool answers with the expected team and grants.
 - `cloudflared --version` runs.
+- `~/.proto/<codebase>/run/host-library.log` ends in `tunnel:
+  connected`, or in `tunnel: blocked` and you have told the user the
+  prerequisites' sentence.
 
 Report what you set up, leading with the link `summary`: which member
 and team this laptop now works as, and which teams it already worked in

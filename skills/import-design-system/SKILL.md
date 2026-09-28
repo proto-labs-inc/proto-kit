@@ -102,7 +102,9 @@ The readers and renderers:
 
 - `node tools/host-library.mjs <codebase>`: scaffold, install, tunnel,
   supervised run, edge check, in one call; prints the public and local
-  addresses. Idempotent.
+  addresses and `tunnel: connected` or `tunnel: blocked`. Idempotent,
+  and it succeeds once the library answers locally, whatever the
+  network does to the tunnel.
 - `tools/cdp/chrome.mjs`: the visible Proto window (port 9333), where
   the product page is signed in. You read it, only.
 - `tools/cdp/headless.mjs`: the headless Chrome (port 9444) that
@@ -128,7 +130,9 @@ The readers and renderers:
   component cropped from the live page at 2x, for a skipped card.
 - `node tools/publish-library.mjs <library>`: build the library app and
   upload the build, one publish at a time; prints the published URL.
-  Run it after every landing and at the finish.
+  Run it as soon as the run opens, after the palette, after every
+  landing and at the finish. It goes over 443, so it works on every
+  network this laptop can reach Proto from.
 - `node tools/serve.mjs <dir> 0`: a static server on a free port, for
   a static folder that must be reached by URL.
 
@@ -183,6 +187,16 @@ call; chain the short ones in one shell line.
    user watch. Keep the `local:` line it prints: that is the
    `<library-url>` every verification pass takes. Also
    `node tools/cdp/headless.mjs start`.
+
+   Its last line is `tunnel: connected` or `tunnel: blocked`. **On
+   `blocked`, the import runs exactly as it does otherwise.** The
+   network cannot carry a tunnel, so nothing goes live on it, but the
+   library is up locally, every verification pass reads the `local:`
+   address, and publishing goes over 443 and works. So the user
+   watches the *published* library fill instead of the live one, one
+   publish behind. Say the serve skill's sentence once, then carry
+   on. Stopping here is what left a codebase with an empty library
+   and nothing published at all.
 1. **Open the run.** Read the live tab's `document.title` and its
    icon (the `href` of `link[rel~="icon"]`, else `/favicon.ico`,
    fetched to a file), then `node tools/library.mjs init <library>
@@ -192,8 +206,12 @@ call; chain the short ones in one shell line.
    the line that tells the user the import is alive, and sets the
    product entry: the name is taken from the title ("Expenses ·
    Meridian" names Meridian), and when the page has no title the
-   codebase's display name is used, never its id. Make a run folder
-   `~/.proto/<codebase>/imports/<UTC stamp>/units/`.
+   codebase's display name is used, never its id. Then `node
+   tools/publish-library.mjs <library>`, straight away: it costs
+   seconds and it means there is a published library from the first
+   minute, which is the only copy anyone sees while the tunnel is
+   blocked and the copy that outlives the laptop when it is not. Make
+   a run folder `~/.proto/<codebase>/imports/<UTC stamp>/units/`.
 2. **Read.** The source's component directories, token files and
    font faces; the live page's outline, class names and computed
    styles (see **Reading the page**). Small reads, printed, looked at.
@@ -225,7 +243,10 @@ call; chain the short ones in one shell line.
    `role: "text"` on the page text token, once each. Use real product
    copy for every `sample`. Every token a unit will name in its
    `component.json` must be in the manifest before that unit lands:
-   push the palette first, then land units.
+   push the palette first, then land units. Publish once the palette
+   and the type styles are in (`node tools/publish-library.mjs
+   <library>`): colours and type are most of what the user came to
+   see, and they should not wait behind the first component.
 7. **The courier, while the units run.** If
    `~/.proto/<codebase>/run/courier/` has no `courier.json`, bring
    the courier up now, per the serve skill's "The courier" section.
@@ -445,9 +466,11 @@ as one line. A skip is `component <slug> status skipped --kind <kind>
 --reason "…" --screenshot passes/screenshot.png`, after its `history`
 lines if it made passes, and it publishes too.
 
-Every landing ends in that publish line, `done` or `skipped`.
-Publishing is cheap and the published library is what outlives the
-laptop, so the user's link is one component behind at worst. The
+Every landing ends in that publish line, `done` or `skipped`. Every
+component, not every few: publishing is cheap, the published library
+is what outlives the laptop, and on a network that blocks the tunnel
+it is the only copy anyone but you can see, so the user's link is one
+component behind at worst. The
 command takes a publish lock of its own, so two landings at the same
 moment build one after the other; a publish that waits carries
 everything landed by the time it builds.

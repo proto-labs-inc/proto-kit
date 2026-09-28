@@ -13,6 +13,18 @@
  * paces itself from that. Failures are logged and beating continues:
  * a beat that cannot be sent is a missed beat, never a crash.
  *
+ * The beat carries whether the tunnel is actually connected
+ * (MAA-182), read from cloudflared's own log by tunnel-state.mjs. A
+ * network that blocks port 7844 leaves cloudflared alive and
+ * retrying forever, and every beat still reaches Proto, because
+ * beats go out over 443 and are unaffected. So the beat must say
+ * which of two things is true: the laptop is serving and the public
+ * address works, or the laptop is fine and that address is dead. It
+ * keeps beating either way: silence would mean "asleep or gone",
+ * which is a third thing and needs different words on screen.
+ * Nothing restarts when the network recovers; the field flips on the
+ * next beat once cloudflared registers a connection.
+ *
  * Usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
  *        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>
  *   --kind is required and is the heartbeat tool's kind: a
@@ -23,6 +35,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { beatForever } from "./heartbeat.mjs";
+import { TUNNEL_CONNECTED, watchTunnel } from "./tunnel-state.mjs";
 
 const USAGE = `usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>`;
@@ -45,8 +58,8 @@ if (!runDirArg || !codebase || (kind === "prototype" && !slug)) {
   process.exit(1);
 }
 const runDir = resolve(runDirArg);
-let target = { kind, codebase };
-if (kind === "prototype") target = { kind, codebase, slug };
+const what = kind === "prototype" ? { kind, codebase, slug } : { kind, codebase };
+const tunnel = watchTunnel(runDir);
 
 const alive = (pid) => {
   try {
@@ -57,11 +70,11 @@ const alive = (pid) => {
   }
 };
 
-// "Live" means reachable from the site, which means through the tunnel.
 // A run spec without a tunnel process (a library served on localhost
 // only) must never beat: the site would load a hostname that does not
 // exist, and the failed lookup is cached as "does not exist" for the
-// zone's negative TTL.
+// zone's negative TTL. A crash-looping dev server must not claim
+// liveness either.
 function siblingsUp() {
   try {
     const state = JSON.parse(readFileSync(join(runDir, "state.json"), "utf8"));
@@ -74,5 +87,10 @@ function siblingsUp() {
   }
 }
 
-// Serving that is not healthy stays silent.
-beatForever(() => (siblingsUp() ? target : null));
+// Serving that is not healthy stays silent. Serving whose tunnel cannot
+// reach Cloudflare says so and keeps beating: that is the difference
+// between "the address is dead" and "the laptop is gone".
+beatForever(() => {
+  if (!siblingsUp()) return null;
+  return { ...what, tunnelConnected: tunnel.read().status === TUNNEL_CONNECTED };
+});
