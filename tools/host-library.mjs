@@ -17,10 +17,19 @@
  *      "does not exist" for thirty minutes.
  *   4. Write run/library/spec.json (Vite dev server, cloudflared,
  *      the liveness beat) and start it under supervise.mjs.
- *   5. Wait for the dev server locally, then verify through
- *      Cloudflare's edge with --resolve (never a plain lookup).
+ *   5. Wait for the dev server locally, then read cloudflared's own
+ *      log for whether it reached Cloudflare, and verify through the
+ *      edge with --resolve (never a plain lookup) when it did.
  *
- * Prints, one per line: the public URL, the local URL, the run dir.
+ * Once the dev server answers, this call succeeds (MAA-182). A network
+ * that blocks the tunnel's port, as guest and corporate Wi-Fi commonly
+ * do, is named in one sentence and does not fail the run: the library
+ * is up locally, publishing goes over 443 and works, and the import
+ * that called this has everything it needs. Failing here was how an
+ * import came to extract nothing at all.
+ *
+ * Prints, one per line: the public URL, the local URL, the run dir, and
+ * whether the tunnel is connected or blocked.
  *
  * Usage: node host-library.mjs <codebase>
  */
@@ -30,6 +39,7 @@ import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callTool } from "./mcp-call.mjs";
+import { TUNNEL_BLOCKED, TUNNEL_BLOCKED_SENTENCE, TUNNEL_CONNECTED, TUNNEL_CONNECTING, watchTunnel } from "./tunnel-state.mjs";
 
 const codebase = process.argv[2];
 if (!codebase) {
@@ -118,21 +128,64 @@ if (servingPort) {
   if (started.status !== 0) fail(`supervise start failed: ${started.stderr}`);
 }
 
-// 5. Local first, then the edge. Vite's first start after an install
-// can take a few seconds; a fresh tunnel needs up to ~30 s to register.
+// 5. Local first, then the tunnel's own verdict, then the edge. Vite's
+// first start after an install can take a few seconds; cloudflared
+// writes its connectivity pre-check within about fifteen and registers
+// its first connection within about thirty.
 const local = `http://localhost:${port}`;
 step("waiting for the dev server");
 await waitFor(`${local}/manifest.json`, 60_000, (url) => fetch(url, { signal: AbortSignal.timeout(2000) }).then((r) => r.ok));
-step("verifying through Cloudflare's edge");
-const edge = edgeIp(tunnel.hostname);
-await waitFor(`${tunnel.url}/manifest.json`, 45_000, (url) => {
-  const probe = spawnSync("curl", ["-fsS", "--max-time", "5", "--resolve", `${tunnel.hostname}:443:${edge}`, url], { encoding: "utf8" });
-  return probe.status === 0 && probe.stdout.includes('"components"');
-});
+
+// The library is up locally from here on, so nothing below may fail the
+// run (MAA-182): a network that cannot carry a tunnel is a fact about
+// the network, not a broken library, and the import that called this
+// goes on to extract and publish over 443 as usual.
+const watch = watchTunnel(runDir);
+step("asking cloudflared whether it reached Cloudflare");
+const tunnelStatus = await settledTunnel(watch, 40_000);
+if (tunnelStatus === TUNNEL_CONNECTED) {
+  step("verifying through Cloudflare's edge");
+  await verifyEdge();
+} else {
+  console.error(`! ${TUNNEL_BLOCKED_SENTENCE}`);
+  console.error(`  cloudflared is still trying; see ${runDir}/tunnel.log.`);
+}
 
 console.log(`library: ${tunnel.url}`);
 console.log(`local: ${local}`);
 console.log(`run: ${runDir}`);
+console.log(`tunnel: ${tunnelStatus === TUNNEL_CONNECTED ? "connected" : "blocked"}`);
+
+// Wait for cloudflared to stop being undecided: a registered connection
+// or a failed pre-check, whichever comes first. Undecided at the
+// deadline counts as blocked, which is what it looks like to anyone
+// opening the address.
+async function settledTunnel(tunnelWatch, timeoutMs) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const { status } = tunnelWatch.read();
+    if (status !== TUNNEL_CONNECTING) return status;
+    if (Date.now() >= until) return TUNNEL_BLOCKED;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+// Through Cloudflare's edge only, with --resolve: a plain lookup of a
+// name whose record was created moments ago is remembered as "does not
+// exist" for half an hour, on this laptop and at its ISP. A tunnel that
+// registered and still does not serve is worth a sentence, not a crash:
+// the library is up locally either way.
+async function verifyEdge() {
+  const edge = edgeIp(tunnel.hostname);
+  if (edge === null) return;
+  const answered = await waitFor(`${tunnel.url}/manifest.json`, 45_000, (url) => {
+    const probe = spawnSync("curl", ["-fsS", "--max-time", "5", "--resolve", `${tunnel.hostname}:443:${edge}`, url], { encoding: "utf8" });
+    return probe.status === 0 && probe.stdout.includes('"components"');
+  }, false);
+  if (!answered) {
+    console.error(`! ${tunnel.url} is not answering yet, though the tunnel is connected; see ${runDir}/tunnel.log and dev.log.`);
+  }
+}
 
 // The port the up run's dev server was started with. A spec that does
 // not name one was written before the port lived there, so its run is
@@ -159,22 +212,37 @@ function freePort() {
   });
 }
 
-async function waitFor(url, timeoutMs, check) {
+// True once `check` passes. The dev server is the one thing worth
+// failing on, so that caller passes `required`; everything after it is
+// about the network and only ever reports.
+async function waitFor(url, timeoutMs, check, required = true) {
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     try {
-      if (await check(url)) return;
+      if (await check(url)) return true;
     } catch {}
     await new Promise((r) => setTimeout(r, 1000));
   }
-  fail(`${url} did not answer within ${timeoutMs / 1000}s; see ${runDir}/*.log`);
+  if (required) fail(`${url} did not answer within ${timeoutMs / 1000}s; see ${runDir}/*.log`);
+  return false;
 }
 
 // One of the edge's IPs, asked of 1.1.1.1 directly: this laptop's
-// resolver never sees the name.
+// resolver never sees the name. Null when the lookup itself cannot
+// happen, which on a network that blocks outside resolvers is a
+// sentence about the network, never a node stack trace.
 function edgeIp(hostname) {
-  const answer = execFileSync("dig", ["+short", `@1.1.1.1`, hostname, "A"], { encoding: "utf8" });
+  let answer = "";
+  try {
+    answer = execFileSync("dig", ["+short", `@1.1.1.1`, hostname, "A"], { encoding: "utf8" });
+  } catch {
+    console.error(`! This network blocks DNS to 1.1.1.1, so the public address cannot be checked from here; the library is up locally and publishing still works.`);
+    return null;
+  }
   const ip = answer.split("\n").find((line) => /^\d+\.\d+\.\d+\.\d+$/.test(line.trim()));
-  if (!ip) fail(`dig @1.1.1.1 ${hostname} returned no address yet; the record was created moments ago, run this again in a few seconds`);
+  if (!ip) {
+    console.error(`! dig @1.1.1.1 ${hostname} returned no address yet; the record was created moments ago, run this again in a few seconds.`);
+    return null;
+  }
   return ip.trim();
 }
