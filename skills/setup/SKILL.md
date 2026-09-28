@@ -60,8 +60,8 @@ already says.
 
 Run `node <kit>/tools/link-laptop.mjs <link>` exactly once. The helper
 fetches the setup document, exchanges the same code for this laptop's
-token, writes the token directly to `~/.proto/config.json`, and prints
-only the non-secret document and linked identity. The link expires ten
+token, adds the token to `~/.proto/config.json`, and prints only the
+non-secret document, the linked identity, and what the link changed. The link expires ten
 minutes after the site made it. If it says the link expired or was
 already used, tell the user to copy the setup prompt from the Proto site
 again and wait for the new prompt. The printed setup document is JSON:
@@ -80,14 +80,26 @@ again and wait for the new prompt. The printed setup document is JSON:
   "source": { "folderPath": "..." },           // or { "fingerprint": { "name", "tree": [...] } }, or absent
   "productUrl": "https://...",                 // the product page to parse, or absent
   "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" },  // New prototype prompts only
-  "prototype": { "slug": "...", "title": "..." }   // Edit prompts only
+  "prototype": { "slug": "...", "title": "..." },  // Edit prompts only
+  "summary": "Linked as ooj@prototypes.fun in Proojto; still linked as ooj@ooj.foo in ooj.foo.",
+  "added":   { "user", "team", "laptop", "linkedAt" },  // null when the token it held still works
+  "replaced": { … },                           // the same team's previous credential, when there was one
+  "kept":    [ { … } ]                         // the other teams this laptop works in, untouched
 }
 ```
 
-The helper keeps a token that already works for this member (it asks
-`whoami` first), so an Edit prompt on a laptop that is set up spends the
-code on the document alone. The setup document carries no credential. Never print or read back
-`auth.secret` from config.json. Hold the brief for the handoff.
+The helper keeps a token that already works for this member and team (it
+asks `whoami` first), so an Edit prompt on a laptop that is set up spends
+the code on the document alone. The setup document carries no credential.
+Never print or read back a credential's `secret` from config.json. Hold
+the brief for the handoff.
+
+**Say what the link did**, in the helper's own words: relay `summary`.
+It names what this laptop can now do and what it could already do and
+still can, which is what tells the user their other team survived. Do
+not improve on it by promising that linking is behind them: a person
+links once per team, and what the set buys them is that doing so costs
+them nothing they already had.
 
 ## Machine
 
@@ -382,9 +394,10 @@ without stopping anything.
 - The `whoami` MCP tool answers with the expected team and grants.
 - `cloudflared --version` runs.
 
-Report what you set up, leading with which member and team they're linked
-as, what you found vs. were told, and anything you skipped because
-it already existed.
+Report what you set up, leading with the link `summary`: which member
+and team this laptop now works as, and which teams it already worked in
+and still does. Then what you found vs. were told, and anything you
+skipped because it already existed.
 
 ## Editing a prototype
 

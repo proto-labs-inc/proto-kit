@@ -14,7 +14,15 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { CONFIG_PATH, addCredential, callTool, credentialsIn, describeCredential, post } from "./mcp-call.mjs";
+import {
+  CONFIG_PATH,
+  addCredential,
+  callTool,
+  credentialsIn,
+  describeCredential,
+  post,
+  summarizeLink,
+} from "./mcp-call.mjs";
 
 const fail = (message) => {
   console.error(message);
@@ -78,12 +86,16 @@ if (candidate) {
     const answer = await callTool("whoami", {}, { app, secret: candidate.secret });
     const me = JSON.parse(answer?.content?.[0]?.text ?? "{}");
     if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
+      const unchanged = describeCredential({ ...candidate, user: me.user, team: me.team, laptop: me.laptop });
+      const kept = held.filter((credential) => credential !== candidate).map(describeCredential);
       console.log(
         JSON.stringify({
           setup: document,
           linkedAs: { user: me.user, team: me.team, laptop: me.laptop },
           added: null,
-          kept: held.filter((credential) => credential !== candidate).map(describeCredential),
+          replaced: null,
+          kept,
+          summary: summarizeLink({ unchanged, kept }),
         }),
       );
       process.exit(0);
@@ -129,7 +141,7 @@ if (!linked.token) fail(linked.error ?? "the Proto app did not return a laptop t
 // The token joins the set, replacing only a credential for the same
 // team. Where it came from is this file's business; the set's shape
 // and the write are not.
-const { added, kept } = addCredential({
+const { added, replaced, kept } = addCredential({
   app,
   credential: {
     kind: "laptop-token",
@@ -145,5 +157,7 @@ console.log(JSON.stringify({
   setup: document,
   linkedAs: { user: linked.user, team: linked.team, laptop: linked.laptop },
   added,
+  replaced,
   kept,
+  summary: summarizeLink({ added, replaced, kept }),
 }));
