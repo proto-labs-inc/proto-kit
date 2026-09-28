@@ -39,20 +39,44 @@ checkout root.
      line, idle costs nothing; re-arm when it ends. (The plugin also
      declares a `courier-feed` monitor that delivers the same lines
      automatically when the harness honors skill-invoke monitors.)
-   - **Codex**: there is no push wake. Run the same feed-tail in a
-     background terminal and check it on a relaxed interval while
-     this session is open; `node <kit>/tools/feed-tail.mjs <run-dir>
-     --once` drains anything pending whenever you (or the user) want
-     a spot check. When nobody keeps a session open, the watch isn't
-     your job at all: `tools/feed-drive.mjs` under the supervisor
-     resumes your saved conversation per command.
+   - **Codex**: there is no push wake, so instead of watching, you
+     **tell the courier where to find you** and it wakes you per
+     command:
+     1. Invent a random token — the word `proto` and about twelve
+        random hex characters, typed out literally, never a shell
+        substitution: it has to appear verbatim in this
+        conversation's transcript.
+     2. Run `node <kit>/tools/codex-thread.mjs identify <run-dir>
+        --token <that token>`. It finds the one transcript on disk
+        holding your token, and records that thread in
+        `courier.json`. It prints the thread id; if it says it
+        couldn't find the transcript, `echo` the token on its own and
+        run it again with the same token.
+     3. Confirm `codex-wake` is in the courier run dir's `spec.json`
+        (`node <kit>/tools/feed-queue.mjs <run-dir>`). If it is
+        missing, add it and `node <kit>/tools/supervise.mjs start
+        <run-dir>` — without it nothing will ever reach you.
+
+     From then on each command arrives as an ordinary message in this
+     conversation, prefixed "Proto courier command": act on it exactly
+     as step 2 describes. **On Codex the courier owns `offset.json`**
+     (it commits after the hand-over succeeds), so skip step 3's
+     commit and step 4's re-arming entirely — there is no watch to
+     re-arm. Do the identify again if you are ever unsure the courier
+     still has the right thread; `node <kit>/tools/codex-thread.mjs
+     status <run-dir>` says what it currently has. For a spot check,
+     `node <kit>/tools/feed-tail.mjs <run-dir> --once` still prints
+     what is pending. When nobody keeps a session open at all,
+     `tools/feed-drive.mjs` under the supervisor resumes a saved
+     conversation headlessly per command — the last resort, because
+     nobody sees it happen.
    - **Cursor**: no push wake and no plugin monitor either. Run the
      same feed-tail in a background terminal and check it on a
      relaxed interval while the chat is open; `node
      <kit>/tools/feed-tail.mjs <run-dir> --once` drains anything
      pending for a spot check. There is no unattended path on Cursor
-     yet (`feed-drive.mjs` drives Codex sessions and
-     `agent-launch.mjs` Claude Code sessions), so tell the user
+     yet (`feed-queue.mjs` and `feed-drive.mjs` drive Codex
+     sessions and `agent-launch.mjs` Claude Code sessions), so tell the user
      plainly: commands queue in the feed while the chat is closed and
      run when a chat picks this protocol up again.
 2. **Act on each event line** `{"offset": N, "command": {…}}`, one at
@@ -110,7 +134,9 @@ checkout root.
      dir (or all serving ones).
 3. **Commit after acting**: write `{"offset": N}` (the acted line's
    offset) to `offset.json` via Bash. Not before: delivery is
-   at-least-once, and committing early is how commands get lost.
+   at-least-once, and committing early is how commands get lost. (Not
+   on Codex: `feed-queue.mjs` commits there, and two writers would
+   lose commands.)
 4. **When the watch ends** (timeout: headless watches are capped),
    re-arm immediately: same Monitor command. feed-tail replays
    anything from your committed offset, so nothing that arrived in the

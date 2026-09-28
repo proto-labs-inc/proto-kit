@@ -223,13 +223,24 @@ supervised run dir (`~/.proto/<codebase>/run/courier/`):
   appends each accepted command to `commands.jsonl`. It holds the
   port, so it runs under supervise, never under a Monitor watch.
 - **The session running the listen skill**: the user's own
-  interactive Claude Code session (terminal or the Claude Code
-  desktop app); setup ends by telling them to keep it open. It watches the feed, acts on each command inline, commits
+  interactive session (a Claude Code terminal or desktop window, or a
+  Codex window); setup ends by telling them to keep it open. It
+  watches the feed, acts on each command inline, commits
   `offset.json` after each, and heartbeats so the courier's status
   can report `agentListening`. Fallback: `tools/agent-launch.mjs`
   under the supervisor starts a headless session with the same
   protocol (capturing/resuming `session.json`): recovery and
   nobody-at-the-keyboard mode, not the normal path.
+- **The Codex wake** (`tools/feed-queue.mjs`, Codex only): nothing
+  wakes an idle Codex session, so on Codex a supervised process does
+  the waking. It watches the feed and queues each command into the
+  session the person has open (`codex queue --thread <id>`, the
+  daemon's own managed binary), which is why the work still happens in
+  front of them. The thread id is `courier.json`'s `codexThread`,
+  written by the listen skill through `tools/codex-thread.mjs`. On
+  Codex this process owns `offset.json` and the heartbeat instead of
+  the session. Claude Code doesn't need it: the Monitor tool wakes
+  that session per line.
 - **The feed** (`commands.jsonl` + `offset.json`): the durable,
   at-least-once buffer between them. It's what survives watch
   timeouts, agent restarts, and reboots.
@@ -263,8 +274,12 @@ only on the codebase id, so nothing waits on it):
 6. `spec.json`: the listener
    (`node <kit>/tools/courier.mjs <run-dir>`) and `cloudflared` with
    the courier's connector token from step 3 (plus the fallback agent
-   launcher when running nobody-at-the-keyboard).
-   `supervise.mjs start`.
+   launcher when running nobody-at-the-keyboard). **On Codex, add a
+   third process** `codex-wake`, `node <kit>/tools/feed-queue.mjs
+   <run-dir>`: without it nothing ever wakes the Codex session and
+   commands simply pile up in the feed. It is harmless before a
+   session has identified itself, and it is not part of a Claude Code
+   or Cursor spec. `supervise.mjs start`.
 7. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
    `Authorization: Bearer <secret>` answers with `agentListening`
    and the line lands in `commands.jsonl`; the same POST works

@@ -65,7 +65,9 @@ The courier and the feed:
 - `feed-tail.mjs`: follow one codebase's feed from the committed offset.
 - `feed-watch-all.mjs`: follow every codebase's feed at once, for monitors.
 - `agent-launch.mjs`: resume-aware headless launcher for a listen session.
-- `feed-drive.mjs`: the Codex fallback, resuming its saved conversation.
+- `codex-thread.mjs`: which live Codex thread is this session (by a token it printed).
+- `feed-queue.mjs`: the Codex wake, queueing each command into the session the user has open.
+- `feed-drive.mjs`: the Codex last resort, resuming its saved conversation headlessly.
 
 Talking to the app, and the harness hooks:
 
