@@ -50,13 +50,12 @@ directory, which is also the proto-kit checkout root.
        // tells you): ["npm", "run", "dev"], ["pnpm", "dev"], …
        { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "<connectorToken>"] },
        // Liveness: beats the app's `heartbeat` tool for
-       // { kind: "prototype", codebase, slug, tunnelConnected } while dev
-       // and tunnel are up, at the cadence the app answers with; its
-       // lifetime is the serving lifetime, so stopping the run silences it
-       // and staleness tells the Frame to use the published build. No "is
-       // live" flag exists anywhere. tunnelConnected is read from
-       // cloudflared's own log, and is how the site tells "the laptop is
-       // fine and its address is dead" from "the laptop is asleep".
+       // { kind: "prototype", codebase, slug } while dev and tunnel are
+       // up, at the cadence the app answers with; its lifetime is the
+       // serving lifetime, so stopping the run silences it and staleness
+       // tells the Frame to use the published build. No "is live" flag
+       // exists anywhere, and the beat says nothing about the tunnel: the
+       // viewer's browser tries the address and finds out.
        { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "--kind", "prototype", "<run-dir>", "<codebase>", "<slug>"] }
      ]
    }
@@ -104,11 +103,11 @@ directory, which is also the proto-kit checkout root.
    Then carry on: the dev server is up, the prototype publishes over
    443, and the Frame shows the published build. Do not stop, do not
    retry the edge, and do not restart anything when the network
-   recovers: the beat carries the tunnel's state and flips on its own
-   the moment cloudflared registers a connection. If a brief is
-   running, `report_progress {briefId, status: "failed"}` with that
-   sentence as the message: the live view is what failed, and the
-   sentence says what still works.
+   recovers: the site tries the address on every read, so it picks the
+   live view back up on its own. If a brief is running,
+   `report_progress {briefId, status: "failed"}` with that sentence as
+   the message: the live view is what failed, and the sentence says
+   what still works.
 
 6. **Publish** a permanent snapshot. Build the workspace with its
    own build script (`pnpm build`; the templates configure relative
@@ -272,22 +271,19 @@ only on the codebase id, so nothing waits on it):
    against the public hostname from step 3 once the edge settles.
 
 **Heartbeat.** The listener beats the app's `heartbeat` tool for
-`{ kind: "courier", courierId, agentListening, tunnelConnected }` at the
-cadence the app answers with (fail-soft; `agentListening` from the feed
-watcher's local heartbeat, `tunnelConnected` from `tunnel-state.mjs`
-reading this run's `tunnel.log`). It is the same tool a prototype's or
-the library's serving run beats, with its own target. A courier whose
-beats have gone stale is offline; the site dispatches each brief to the
-team's freshest listening courier, and registered-but-not-listening
-falls back to the copyable prompt with "your agent isn't running".
+`{ kind: "courier", courierId, agentListening }` at the cadence the app
+answers with (fail-soft; `agentListening` from the feed watcher's local
+heartbeat). It is the same tool a prototype's or the library's serving
+run beats, with its own target. A courier whose beats have gone stale is
+offline; the site dispatches each brief to the team's freshest listening
+courier, and registered-but-not-listening falls back to the copyable
+prompt with "your agent isn't running".
 
-`tunnelConnected` matters here in the opposite direction from a
-prototype's. The beat goes out over 443 and arrives from any network;
-the site comes back through the courier's tunnel. On a network that
-blocks port 7844 the beat says "listening" and the site's POST gets
-Cloudflare error 1033, so without that field the New prototype dialog
-offers Execute and then fails on the click. With it, the dialog offers
-the copyable prompt up front and says the network is the reason.
+A beat never says anything about the tunnel's own state. The site
+pushes commands through the courier's tunnel, so on a network that
+blocks port 7844 the dispatch fails and the site says so from that
+failure; the question disappears once the courier pulls its own work
+over HTTPS.
 
 The proto MCP server carries the agent's cloud actions (registration,
 tunnels, comments); command payloads arrive inline in the feed: MCP

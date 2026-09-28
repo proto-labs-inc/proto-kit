@@ -13,29 +13,25 @@
  * paces itself from that. Failures are logged and beating continues:
  * a beat that cannot be sent is a missed beat, never a crash.
  *
- * The beat carries whether the tunnel is actually connected
- * (MAA-182), read from cloudflared's own log by tunnel-state.mjs. A
- * network that blocks port 7844 leaves cloudflared alive and
- * retrying forever, and every beat still reaches Proto, because
- * beats go out over 443 and are unaffected. So the beat must say
- * which of two things is true: the laptop is serving and the public
- * address works, or the laptop is fine and that address is dead. It
- * keeps beating either way: silence would mean "asleep or gone",
- * which is a third thing and needs different words on screen.
- * Nothing restarts when the network recovers; the field flips on the
- * next beat once cloudflared registers a connection.
+ * The beat says the laptop is alive and talking to us, and nothing
+ * more (MAA-182). It does not say whether the tunnel is up, and it
+ * must not: a beat goes out over 443 and arrives from any network,
+ * and what a viewer needs to know is whether their own browser can
+ * reach the address, which only their browser can answer. The site
+ * tries the address and falls back to the published build when it
+ * does not answer. So: keep beating while serving, whatever the
+ * network is doing to the tunnel, and let the viewer find out.
  *
  * Usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
  *        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>
  *   --kind is required and is the heartbeat tool's kind: a
  *   prototype's serving run beats for { kind: "prototype", codebase,
- *   slug, tunnelConnected }; the codebase's library serving run beats
- *   for { kind: "library", codebase, tunnelConnected } (no slug).
+ *   slug }; the codebase's library serving run beats for
+ *   { kind: "library", codebase } (no slug).
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { beatForever } from "./heartbeat.mjs";
-import { TUNNEL_CONNECTED, watchTunnel } from "./tunnel-state.mjs";
 
 const USAGE = `usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>`;
@@ -58,8 +54,7 @@ if (!runDirArg || !codebase || (kind === "prototype" && !slug)) {
   process.exit(1);
 }
 const runDir = resolve(runDirArg);
-const what = kind === "prototype" ? { kind, codebase, slug } : { kind, codebase };
-const tunnel = watchTunnel(runDir);
+const target = kind === "prototype" ? { kind, codebase, slug } : { kind, codebase };
 
 const alive = (pid) => {
   try {
@@ -87,10 +82,5 @@ function siblingsUp() {
   }
 }
 
-// Serving that is not healthy stays silent. Serving whose tunnel cannot
-// reach Cloudflare says so and keeps beating: that is the difference
-// between "the address is dead" and "the laptop is gone".
-beatForever(() => {
-  if (!siblingsUp()) return null;
-  return { ...what, tunnelConnected: tunnel.read().status === TUNNEL_CONNECTED };
-});
+// Serving that is not healthy stays silent.
+beatForever(() => (siblingsUp() ? target : null));

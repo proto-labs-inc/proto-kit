@@ -101,30 +101,23 @@ serveHttp({ port: config.port, secret: config.secret, handle }, () =>
 );
 
 // Heartbeat to the cloud: how the site knows this laptop's courier is
-// alive, whether an agent is consuming its feed, and whether the site
-// can actually reach it. Couriers are per laptop, keyed by the
-// cloud-minted courierId in courier.json; the beat's target is
-// { kind: "courier", courierId, agentListening, tunnelConnected }. The
+// alive and whether an agent is consuming its feed. Couriers are per
+// laptop, keyed by the cloud-minted courierId in courier.json; the
+// beat's target is { kind: "courier", courierId, agentListening }. The
 // app answers with its staleness window and the loop paces itself
 // from that (heartbeat.mjs). Fail soft always: a beat that cannot be
 // sent is a missed beat, never a crash.
 //
-// tunnelConnected matters here for the same reason it matters for a
-// prototype (MAA-182), and in the opposite direction. This beat goes
-// out over 443 and arrives on any network the laptop can reach Proto
-// from, but the site reaches the courier back through its tunnel. On a
-// network that blocks port 7844 the beat says "listening" and the
-// site's POST hits Cloudflare error 1033. Saying so in the beat is what
-// lets the New prototype dialog offer the copyable prompt up front
-// instead of offering Execute and failing on the click.
+// Nothing here says whether this laptop's tunnel is up (MAA-182). The
+// site pushes commands through that tunnel, so on a network that blocks
+// it a dispatch fails, and the site says so from the failure itself
+// rather than from anything stored. That question disappears when the
+// courier pulls its own work over HTTPS (MAA-200).
 if (config.courierId) {
   const { beatForever } = await import("./heartbeat.mjs");
-  const { TUNNEL_CONNECTED, watchTunnel } = await import("./tunnel-state.mjs");
-  const tunnel = watchTunnel(runDir);
   beatForever(() => ({
     kind: "courier",
     courierId: config.courierId,
     agentListening: agentState().agentListening,
-    tunnelConnected: tunnel.read().status === TUNNEL_CONNECTED,
   }));
 }
