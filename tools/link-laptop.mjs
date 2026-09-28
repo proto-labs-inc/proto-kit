@@ -3,15 +3,21 @@
  * Redeem one Proto setup link without exposing the laptop token to the
  * agent. The setup document and laptop token use the same one-time code but
  * are consumed independently: fetch the document, exchange the code through
- * link_laptop, then write the token directly to ~/.proto/config.json. A
- * laptop whose config.json already holds a working token for the same app
- * and member (an Edit prompt on a laptop that is set up) keeps it: the code
- * then only served the document.
+ * link_laptop, then write the token directly to ~/.proto/config.json.
+ *
+ * One credential per team (MAA-195). A laptop that already holds a
+ * working token for this app, member and team (an Edit prompt on a
+ * laptop that is set up) keeps it: the code then only served the
+ * document. A token for a team this laptop has not worked with before
+ * is added beside the ones it holds; a second token for a team it
+ * already holds replaces that one. Nothing else in config.json is
+ * touched, so the credentials the laptop's other teams depend on
+ * survive every link.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
-import { CONFIG_PATH, callTool, post } from "./mcp-call.mjs";
+import { CONFIG_PATH, callTool, credentialsIn, post } from "./mcp-call.mjs";
 
 const fail = (message) => {
   console.error(message);
@@ -49,20 +55,52 @@ try {
 const app = typeof document.app === "string" ? document.app.replace(/\/+$/, "") : "";
 if (!app) fail("the setup document has no Proto app address");
 
-// A laptop already linked to this member keeps its token.
-if (existsSync(CONFIG_PATH)) {
+const previous = readPreviousConfig();
+const held = previous.app === app ? credentialsIn(previous) : [];
+
+/** What this laptop already holds, read in whichever shape the file is
+ *  written in. An unreadable file is treated as nothing held. */
+function readPreviousConfig() {
+  if (!existsSync(CONFIG_PATH)) return {};
   try {
-    const current = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-    if (current.app === app && current.auth?.secret) {
-      const answer = await callTool("whoami", {});
-      const me = JSON.parse(answer?.content?.[0]?.text ?? "{}");
-      if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
-        console.log(JSON.stringify({ setup: document, linkedAs: { user: me.user, team: me.team, laptop: me.laptop } }));
-        process.exit(0);
-      }
+    return JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+/** A credential without its secret: what the link step may report. */
+const describe = (credential) => ({
+  user: credential.user,
+  team: credential.team,
+  laptop: credential.laptop,
+  linkedAt: credential.linkedAt,
+});
+
+// A laptop already linked to this member for this team keeps that
+// token. The document names the team, so only the one credential that
+// could match is tried against the server.
+const candidate = held.find(
+  (credential) =>
+    credential.user?.id === document.account?.id && credential.team?.name === document.account?.team,
+);
+if (candidate) {
+  try {
+    const answer = await callTool("whoami", {}, { app, secret: candidate.secret });
+    const me = JSON.parse(answer?.content?.[0]?.text ?? "{}");
+    if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
+      console.log(
+        JSON.stringify({
+          setup: document,
+          linkedAs: { user: me.user, team: me.team, laptop: me.laptop },
+          added: null,
+          kept: held.filter((credential) => credential !== candidate).map(describe),
+        }),
+      );
+      process.exit(0);
     }
   } catch {
-    // Unreadable, stale or refused: link afresh below.
+    // Stale or refused: link afresh below.
   }
 }
 
@@ -99,21 +137,25 @@ try {
 }
 if (!linked.token) fail(linked.error ?? "the Proto app did not return a laptop token");
 
-let previous = {};
-if (existsSync(CONFIG_PATH)) {
-  try {
-    previous = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-  } catch {}
-}
-const config = {
-  schemaVersion: 2,
-  app,
-  auth: { kind: "laptop-token", secret: linked.token },
+// The new credential joins the ones this laptop holds. A credential
+// for the same team is replaced, because a team has one laptop token
+// at a time; every other team's keeps working untouched.
+const added = {
+  kind: "laptop-token",
+  secret: linked.token,
   user: linked.user,
   team: linked.team,
   laptop: linked.laptop,
+  linkedAt: new Date().toISOString(),
+};
+const kept = held.filter((credential) => credential.team?.id !== added.team?.id);
+const config = {
+  schemaVersion: 3,
+  app,
+  credentials: [...kept, added],
   ...(previous.packages ? { packages: previous.packages } : {}),
-  createdAt: new Date().toISOString(),
+  createdAt: previous.createdAt ?? added.linkedAt,
+  updatedAt: added.linkedAt,
 };
 mkdirSync(dirname(CONFIG_PATH), { recursive: true });
 const temporaryPath = join(dirname(CONFIG_PATH), `.config-${process.pid}.json`);
@@ -124,4 +166,6 @@ renameSync(temporaryPath, CONFIG_PATH);
 console.log(JSON.stringify({
   setup: document,
   linkedAs: { user: linked.user, team: linked.team, laptop: linked.laptop },
+  added: describe(added),
+  kept: kept.map(describe),
 }));

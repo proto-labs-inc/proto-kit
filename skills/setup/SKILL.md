@@ -123,27 +123,50 @@ cloudflared`); tell them what you installed.
 ### `~/.proto/config.json`
 
 The laptop link, the one file every other skill and tool reads
-for "who am I and where is the app":
+for "who am I and where is the app". One credential per team: a
+token is minted against one team, so a laptop that works in two
+teams holds two, side by side.
 
 ```jsonc
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "app": "https://…",              // the document's app
-  "auth": { "kind": "laptop-token", "secret": "…" },
-  "user": { "id": "<id>", "name": "<name>", "email": "…" },
-  "team": { "id": "<id>", "name": "<name>" },
-  "laptop": { "id": "<id>", "label": "<hostname>" },
+  "credentials": [                 // one per team, newest link last
+    {
+      "kind": "laptop-token",
+      "secret": "…",
+      "user": { "id": "<id>", "name": "<name>", "email": "…" },
+      "team": { "id": "<id>", "name": "<name>" },
+      "laptop": { "id": "<id>", "label": "<hostname>" },
+      "linkedAt": "2026-09-28T…"
+    }
+  ],
   "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
 }
 ```
 
-The link helper writes this file with mode 600. When setup started as
-a command with no prompt, ask the user to copy the setup prompt from
-the Proto site and stop until they paste it. Never search the disk for
-a credential: a `.env` file belonging to a checkout is not this
-laptop's credential. Every cloud call sends `Authorization: Bearer
-<auth.secret>`; the server derives the member and team from that token.
+The link helper writes this file with mode 600. It adds the new
+credential beside the ones already there, replacing only a credential
+for the same team, so linking a second team never costs the first.
+A file written by an older kit (`schemaVersion: 2`, one credential
+under `auth`) keeps working as it is and is read as a single
+credential; the next link writes the shape above, carrying it over.
+
+When setup started as a command with no prompt, ask the user to copy
+the setup prompt from the Proto site and stop until they paste it.
+Never search the disk for a credential: a `.env` file belonging to a
+checkout is not this laptop's credential.
+
+Every cloud call sends `Authorization: Bearer <secret>`, and the
+server derives the member and team from that token. Which credential
+is the codebase's: `~/.proto/<codebase>/codebase.json` records the
+team that owns it, and the kit's tools and the MCP bridge pick by the
+`codebase` the call names. A call for a codebase whose team this
+laptop is not linked to is refused with a sentence naming that team,
+and the fix is to paste that team's setup prompt — not to relink the
+laptop. A call that names no codebase acts as the only credential, or
+the most recently linked one, saying so on stderr.
 
 ### The proto MCP server
 
@@ -157,20 +180,20 @@ Proto MCP server off and on in Customize. Its tools may appear under a host-spec
 other skills refer to them by bare tool name. The kit's plain tools
 (courier, supervisor, publisher) read the same config.json.
 
-Running from a bare checkout instead, add the server manually in Claude
-Code:
-`claude mcp add --transport http proto <app>/api/mcp --header
-"Authorization: Bearer <auth.secret>"`.
+Running from a bare checkout instead, add the same bridge manually in
+Claude Code: `claude mcp add proto -- node <kit>/tools/mcp-stdio.mjs`.
+Never add it as an HTTP server with a fixed `Authorization` header: a
+header written into a harness config pins the connection to one team
+and goes stale the moment that token is revoked.
 
 **On Codex** the server is added at setup time (its plugin config
-can't read config.json): write to `~/.codex/config.toml`, values
-from config.json, the header through the kit's helper so the
-credential stays in one file:
+can't ship one): `codex mcp add proto -- node
+<kit>/tools/mcp-stdio.mjs`, which writes
 
 ```toml
 [mcp_servers.proto]
-url = "<app>/api/mcp"
-http_headers_helper = "node <kit>/tools/mcp-headers.mjs"
+command = "node"
+args = ["<kit>/tools/mcp-stdio.mjs"]
 ```
 
 Also install the agent roles (Codex plugins don't ship them): copy
@@ -253,7 +276,9 @@ system it extracts."**
    folder, and returns the id that keys everything from here on.
    Resuming with a known id, pass `codebase` and the call records the
    source instead. The local `codebase.json` below stays the laptop's
-   copy of the same pointers.
+   copy of the same pointers, and records the team the link helper
+   reported as `linkedAs.team`: that is how every later call knows
+   which of this laptop's credentials this codebase belongs to.
 
 ### `~/.proto/<codebase>/codebase.json`
 
@@ -262,6 +287,7 @@ system it extracts."**
   "schemaVersion": 1,
   "codebase": "<id>",                   // the cloud-minted id
   "name": "acme-web",                  // display name; renamable, never a path
+  "team": { "id": "<id>", "name": "<name>" },  // which credential this codebase uses
   "source": {
     "path": "/abs/path/to/acme-web",   // the checkout
     "remote": "git@github.com:acme/acme-web.git",
@@ -348,7 +374,8 @@ without stopping anything.
 
 ## Verify
 
-- `config.json` and `codebase.json` parse; `source.path` exists and its
+- `config.json` and `codebase.json` parse; `codebase.json` names the
+  team it was set up in; `source.path` exists and its
   `package.json`/remote match the codebase (they can legitimately
   disagree with each other, a fork or renamed checkout, which is
   why confirmation beat validation above).
