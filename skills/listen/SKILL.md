@@ -52,10 +52,16 @@ checkout root.
         `courier.json`. It prints the thread id; if it says it
         couldn't find the transcript, `echo` the token on its own and
         run it again with the same token.
-     3. Confirm `codex-wake` is in the courier run dir's `spec.json`
-        (`node <kit>/tools/feed-queue.mjs <run-dir>`). If it is
-        missing, add it and `node <kit>/tools/supervise.mjs start
-        <run-dir>` — without it nothing will ever reach you.
+     3. Make sure the courier runs the Codex wake: `node
+        <kit>/tools/repair-runs.mjs <codebase> --harness codex`,
+        which adds `codex-wake` to the courier's run spec when it is
+        missing and says so. When it does, restart **the courier
+        alone** — `node <kit>/tools/supervise.mjs stop <run-dir>`,
+        then `start` — because until that process runs, nothing the
+        site sends ever reaches you. Leave the codebase's other runs
+        as they are: a served prototype's restart is the user's to
+        agree to, and the update skill is where that conversation
+        happens.
 
      From then on each command arrives as an ordinary message in this
      conversation, prefixed "Proto courier command": act on it exactly

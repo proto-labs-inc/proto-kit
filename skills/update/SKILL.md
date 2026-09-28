@@ -113,12 +113,20 @@ Then:
    something away from the person for a few seconds: a prototype's
    public address, the library's, or the site's command channel. The
    tool lists every run waiting on a restart and what each one
-   interrupts. Put that to the user in those words and wait for an
-   answer. With a yes, run it again with `--restart`; with a no, leave
-   them and say what stays stale until they do (a courier without the
-   Codex wake takes no commands).
-   Never restart a run because it is tidy to. Somebody is working in
-   these sessions.
+   interrupts, under two headings, and they are not the same problem:
+   - **Waiting on a restart**: a process this version needs is not
+     running there at all. A courier without the Codex wake takes no
+     commands, and will not until it restarts.
+   - **Still running an older copy of the kit**: its processes are up,
+     but they were started from the copy this update replaced and go
+     on running that version's code, including how it talks to the
+     site. This one is invisible everywhere else, which is why it is
+     worth reading out even though nothing looks wrong.
+
+   Put both to the user in those words and wait for an answer. With a
+   yes, run it again with `--restart`; with a no, leave them and say
+   what stays stale until they do. Never restart a run because it is
+   tidy to. Somebody is working in these sessions.
 4. If it says a courier's own files don't say which agent it belongs
    to, run it again with `--harness claude`, `--harness codex` or
    `--harness cursor` for the agent you are running in. It reads the
@@ -147,6 +155,11 @@ Plain sentences, in this order:
   names them. On Cursor's Customize install, say instead that it was
   refreshed in the panel.
 - Which codebases were repaired and what changed in each.
+- **Which runs are still running a copy of the kit that this update
+  replaced.** Name them even when everything looks healthy: their
+  processes keep the old version's code, and its calls to the site,
+  until they restart, and no health line, status report or log on this
+  laptop ever mentions it.
 - What is waiting on a restart, and that nothing was restarted without
   being asked.
 

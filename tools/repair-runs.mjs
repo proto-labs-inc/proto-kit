@@ -40,6 +40,15 @@
  * run is safe; restarting is what costs something, and the report
  * names which runs are waiting on one and what it interrupts.
  *
+ * It names two kinds of waiting, because they fail differently. A
+ * process this version needs that is not running at all is the loud
+ * one. The quiet one is a run whose processes are up but were
+ * started from the copy of the kit this update replaced: they go on
+ * running the old version's code, including how it talks to the
+ * site, and nothing else on the laptop ever says so. That is how a
+ * courier came to spend a morning calling production with
+ * pre-migration credentials.
+ *
  * Usage: node repair-runs.mjs [<codebase>…] [options]
  *   --check                       say what would change, change nothing
  *   --restart                     restart the runs whose spec changed in a way
@@ -127,7 +136,7 @@ for (const codebase of codebases) {
 
     const changes = [];
     const processes = spec.processes.map((proc) => ({ ...proc, command: [...proc.command] }));
-    let onlyAtNextStart = true; // a rewritten path costs nothing until the process restarts anyway
+    let missingHere = false; // something this version needs is not running at all, not merely out of date
 
     // Rule 1: the courier's processes, per this courier's harness.
     if (name === "courier") {
@@ -136,11 +145,11 @@ for (const codebase of codebases) {
       if (harness === "codex" && wake === -1) {
         processes.push({ name: "codex-wake", command: ["node", join(kit, "tools", "feed-queue.mjs"), runDir] });
         changes.push(`${did("add", "added")} the Codex wake`);
-        onlyAtNextStart = false;
+        missingHere = true;
       } else if (harness && harness !== "codex" && wake !== -1) {
         processes.splice(wake, 1);
         changes.push(`${did("remove", "removed")} the Codex wake, which belongs only to a Codex courier`);
-        onlyAtNextStart = false;
+        missingHere = true;
       } else if (!harness && wake === -1) {
         skipped.push(
           `${codebase}/courier: nothing here says which agent this courier belongs to, so whether it needs the Codex wake is a guess; run this again with --harness to settle it.`,
@@ -164,14 +173,13 @@ for (const codebase of codebases) {
       changes.push(
         `${did("point", "pointed")} ${list(repointed)} at this copy of the kit${gone ? ", whose own copy is gone" : ""}`,
       );
-      if (gone) onlyAtNextStart = false; // that process is already dead or dying
+      if (gone) missingHere = true; // that process is already dead or dying into nothing
     }
 
     if (changes.length === 0) continue;
 
     const state = readJson(join(runDir, "state.json"));
     const up = state !== null && alive(state.pid);
-    const needsRestart = up && !onlyAtNextStart;
     if (!check) {
       const written = join(runDir, "spec.json.new");
       writeFileSync(written, JSON.stringify({ ...spec, processes }, null, 2) + "\n", { mode: 0o600 });
@@ -179,13 +187,22 @@ for (const codebase of codebases) {
       chmodSync(specPath, 0o600); // it holds the run's connector token
     }
 
+    // A run that is up was started from the spec as it was, so the
+    // rewrite reaches it only through a restart — either because a
+    // process this version needs is not running at all, or because
+    // the ones that are running came from the copy of the kit this
+    // update replaced and go on running its code. The second is the
+    // one nothing else on the laptop ever mentions.
+    const reason = !up ? null : missingHere ? "missing" : "stale";
     let tail;
     if (!up) tail = "It takes effect when the run next starts.";
-    else if (!needsRestart) tail = "The processes that are up keep the copy they started with, which still works; the next restart picks this one up.";
     else if (restart && !check) tail = restartRun(runDir) ? "Restarted it." : "Restarting it failed; see the run dir's daemon.log.";
     else {
-      tail = "Restart it to pick this up.";
-      pending.push({ label: `${codebase}/${name}`, runDir, cost: interruption(name) });
+      tail =
+        reason === "missing"
+          ? "Restart it to pick this up."
+          : "Its processes are still running the copy of the kit they were started from.";
+      pending.push({ label: `${codebase}/${name}`, reason, cost: interruption(name) });
     }
     repaired.push(`${codebase}/${name}: ${changes.join(", and ")}. ${tail}`);
   }
@@ -200,10 +217,24 @@ if (repaired.length === 0) {
       : "Nothing else needed repairing.",
   );
 }
+const missingNow = pending.filter((p) => p.reason === "missing");
+const staleNow = pending.filter((p) => p.reason === "stale");
+if (missingNow.length > 0) {
+  console.log("");
+  console.log(`Waiting on a restart: ${list(missingNow.map((p) => p.label))}.`);
+  console.log("  A process this version needs is not running there at all until one happens.");
+  for (const { label, cost } of missingNow) console.log(`  ${label}: ${cost}`);
+}
+if (staleNow.length > 0) {
+  console.log("");
+  console.log(`Still running an older copy of the kit: ${list(staleNow.map((p) => p.label))}.`);
+  console.log(
+    "  Their specs name this copy now, but the processes that are up were started from the one this update replaced, and they go on running its code — including how it talks to the site — until they restart. Nothing else on this laptop says so.",
+  );
+  for (const { label, cost } of staleNow) console.log(`  ${label}: ${cost}`);
+}
 if (pending.length > 0) {
   console.log("");
-  console.log(`Waiting on a restart: ${list(pending.map((p) => p.label))}.`);
-  for (const { label, cost } of pending) console.log(`  ${label}: ${cost}`);
   console.log(check ? "Run this without --check, then again with --restart." : "Run this again with --restart when the person is ready.");
 }
 if (check) console.log("\nNothing was written (--check).");
