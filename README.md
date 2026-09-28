@@ -37,6 +37,7 @@ Cursor; the core stays harness-neutral.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
 - `publish-library/`: publish the library on demand.
 - `listen/`: take the website's commands off the feed.
+- `update/`: update the plugin, then repair what the update leaves stale.
 
 ### tools/
 
@@ -57,6 +58,7 @@ Serving and publishing:
 - `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
 - `heartbeat.mjs`: the beat loop those and the courier share.
 - `health.mjs`: the session-start check, one line per codebase.
+- `repair-runs.mjs`: bring every run spec up to this version of the kit.
 
 The courier and the feed:
 
@@ -148,7 +150,10 @@ git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/pr
 ```
 
 If the plugin is already installed, update it first so it is on the
-latest version:
+latest version. `/proto:update` (Claude Code), `$update` (Codex) or
+the Proto update skill (Cursor) runs the right one of these for the
+agent it is in and then repairs the runs the old version left behind;
+the commands themselves are:
 
 ```sh
 # Claude Code
