@@ -15,6 +15,18 @@
  * terminated, reset whenever a new cloudflared process logs "Starting
  * tunnel" into the same appended file.
  *
+ * **Do not read hard_fail as the answer, however much it looks like one.**
+ * It is the pre-check's verdict, and the pre-check is a separate probe
+ * that can pass while the tunnel itself never connects: measured on this
+ * laptop on 2026-09-28, with cloudflared's outgoing connections bound to
+ * an address it could not route from, every pre-check target reported
+ * PASS and hard_fail=false while every single dial to the edge failed.
+ * A registered connection is the only thing that means a tunnel exists,
+ * so that is what `connected` counts. hard_fail is kept because it is
+ * early, arriving about fifteen seconds in against about thirty for a
+ * first connection, which is worth skipping a wait for; it is a warning,
+ * never a verdict.
+ *
  * Reading is incremental: a watch keeps its byte offset and its set, so a
  * heartbeat process pays for the whole log once and then only for what was
  * written since its last beat. A log that shrank was rotated or replaced,

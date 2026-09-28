@@ -272,13 +272,22 @@ only on the codebase id, so nothing waits on it):
    against the public hostname from step 3 once the edge settles.
 
 **Heartbeat.** The listener beats the app's `heartbeat` tool for
-`{ kind: "courier", courierId, agentListening }` at the cadence the app
-answers with (fail-soft; `agentListening` from the feed watcher's local
-heartbeat). It is the same tool a prototype's or the library's serving
-run beats, with its own target. A courier whose beats have gone stale
-is offline; the site dispatches each brief to the team's freshest
-listening courier, and registered-but-not-listening falls back to the
-copyable prompt with "your agent isn't running".
+`{ kind: "courier", courierId, agentListening, tunnelConnected }` at the
+cadence the app answers with (fail-soft; `agentListening` from the feed
+watcher's local heartbeat, `tunnelConnected` from `tunnel-state.mjs`
+reading this run's `tunnel.log`). It is the same tool a prototype's or
+the library's serving run beats, with its own target. A courier whose
+beats have gone stale is offline; the site dispatches each brief to the
+team's freshest listening courier, and registered-but-not-listening
+falls back to the copyable prompt with "your agent isn't running".
+
+`tunnelConnected` matters here in the opposite direction from a
+prototype's. The beat goes out over 443 and arrives from any network;
+the site comes back through the courier's tunnel. On a network that
+blocks port 7844 the beat says "listening" and the site's POST gets
+Cloudflare error 1033, so without that field the New prototype dialog
+offers Execute and then fails on the click. With it, the dialog offers
+the copyable prompt up front and says the network is the reason.
 
 The proto MCP server carries the agent's cloud actions (registration,
 tunnels, comments); command payloads arrive inline in the feed: MCP
