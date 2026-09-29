@@ -1,34 +1,32 @@
-import { useState } from "react";
 import { CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { skipHeading, type Component, type ComponentView, type Courier } from "@/library";
 import type { SendOutcome } from "@/courier";
 
+/** Where a request to build stands: not made, on its way, or how it came back. */
+export type Ask = "idle" | "asking" | SendOutcome;
+
 type Props = {
   component: Component;
   view: Exclude<ComponentView, { kind: "preview" }>;
   courier: Courier;
+  ask: Ask;
+  onAsk: () => void;
+  onWithdraw: () => void;
 };
-
-type Ask = "idle" | "asking" | SendOutcome;
 
 /**
  * The strip under a component that is not built: it is about the
  * import, not the component, so it sits outside the frame. Grouped by
- * why (the heading is the skip's kind, the sentence its reason), and
- * carrying the one pending sentence while the component is queued, or
- * the import's latest line while it is being read again.
+ * why (the heading is the skip's kind, the sentence its reason, whole),
+ * with the way to ask for it; carrying the one pending sentence and
+ * the way out of it while the component is queued, and the import's
+ * latest line while it is being read.
  */
-export function NotBuilt({ component, view, courier }: Props) {
-  const [ask, setAsk] = useState<Ask>("idle");
-  const send = async (call: Courier["ask"]) => {
-    setAsk("asking");
-    setAsk(await call(component.slug));
-  };
+export function NotBuilt({ component, view, ask, onAsk, onWithdraw }: Props) {
   switch (view.kind) {
     case "working":
-      if (view.screenshot === null) return null;
       return (
         <Strip icon={<LoaderCircleIcon className={`${ICON} animate-spin`} />}>
           <Shimmer as="p" className="m-0 text-sm">{view.activity}</Shimmer>
@@ -40,7 +38,7 @@ export function NotBuilt({ component, view, courier }: Props) {
           icon={<ClockIcon className={ICON} />}
           aside={
             view.withdrawable && (
-              <Button size="sm" variant="ghost" onClick={() => send(courier.withdraw)} disabled={ask === "asking"}>
+              <Button size="sm" variant="ghost" onClick={onWithdraw} disabled={ask === "asking"}>
                 Cancel
               </Button>
             )
@@ -51,7 +49,7 @@ export function NotBuilt({ component, view, courier }: Props) {
         </Strip>
       );
     case "skipped": {
-      let aside = "Queueing asks the import to try again.";
+      let aside = `Asks the import to try ${component.name} again.`;
       if (ask === "unreachable") aside = "Only the live library can ask; open it from your agent's session.";
       return (
         <Strip
@@ -59,9 +57,11 @@ export function NotBuilt({ component, view, courier }: Props) {
           aside={
             <>
               <span className="text-xs text-muted-foreground">{aside}</span>
-              <Button size="sm" variant="outline" onClick={() => send(courier.ask)} disabled={ask === "asking"}>
-                Queue it
-              </Button>
+              {ask !== "unreachable" && (
+                <Button size="sm" variant="outline" onClick={onAsk} disabled={ask === "asking"}>
+                  Build it
+                </Button>
+              )}
             </>
           }
         >
@@ -80,7 +80,7 @@ function Strip({ icon, aside, children }: { icon: React.ReactNode; aside?: React
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-dashed border-foreground/20 bg-muted/50 px-4 py-3">
       <div className="flex min-w-0 flex-1 items-start gap-3">
         {icon}
-        <div className="flex flex-col gap-0.5">{children}</div>
+        <div className="flex min-w-0 flex-col gap-0.5">{children}</div>
       </div>
       {aside && <div className="flex items-center gap-3">{aside}</div>}
     </div>

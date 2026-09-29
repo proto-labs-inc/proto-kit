@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon } from "lucide-react";
-import { ComponentCard } from "@/components/ComponentCard";
+import { ComponentBlock } from "@/components/ComponentBlock";
 import { ImportLine } from "@/components/ImportLine";
 import { ImportQueue } from "@/components/ImportQueue";
 import { Shimmer } from "@/components/ai-elements/shimmer";
@@ -51,18 +51,17 @@ export function Overview({ library, courier }: Props) {
             <Section title="Colours" count={manifest.tokens.length} reading="Reading the colours" reserve="min-h-24">
               <TokenSwatches tokens={manifest.tokens} components={manifest.components} />
             </Section>
-            <Section title="Components" count={manifest.components.length} reading="Finding the components" reserve="min-h-24">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {manifest.components.map((component) => (
-                  <ComponentCard
-                    key={component.slug}
-                    component={component}
-                    view={componentView(component, library)}
-                    courier={courier}
-                    justAdded={justAdded.has(component.slug)}
-                  />
-                ))}
-              </div>
+            <Section title="Components" count={manifest.components.length} reading="Finding the components" reserve="min-h-24" gap="gap-6">
+              {manifest.components.map((component) => (
+                <ComponentBlock
+                  key={component.slug}
+                  component={component}
+                  all={manifest.components}
+                  view={componentView(component, library)}
+                  courier={courier}
+                  justAdded={justAdded.has(component.slug)}
+                />
+              ))}
             </Section>
             <Footer />
           </>
@@ -78,14 +77,15 @@ type SectionProps = {
   count: number;
   reading: string;
   reserve: string;
+  gap?: string;
   children: React.ReactNode;
 };
 
 /** A section with its heading and count in place from the start, and
  *  one line in it, shimmering while the import reads, until it fills. */
-function Section({ title, count, reading, reserve, children }: SectionProps) {
+function Section({ title, count, reading, reserve, gap = "gap-4", children }: SectionProps) {
   return (
-    <section className="flex flex-col gap-4">
+    <section className={`flex flex-col ${gap}`}>
       <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
         {title}
         <span className="tabular-nums text-muted-foreground">{count}</span>
