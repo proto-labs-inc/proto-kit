@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon } from "lucide-react";
-import { ComponentBlock } from "@/components/ComponentBlock";
+import { ComponentCard } from "@/components/ComponentCard";
 import { ImportLine } from "@/components/ImportLine";
 import { ImportQueue } from "@/components/ImportQueue";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { TokenSwatches } from "@/components/TokenSwatches";
 import { TypeSpecimens } from "@/components/TypeSpecimens";
 import { componentView, headingStyle, importInProgress, type Component, type Courier, type Library } from "@/library";
@@ -30,7 +31,7 @@ export function Overview({ library, courier }: Props) {
       <div className="flex min-w-0 flex-col gap-14">
         <header className="flex flex-col gap-2">
           <h1
-            className="m-0 text-3xl font-semibold tracking-tight"
+            className="m-0 text-4xl font-semibold tracking-tight"
             style={heading ? { fontFamily: `"${heading.family}", var(--font-sans)`, fontWeight: heading.weight } : undefined}
           >
             {manifest.product?.name ?? "Design system"}
@@ -44,23 +45,24 @@ export function Overview({ library, courier }: Props) {
 
         {started && (
           <>
-            <Section title="Type styles" filled={manifest.type.length > 0} reading="Reading the type styles" reserve="min-h-40">
+            <Section title="Type styles" count={manifest.type.length} reading="Reading the type styles" reserve="min-h-40">
               <TypeSpecimens styles={manifest.type} />
             </Section>
-            <Section title="Colours" filled={manifest.tokens.length > 0} reading="Reading the colours" reserve="min-h-24">
+            <Section title="Colours" count={manifest.tokens.length} reading="Reading the colours" reserve="min-h-24">
               <TokenSwatches tokens={manifest.tokens} components={manifest.components} />
             </Section>
-            <Section title="Components" filled={manifest.components.length > 0} reading="Finding the components" reserve="min-h-24" gap="gap-6">
-              {manifest.components.map((component) => (
-                <ComponentBlock
-                  key={component.slug}
-                  component={component}
-                  all={manifest.components}
-                  view={componentView(component, library)}
-                  courier={courier}
-                  justAdded={justAdded.has(component.slug)}
-                />
-              ))}
+            <Section title="Components" count={manifest.components.length} reading="Finding the components" reserve="min-h-24">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {manifest.components.map((component) => (
+                  <ComponentCard
+                    key={component.slug}
+                    component={component}
+                    view={componentView(component, library)}
+                    courier={courier}
+                    justAdded={justAdded.has(component.slug)}
+                  />
+                ))}
+              </div>
             </Section>
             <Footer />
           </>
@@ -73,19 +75,30 @@ export function Overview({ library, courier }: Props) {
 
 type SectionProps = {
   title: string;
-  filled: boolean;
+  count: number;
   reading: string;
   reserve: string;
-  gap?: string;
   children: React.ReactNode;
 };
 
-/** A section with its heading in place from the start, and one quiet line in it until it fills. */
-function Section({ title, filled, reading, reserve, gap = "gap-4", children }: SectionProps) {
+/** A section with its heading and count in place from the start, and
+ *  one line in it, shimmering while the import reads, until it fills. */
+function Section({ title, count, reading, reserve, children }: SectionProps) {
   return (
-    <section className={`flex flex-col ${gap}`}>
-      <h2 className="text-sm font-medium text-muted-foreground">{title}</h2>
-      {filled ? children : <p className={`m-0 ${reserve} text-sm text-muted-foreground`}>{reading}</p>}
+    <section className="flex flex-col gap-4">
+      <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
+        {title}
+        <span className="tabular-nums text-muted-foreground">{count}</span>
+      </h2>
+      {count > 0 ? (
+        children
+      ) : (
+        <div className={reserve}>
+          <Shimmer as="p" className="m-0 text-sm">
+            {reading}
+          </Shimmer>
+        </div>
+      )}
     </section>
   );
 }

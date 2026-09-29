@@ -1,56 +1,57 @@
-import { ArrowRightIcon, CheckIcon, CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
-import { Checkpoint, CheckpointIcon, CheckpointTrigger } from "@/components/ai-elements/checkpoint";
-import {
-  Queue,
-  QueueItem,
-  QueueItemAction,
-  QueueItemActions,
-  QueueItemContent,
-  QueueItemDescription,
-  QueueItemIndicator,
-  QueueList,
-  QueueSection,
-  QueueSectionContent,
-  QueueSectionLabel,
-  QueueSectionTrigger,
-} from "@/components/ai-elements/queue";
+import { AnimatePresence, motion } from "motion/react";
+import { CheckIcon, CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { componentView, skipHeading, type Component, type ComponentView, type Library, type Manifest } from "@/library";
-import { href } from "@/route";
 import { clock, elapsed } from "@/time";
 
 /**
- * The import's components as the AI Elements Queue, one section per
- * stage with a fixed title and a count ("2 Reading", "4 Built"), so
- * nothing in the rail changes its words as the import moves: a
- * component moves from one section to the next. Each row is a jump to
- * its block. A finished import carries a Checkpoint marking the end.
- * Nothing here shimmers; the header's "Importing" is the one moving
- * word on the page, and a spinner marks each component being read.
+ * The import, beside the page: the components in fixed sections that
+ * count them (Reading, Queued, Built, Skipped), so nothing in the rail
+ * changes its words as the import moves; a component moves from one
+ * section to the next, and its row travels with it. The row being read
+ * says the import's latest word on it, shimmering; a finished import
+ * ends on the time it finished. Each row jumps to its card.
  */
 export function ImportQueue({ library }: { library: Library }) {
   const { manifest } = library;
   const stages = byStage(library);
   return (
-    <aside className="-order-1 flex flex-col gap-3 md:sticky md:top-8 md:order-none md:self-start">
+    <aside className="-order-1 flex flex-col gap-5 md:sticky md:top-8 md:order-none md:self-start">
       <Finish manifest={manifest} />
-      {manifest.components.length > 0 && (
-        <Queue>
-          {stages.map((stage) => (
-            <QueueSection key={stage.title}>
-              <QueueSectionTrigger>
-                <QueueSectionLabel count={stage.rows.length} label={stage.title} />
-              </QueueSectionTrigger>
-              <QueueSectionContent>
-                <QueueList>
-                  {stage.rows.map(({ component, view }) => (
-                    <Row key={component.slug} component={component} view={view} />
-                  ))}
-                </QueueList>
-              </QueueSectionContent>
-            </QueueSection>
-          ))}
-        </Queue>
-      )}
+      {stages.map((stage) => (
+        <motion.section layout key={stage.title} className="flex flex-col gap-1.5">
+          <h2 className="flex items-baseline gap-2 text-xs font-medium text-muted-foreground">
+            <span className="tabular-nums text-foreground">{stage.rows.length}</span>
+            {stage.title}
+          </h2>
+          <ul className="m-0 flex list-none flex-col p-0">
+            <AnimatePresence initial={false}>
+              {stage.rows.map(({ component, view }) => (
+                <motion.li
+                  key={component.slug}
+                  layoutId={`row-${component.slug}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 360, damping: 34 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(component.slug)}
+                    className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                  >
+                    <span className="flex items-center gap-2 text-[13px]">
+                      <Mark view={view} />
+                      <span className="truncate">{component.name}</span>
+                    </span>
+                    <Description component={component} view={view} />
+                  </button>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+        </motion.section>
+      ))}
     </aside>
   );
 }
@@ -58,7 +59,6 @@ export function ImportQueue({ library }: { library: Library }) {
 type Stage = "Reading" | "Queued" | "Built" | "Skipped";
 type StageRows = { title: Stage; rows: { component: Component; view: ComponentView }[] };
 
-/** The stage a component's view is at; the section it sits in. */
 function stageOf(view: ComponentView): Stage {
   switch (view.kind) {
     case "working":
@@ -86,14 +86,14 @@ function byStage(library: Library): StageRows[] {
 function Finish({ manifest }: { manifest: Manifest }) {
   if (manifest.completedAt === null || manifest.startedAt === null) return null;
   return (
-    <Checkpoint>
-      <CheckpointIcon>
-        <CheckIcon className="size-4 shrink-0" />
-      </CheckpointIcon>
-      <CheckpointTrigger tooltip={`Started ${clock(manifest.startedAt)}, took ${elapsed(manifest.startedAt, manifest.completedAt)}`}>
-        Finished {clock(manifest.completedAt)}
-      </CheckpointTrigger>
-    </Checkpoint>
+    <p
+      className="m-0 flex items-center gap-2 text-xs text-muted-foreground"
+      title={`Started ${clock(manifest.startedAt)}, took ${elapsed(manifest.startedAt, manifest.completedAt)}`}
+    >
+      <CheckIcon className="size-3.5 text-emerald-600" strokeWidth={2.5} />
+      <span className="text-foreground">Finished {clock(manifest.completedAt)}</span>
+      <span className="h-px flex-1 bg-border" />
+    </p>
   );
 }
 
@@ -101,53 +101,36 @@ function jumpTo(slug: string) {
   document.getElementById(slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function Row({ component, view }: { component: Component; view: ComponentView }) {
-  return (
-    <QueueItem className="cursor-pointer" onClick={() => jumpTo(component.slug)}>
-      <div className="flex items-center gap-2">
-        <Mark component={component} view={view} />
-        <QueueItemContent className="text-foreground">{component.name}</QueueItemContent>
-        <QueueItemActions>
-          <QueueItemAction
-            aria-label={`Open ${component.name}`}
-            nativeButton={false}
-            render={<a href={href.component(component.slug)} onClick={(e) => e.stopPropagation()} />}
-          >
-            <ArrowRightIcon className="size-3.5" />
-          </QueueItemAction>
-        </QueueItemActions>
-      </div>
-      <QueueItemDescription className="line-clamp-1">{description(component, view)}</QueueItemDescription>
-    </QueueItem>
-  );
-}
+const MARK = "size-3.5 shrink-0";
 
-const MARK = "size-3.5 shrink-0 text-muted-foreground";
-
-function Mark({ component, view }: { component: Component; view: ComponentView }) {
+function Mark({ view }: { view: ComponentView }) {
   switch (view.kind) {
     case "working":
-      if (component.status === "found") return <QueueItemIndicator className="mx-0.5" />;
-      return <LoaderCircleIcon className={`${MARK} animate-spin`} />;
+      return <LoaderCircleIcon className={`${MARK} animate-spin text-foreground`} />;
     case "preview":
-      return <CheckIcon className={MARK} />;
+      return <CheckIcon className={`${MARK} text-emerald-600`} strokeWidth={2.5} />;
     case "pending":
-      return <ClockIcon className={MARK} />;
+      return <ClockIcon className={`${MARK} text-muted-foreground`} />;
     case "skipped":
-      return <CircleSlashIcon className={MARK} />;
+      return <CircleSlashIcon className={`${MARK} text-muted-foreground`} />;
   }
 }
 
 /** The row's second line: the import's latest word on it, its states, or why it is not built. */
-function description(component: Component, view: ComponentView): string {
+function Description({ component, view }: { component: Component; view: ComponentView }) {
+  const line = "line-clamp-1 pl-5.5 text-xs text-muted-foreground";
   switch (view.kind) {
     case "working":
-      return view.activity;
+      return (
+        <Shimmer as="span" className="line-clamp-1 pl-5.5 text-xs">
+          {view.activity}
+        </Shimmer>
+      );
     case "preview":
-      return component.states.map((s) => s.name).join(" · ");
+      return <span className={line}>{component.states.map((s) => s.name).join(" · ")}</span>;
     case "pending":
-      return view.sentence;
+      return <span className={line}>{view.sentence}</span>;
     case "skipped":
-      return `${skipHeading(view.skipKind)}: ${view.reason}`;
+      return <span className={line}>{`${skipHeading(view.skipKind)}: ${view.reason}`}</span>;
   }
 }
