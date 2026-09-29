@@ -200,15 +200,24 @@ function layoutOf(node, nodes, fit, isRoot, room = null) {
     for (const side of ["top", "right", "bottom", "left"]) out[`margin-${side}`] = st[`margin-${side}`];
     if (st.position !== "static") for (const side of ["top", "right", "bottom", "left"]) out[side] = st[side];
   }
-  for (const name of ["min-width", "min-height", "max-width", "max-height", "flex-basis"]) out[name] = st[name];
+  const leaf = node.children.every((c) => c.node === undefined && (c.text === undefined || c.text.trim() === ""));
+  const drawn = ["img", "svg", "video", "canvas", "input", "textarea", "select", "iframe"].includes(node.tag) || (leaf && !node.svg);
+  const shrinks = isRoot && room !== null && node.rect[2] < room - 0.5 && fit.width === undefined;
+  // Every size pinned below is the product's box as measured (or 100% of
+  // its parent's content box), padding and border included, so the
+  // element is laid out border-box; a content-box minimum or maximum the
+  // product states grows by the same padding and border.
+  const measured = (drawn && !isRoot) || (shrinks && node.rect[2] >= 240) || fit.width !== undefined || fit.height !== undefined;
+  const asBorderBox = measured && st["box-sizing"] === "content-box";
+  for (const name of ["min-width", "max-width"]) out[name] = asBorderBox ? borderBoxLength(st[name], st, "width") : st[name];
+  for (const name of ["min-height", "max-height"]) out[name] = asBorderBox ? borderBoxLength(st[name], st, "height") : st[name];
+  out["flex-basis"] = st["flex-basis"];
   for (const name of ["grid-template-columns", "grid-template-rows"]) {
     const tracks = st[name];
     if (!tracks || tracks === "none") continue;
     out[name] = fractions(tracks, name === "grid-template-columns" ? node.rect[2] : node.rect[3], st) ?? tracks;
   }
   for (const name of ["grid-auto-columns", "grid-auto-rows"]) out[name] = st[name];
-  const leaf = node.children.every((c) => c.node === undefined && (c.text === undefined || c.text.trim() === ""));
-  const drawn = ["img", "svg", "video", "canvas", "input", "textarea", "select", "iframe"].includes(node.tag) || (leaf && !node.svg);
   if (drawn && !isRoot) {
     out.width = `${node.rect[2]}px`;
     out.height = `${node.rect[3]}px`;
@@ -218,7 +227,7 @@ function layoutOf(node, nodes, fit, isRoot, room = null) {
   // stage) it would fill it instead.
   // A large one (a panel) was held to its width by something around it
   // (a page column's maximum), so it keeps that width as its maximum.
-  if (isRoot && room !== null && node.rect[2] < room - 0.5 && fit.width === undefined) {
+  if (shrinks) {
     out.width = "fit-content";
     if (node.rect[2] >= 240) out["max-width"] = `${node.rect[2]}px`;
   }
@@ -226,7 +235,18 @@ function layoutOf(node, nodes, fit, isRoot, room = null) {
   if (fit.margin === "both") out["margin-right"] = "auto";
   if (fit.width !== undefined) out.width = fit.width;
   if (fit.height !== undefined) out.height = fit.height;
+  if (measured) out["box-sizing"] = "border-box";
   return out;
+}
+
+// A content-box length in px as its border-box one: the axis's padding
+// and border added. Zero stays zero: no box is smaller than its padding
+// and border in either model.
+function borderBoxLength(value, st, axis) {
+  if (!/^[\d.]+px$/.test(value) || parseFloat(value) === 0) return value;
+  const [a, b] = axis === "width" ? ["left", "right"] : ["top", "bottom"];
+  const extra = parseFloat(st[`padding-${a}`]) + parseFloat(st[`padding-${b}`]) + parseFloat(st[`border-${a}-width`]) + parseFloat(st[`border-${b}-width`]);
+  return `${parseFloat(value) + extra}px`;
 }
 
 // "96px 96px 96px" filling a 288px grid → "repeat(3, minmax(0, 1fr))".
@@ -575,6 +595,8 @@ function propsFor(node, nodes, baseline, declared, isRoot) {
     }
     out["box-sizing"] = node.style["box-sizing"];
   }
+  // A pinned size is the box as measured (layoutOf): it says border-box.
+  if (declared["box-sizing"]) out["box-sizing"] = declared["box-sizing"];
   return out;
 }
 
