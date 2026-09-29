@@ -24,6 +24,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { packHistory } from "./pack-history.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // A build and an upload take tens of seconds, so a waiting publish
@@ -104,6 +105,9 @@ do {
   rmSync(pending, { recursive: true, force: true });
   const build = spawnSync("pnpm", ["build"], { cwd: libraryDir, stdio: ["ignore", "inherit", "inherit"] });
   if (build.status !== 0) fail(`pnpm build failed in ${libraryDir}`);
+  // Check pictures, three per check, go out packed in a few sheets per
+  // component: a publish carries at most 200 files (tools/pack-history.mjs).
+  packHistory(join(libraryDir, "dist"));
   const publishArgs = [join(HERE, "publish.mjs"), "--kind", "library", "--codebase", codebase, "--dir", join(libraryDir, "dist")];
   if (dryRun) publishArgs.push("--dry-run");
   const publish = spawnSync(process.execPath, publishArgs, { stdio: ["ignore", "inherit", "inherit"] });

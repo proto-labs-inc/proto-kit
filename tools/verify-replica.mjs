@@ -42,7 +42,7 @@ import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findPage } from "./cdp/attach.mjs";
-import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
+import { stableClip, stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
@@ -76,7 +76,9 @@ export async function liveRect(live, target) {
  * waited out: the Proto window sits behind other windows, where a
  * transition never advances (nothing paints), so waiting reads its
  * first frame. Finishing jumps each one to its end, on the way in and
- * again on the way out, and leaves the page as it was.
+ * again on the way out, and leaves the page as it was. No timer waits:
+ * the tab is hidden, where Chrome runs a timer a second late at best,
+ * and asking for the animations brings the style up to date anyway.
  */
 export async function withForcedState(live, selector, pseudo, work) {
   return withLive(() => holding(live, selector, pseudo, work));
@@ -96,12 +98,10 @@ async function holding(live, selector, pseudo, work) {
   if (!nodeId) throw new Error(`nothing on the live page matches ${selector}`);
   await live.send("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: [pseudo] });
   try {
-    await evaluate(live, "new Promise((r) => setTimeout(r, 30))");
     await evaluate(live, settle);
     return await work();
   } finally {
     await live.send("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: [] }).catch(() => {});
-    await evaluate(live, "new Promise((r) => setTimeout(r, 30))").catch(() => {});
     await evaluate(live, settle).catch(() => {});
   }
 }
@@ -270,7 +270,10 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     if (outcome !== "ok") throw new Error(`the render route could not show ${slug}/${state}: ${outcome}`);
     await evaluate(replica.page, "document.fonts.ready.then(() => document.fonts.status)");
     const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`;
-    await stableShot(replica.page, probe, files.screenshot, { x: rect.x, y: rect.y, width: rect.w, height: rect.h });
+    // The headless tab is the active one in its own browser, where a
+    // clipped capture is safe: only the component's pixels come back, not
+    // a whole viewport to decode and cut in node.
+    await stableClip(replica.page, probe, files.screenshot, { x: rect.x, y: rect.y, width: rect.w, height: rect.h, scale: 1 });
   } finally {
     await replica.close();
   }

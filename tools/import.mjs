@@ -121,10 +121,13 @@ const failed = [];
 const queue = [...components];
 async function lane() {
   for (let component = queue.shift(); component; component = queue.shift()) {
+    const began = Date.now();
+    const took = () => `${Math.round((Date.now() - began) / 1000)} s`;
     write("component", component.slug, "status", "extracting");
     const spec = join(scratch, `${component.slug}.json`);
     writeFileSync(spec, JSON.stringify({ slug: component.slug, name: component.name, states: component.states }));
     const snapped = await run("snapshot.mjs", [codebase, `@${spec}`]);
+    const wrote = took();
     if (snapped.status !== 0) {
       failed.push({ slug: component.slug, error: snapped.stderr.trim().split("\n").pop() });
       step(`${component.slug}: could not be written (${snapped.stderr.trim().split("\n").pop()})`);
@@ -142,10 +145,10 @@ async function lane() {
       write("component", component.slug, "status", "done");
       built.push(component.slug);
       publish();
-      step(`${component.slug}: built, every state matches`);
+      step(`${component.slug}: built, every state matches (written in ${wrote}, done in ${took()})`);
     } else {
       toFix.push({ slug: component.slug, states: result.states.filter((s) => !["match", "shifted", "offscreen"].includes(s.verdict)) });
-      step(`${component.slug}: ${result.states.map((s) => `${s.state} ${s.verdict}`).join(", ")}`);
+      step(`${component.slug}: ${result.states.map((s) => `${s.state} ${s.verdict}`).join(", ")} (${took()})`);
     }
   }
 }

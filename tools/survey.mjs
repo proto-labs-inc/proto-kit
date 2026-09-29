@@ -26,6 +26,10 @@
  *               look (tag, role, size, fill, border, type); the first
  *               instance is the best one to read (whole on screen,
  *               largest); `looks` counts distinct looks inside the group
+ *   draft:      <out>/plan.draft.json, a plan for tools/import.mjs with every
+ *               candidate as a component (placeholder names from kind and
+ *               text), one state per look, Hover and Focus on interactive
+ *               ones: the orchestrator renames, merges, drops and adds
  *   pictures:   written to <out>/<id>.png (default ~/.proto/<codebase>/run/survey),
  *               each candidate's first instance cropped to its own box
  *               at 2x from one screenshot of the page
@@ -321,8 +325,61 @@ const text = pick(data.pageText);
 if (surface) surface.role = "surface";
 if (text && text !== surface) text.role = "text";
 
+// ---- a draft plan: every candidate a component, every look a state ----
+// The orchestrator's edit, not its starting point from scratch: names
+// come from the kind and the text, so they are placeholders to rename
+// to the product's own; decoration and hidden elements are left out.
+const NAMES = {
+  button: "Button", a: "Link", link: "Link", input: "Input", textarea: "Text area", select: "Select", combobox: "Select",
+  checkbox: "Checkbox", switch: "Switch", radio: "Radio", tab: "Tab", tablist: "Tabs", menuitem: "Menu item", slider: "Slider",
+  progressbar: "Progress", badge: "Badge", label: "Label", field: "Form field", card: "Card", header: "Header", nav: "Navigation",
+  aside: "Sidebar", table: "Table", img: "Image", h1: "Heading", h2: "Heading", h3: "Heading", h4: "Heading", kbd: "Keyboard key",
+  code: "Code", hr: "Divider", separator: "Divider", tooltip: "Tooltip", dialog: "Dialog", alert: "Alert", status: "Status",
+};
+const INTERACTIVE = new Set(["button", "a", "link", "input", "textarea", "combobox", "checkbox", "switch", "radio", "tab", "menuitem", "slider"]);
+const slugOf = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "component";
+const draft = { palette: palette.map(({ px, ...rest }) => rest), type: data.type.map(({ tags, uses, ...rest }) => ({ ...rest, tags })), components: [] };
+const usedSlugs = new Set();
+const sameKind = new Map();
+for (const c of candidates) sameKind.set(c.kind, (sameKind.get(c.kind) ?? 0) + 1);
+for (const c of candidates) {
+  if (c.kind === "grid" || c.kind === "select") continue;
+  const first = c.instances[0];
+  if (first.rect[2] < 4 || first.rect[3] < 4) continue;
+  const base = NAMES[c.kind] ?? c.kind;
+  const label = first.text.split(" ").slice(0, 3).join(" ");
+  const name = sameKind.get(c.kind) > 1 && label ? `${base}: ${label}` : base;
+  let slug = slugOf(name);
+  for (let n = 2; usedSlugs.has(slug); n++) slug = `${slugOf(name)}-${n}`;
+  usedSlugs.add(slug);
+  const looks = [];
+  for (const instance of c.instances) {
+    if (looks.some((l) => l.look === instance.look)) continue;
+    looks.push(instance);
+  }
+  const states = looks.map((instance, k) => ({
+    name: k === 0 ? "Default" : instance.text.slice(0, 24) || `Look ${k + 1}`,
+    selector: instance.selector,
+  }));
+  const names = new Set();
+  for (const state of states) {
+    let name = state.name;
+    for (let n = 2; names.has(name); n++) name = `${state.name} ${n}`;
+    names.add(name);
+    state.name = name;
+  }
+  if (INTERACTIVE.has(c.kind)) {
+    states.push({ name: "Hover", selector: first.selector, force: "hover" });
+    states.push({ name: "Focus", selector: first.selector, force: "focus-visible" });
+  }
+  draft.components.push({ slug, name, picture: c.picture, states });
+}
+const draftPath = join(out, "plan.draft.json");
+writeFileSync(draftPath, JSON.stringify(draft, null, 2) + "\n");
+
 console.log(
   JSON.stringify({
+    draft: draftPath,
     page: data.page,
     palette: palette.map(({ px, ...rest }) => rest),
     colours: colours.length,

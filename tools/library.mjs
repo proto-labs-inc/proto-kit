@@ -43,7 +43,7 @@
  *       (copied to components/<slug>/screenshot.png). The crop stays
  *       on the entry from then on; the kind and reason stay while
  *       queued and go when the component is read again.
- *   history <library> <slug> --screenshot <png> --diff <png> [--live <png>] --mismatch <n> --activity "<line>"
+ *   history <library> <slug> --screenshot <png> --diff <png> [--live <png>] [--verdict <v>] --mismatch <n> --activity "<line>"
  *       Moves the images into components/<slug>/history/ and appends
  *       the pass. Every pass a component made is kept. tools/check.mjs
  *       lands each pass the moment it is made, so a component's checks
@@ -78,7 +78,7 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
   types <library> <json array>
   inventory <library> <json array>
   component <library> <slug> status <found|extracting|done|skipped|queued> [--kind ...] [--reason ...] [--screenshot ...] [--activity ...]
-  history <library> <slug> --screenshot <png> --diff <png> [--live <png>] --mismatch <n> --activity <line>
+  history <library> <slug> --screenshot <png> --diff <png> [--live <png>] [--verdict <v>] --mismatch <n> --activity <line>
   event <library> [slug] <activity>
   take-queued <library>
   complete <library>`;
@@ -88,6 +88,8 @@ const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
 // the product closely enough, or the import never got to it.
 const SKIP_KINDS = ["could-not-isolate", "did-not-match", "not-tried"];
 const REASON_CAP = 140;
+// What a check found (tools/verify-replica.mjs).
+const VERDICTS = ["match", "shifted", "context", "faint", "offscreen", "differs"];
 // The whole import, asked for again from the app: a request whose slug
 // is this, rather than a component's.
 const EVERYTHING = "*";
@@ -420,6 +422,7 @@ const commands = {
     const mismatch = Number(options.mismatch);
     if (!slug || !options.screenshot || !options.diff || !options.activity || !Number.isInteger(mismatch) || mismatch < 0) fail(USAGE);
     for (const image of [options.screenshot, options.diff, options.live].filter(Boolean)) if (!existsSync(image)) fail(`${image} does not exist`);
+    if (options.verdict !== undefined && !VERDICTS.includes(options.verdict)) fail(`--verdict is one of ${VERDICTS.join(", ")}`);
     change((manifest) => {
       const entry = componentIn(manifest, slug);
       const folder = join(folderOf(slug), "history");
@@ -438,6 +441,7 @@ const commands = {
         renameOrCopy(options.live, join(folder, `${n}-live.png`));
         pass.live = relative(slug, "history", `${n}-live.png`);
       }
+      if (options.verdict !== undefined) pass.verdict = options.verdict;
       entry.history.push(pass);
       return { activity: options.activity, slug };
     });

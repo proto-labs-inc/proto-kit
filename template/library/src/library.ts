@@ -27,6 +27,14 @@ export type ComponentState = { name: string; props: Record<string, unknown> };
  *  product's own capture for that check (when the import kept it), and
  *  the difference (the product's capture with every disagreeing pixel
  *  painted red). Checks arrive while the component is still being read. */
+/**
+ * What a check found (tools/verify-replica.mjs): identical, a one-pixel
+ * placement, a difference confined to a photo or to something the page
+ * lays over the component, a faint edge, identical where the page shows
+ * it, or different. Older passes carry no verdict.
+ */
+export type Verdict = "match" | "shifted" | "context" | "faint" | "offscreen" | "differs";
+
 export type Pass = {
   at: string;
   activity: string;
@@ -34,6 +42,7 @@ export type Pass = {
   live?: string;
   diff: string;
   mismatch: number;
+  verdict?: Verdict;
 };
 export type Component = {
   slug: string;
@@ -310,4 +319,8 @@ export function latestPass(component: Component): Pass | null {
 }
 
 /** Whether a check found nothing left to fix: the one thing the app reads from its count. */
-export const identical = (pass: Pass) => pass.mismatch === 0;
+/** A check that found the component as the product has it. */
+export function identical(pass: Pass): boolean {
+  if (pass.verdict === undefined) return pass.mismatch === 0;
+  return pass.verdict !== "differs";
+}

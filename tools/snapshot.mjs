@@ -22,10 +22,11 @@
  *     component, so a value equal to the app's is inherited, not
  *     repeated); inherited properties are set on the root and wherever
  *     a descendant changes them;
- *   - sizes, margins, offsets and grid tracks from the product's own
- *     declared rules (CSS.getMatchedStylesForNode), variables resolved,
- *     rem converted, so a width of 100% stays a width of 100% instead of
- *     freezing to the pixels it came to on this page;
+ *   - sizes fitted against the product: each look is rendered alone in
+ *     the library app and every element whose box comes out a different
+ *     size is pinned (100% where it fills its parent, else its size), so
+ *     widths stay free wherever the layout gives them; margins, offsets
+ *     and grid tracks (as fractions when equal) from the computed style;
  *   - fonts from the page's own @font-face rules, copied beside the
  *     stylesheet; images and icons copied or inlined;
  *   - the backdrop: the colour the component sits on in the product
@@ -76,9 +77,9 @@ const INHERITED = new Set([
   "-webkit-tap-highlight-color", "-webkit-hyphenate-character",
 ]);
 
-// Sizes, margins, offsets and grid tracks: taken from the product's
-// declared rules, never from the computed style (which is the pixels
-// they came to on this page).
+// Sizes, margins, offsets and grid tracks: written by layoutOf, from
+// the computed style and fitted against the product, never copied
+// wholesale (a computed width is the pixels it came to on this page).
 const DECLARED = [
   "width", "height", "min-width", "min-height", "max-width", "max-height", "flex-basis",
   "top", "right", "bottom", "left",
@@ -87,31 +88,6 @@ const DECLARED = [
   "line-height",
 ];
 const DECLARED_SET = new Set(DECLARED);
-// Shorthands and logical names, as the product may declare them (left-to-right pages).
-const EXPANDS = {
-  margin: ["margin-top", "margin-right", "margin-bottom", "margin-left"],
-  "margin-inline": ["margin-left", "margin-right"],
-  "margin-block": ["margin-top", "margin-bottom"],
-  "margin-inline-start": ["margin-left"],
-  "margin-inline-end": ["margin-right"],
-  "margin-block-start": ["margin-top"],
-  "margin-block-end": ["margin-bottom"],
-  inset: ["top", "right", "bottom", "left"],
-  "inset-inline": ["left", "right"],
-  "inset-block": ["top", "bottom"],
-  "inset-inline-start": ["left"],
-  "inset-inline-end": ["right"],
-  "inset-block-start": ["top"],
-  "inset-block-end": ["bottom"],
-  "inline-size": ["width"],
-  "block-size": ["height"],
-  "min-inline-size": ["min-width"],
-  "min-block-size": ["min-height"],
-  "max-inline-size": ["max-width"],
-  "max-block-size": ["max-height"],
-  "grid-template": ["grid-template-rows", "grid-template-columns"],
-};
-
 // Never copied: logical duplicates of physical properties the computed
 // style also lists, animation machinery with no keyframes behind it,
 // SVG geometry that lives in attributes, and engine internals.
@@ -200,84 +176,130 @@ const READ_INSTANCE = String.raw`(rootSelector) => {
   };
 }`;
 
-/** Resolve var() against each element's own custom properties, and rem against the page's root size. */
-const RESOLVE = String.raw`(rootSelector, items, rootFontSize) => {
-  const root = document.querySelector(rootSelector);
-  const elements = [root, ...root.querySelectorAll('*')];
-  const resolve = (el, text, depth) => {
-    if (depth > 12) return text;
-    const out = text.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/g, (all, name, fallback) => {
-      const value = getComputedStyle(el).getPropertyValue(name).trim();
-      if (value !== '') return value;
-      return fallback !== undefined ? fallback.trim() : all;
-    });
-    if (out !== text && /var\(/.test(out)) return resolve(el, out, depth + 1);
-    return out;
-  };
-  return items.map(({ i, text }) => resolve(elements[i], text, 0).replace(/(-?\d*\.?\d+)rem\b/g, (_, n) => +(parseFloat(n) * rootFontSize).toFixed(4) + 'px'));
-}`;
+// ---- layout ----
 
-/** The product's declared value for each DECLARED property of each element, by cascade order. */
-async function declaredValues(live, rootSelector, count) {
-  await live.send("DOM.enable");
-  await live.send("CSS.enable");
-  const { root } = await live.send("DOM.getDocument", { depth: 0 });
-  const { nodeId } = await live.send("DOM.querySelector", { nodeId: root.nodeId, selector: rootSelector });
-  const { nodeIds } = await live.send("DOM.querySelectorAll", { nodeId, selector: "*" });
-  const ids = [nodeId, ...nodeIds];
-  if (ids.length !== count) throw new Error(`the component changed while it was read (${ids.length} elements, then ${count}); read it again`);
-  return Promise.all(
-    ids.map(async (id) => {
-      const matched = await live.send("CSS.getMatchedStylesForNode", { nodeId: id });
-      const winners = {};
-      const consider = (style) => {
-        for (const property of style?.cssProperties ?? []) {
-          if (property.disabled || property.parsedOk === false || property.value === undefined) continue;
-          const names = EXPANDS[property.name] ?? (DECLARED_SET.has(property.name) ? [property.name] : []);
-          if (names.length === 0) continue;
-          const important = property.important === true;
-          const parts = splitBox(property.value, property.name, names.length);
-          names.forEach((name, k) => {
-            const previous = winners[name];
-            if (previous && previous.important && !important) return;
-            winners[name] = { value: parts[k], important };
-          });
-        }
-      };
-      for (const match of matched.matchedCSSRules ?? []) {
-        if (match.rule.origin === "user-agent") continue;
-        consider(match.rule.style);
-      }
-      consider(matched.inlineStyle);
-      const out = {};
-      for (const [name, winner] of Object.entries(winners)) out[name] = winner.value.replace(/\s*!important\s*$/, "");
-      return out;
-    }),
-  );
+/**
+ * The layout values to write for one element, from its computed style:
+ * margins and offsets as the page computes them (exact at the product's
+ * width), grid tracks as fractions when they are equal and fill their
+ * container, and a width or height only where fitting found the
+ * component needs one (`fit`), or where the element is drawn at a size
+ * its content does not give it (an image, an icon, an empty box).
+ */
+function layoutOf(node, nodes, fit, isRoot) {
+  const st = node.style;
+  const out = {};
+  if (!isRoot) {
+    for (const side of ["top", "right", "bottom", "left"]) out[`margin-${side}`] = st[`margin-${side}`];
+    if (st.position !== "static") for (const side of ["top", "right", "bottom", "left"]) out[side] = st[side];
+  }
+  for (const name of ["min-width", "min-height", "max-width", "max-height", "flex-basis"]) out[name] = st[name];
+  for (const name of ["grid-template-columns", "grid-template-rows"]) {
+    const tracks = st[name];
+    if (!tracks || tracks === "none") continue;
+    out[name] = fractions(tracks, name === "grid-template-columns" ? node.rect[2] : node.rect[3], st) ?? tracks;
+  }
+  for (const name of ["grid-auto-columns", "grid-auto-rows"]) out[name] = st[name];
+  const leaf = node.children.every((c) => c.node === undefined && (c.text === undefined || c.text.trim() === ""));
+  const drawn = ["img", "svg", "video", "canvas", "input", "textarea", "select", "iframe"].includes(node.tag) || (leaf && !node.svg);
+  if (drawn && !isRoot) {
+    out.width = `${node.rect[2]}px`;
+    out.height = `${node.rect[3]}px`;
+  }
+  if (fit.margin === "left" || fit.margin === "both") out["margin-left"] = "auto";
+  if (fit.margin === "both") out["margin-right"] = "auto";
+  if (fit.width !== undefined) out.width = fit.width;
+  if (fit.height !== undefined) out.height = fit.height;
+  return out;
 }
 
-// A box shorthand's value for each of its longhands (margin: 0 auto → 0, auto, 0, auto).
-function splitBox(value, name, count) {
-  if (count === 1) return [value];
-  const tokens = [];
-  let depth = 0;
-  let current = "";
-  for (const ch of value.trim()) {
-    if (ch === "(") depth++;
-    if (ch === ")") depth--;
-    if (ch === " " && depth === 0) {
-      if (current) tokens.push(current);
-      current = "";
-    } else current += ch;
+// "96px 96px 96px" filling a 288px grid → "repeat(3, minmax(0, 1fr))".
+function fractions(tracks, size, st) {
+  const parts = tracks.trim().split(/\s+/);
+  if (parts.length < 2 || !parts.every((p) => /^[\d.]+px$/.test(p))) return null;
+  const values = parts.map(parseFloat);
+  if (Math.max(...values) - Math.min(...values) > 0.5) return null;
+  const gap = parseFloat(st["column-gap"]) || 0;
+  const padding = (parseFloat(st["padding-left"]) || 0) + (parseFloat(st["padding-right"]) || 0) + (parseFloat(st["border-left-width"]) || 0) + (parseFloat(st["border-right-width"]) || 0);
+  const used = values.reduce((a, b) => a + b, 0) + gap * (values.length - 1);
+  if (Math.abs(used - (size - padding)) > 1) return null;
+  return `repeat(${values.length}, minmax(0, 1fr))`;
+}
+
+/**
+ * Render each look alone in the library app (the render route, at the
+ * product's width) and compare every element's box with the product's.
+ * An element that comes out a different width or height is pinned: 100%
+ * where the product's box fills its parent's content box, else its
+ * size. Returns whether anything was pinned (the component is written
+ * again and fitted once more).
+ */
+async function fitSizes(appUrl, slug, looks, states, viewport, display) {
+  let changed = false;
+  for (const inst of looks) {
+    const [rx, ry, rw] = inst.nodes[0].rect;
+    const url = `${appUrl}/#/render/${encodeURIComponent(slug)}/${encodeURIComponent(inst.state.name)}?x=${rx}&y=${ry}&w=${rw}`;
+    const page = await headlessPage(url, { ...viewport, display });
+    let rendered;
+    try {
+      rendered = await evaluate(
+        page.page,
+        `new Promise((done) => { const tick = () => { const root = document.querySelector('[data-render="ok"]'); if (root && !document.querySelector('[data-loading]') && root.firstElementChild) { document.fonts.ready.then(() => { const el = root.firstElementChild; done([el, ...el.querySelectorAll('*')].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })); }); } else setTimeout(tick, 50); }; tick(); })`,
+      );
+    } finally {
+      await page.close();
+    }
+    if (rendered.length !== inst.nodes.length) continue;
+    inst.nodes.forEach((node, i) => {
+      const [, , lw, lh] = node.rect;
+      const [, , mw, mh] = rendered[i];
+      const parent = i === 0 ? null : inst.nodes[node.parent];
+      if (Math.abs(lw - mw) > 0.25 && inst.fit[i].width === undefined) {
+        inst.fit[i].width = fills(node, parent, "width") ? "100%" : `${lw}px`;
+        changed = true;
+      }
+      if (Math.abs(lh - mh) > 0.25 && inst.fit[i].height === undefined) {
+        inst.fit[i].height = `${lh}px`;
+        changed = true;
+      }
+      // Displaced sideways at the right size: an auto margin the computed
+      // style reports as 0px (flex items), pushing it to its parent's end
+      // or to the middle.
+      const liveX = node.rect[0] - inst.nodes[0].rect[0];
+      const mineX = rendered[i][0] - rendered[0][0];
+      if (parent && Math.abs(liveX - mineX) > 0.5 && Math.abs(lw - mw) <= 0.25 && inst.fit[i].margin === undefined) {
+        const auto = autoMargins(node, parent);
+        if (auto) {
+          inst.fit[i].margin = auto;
+          changed = true;
+        }
+      }
+    });
   }
-  if (current) tokens.push(current);
-  if (name === "grid-template") {
-    const [rows, cols] = value.split("/");
-    return [rows?.trim() ?? value, cols?.trim() ?? "none"];
-  }
-  if (count === 2) return [tokens[0], tokens[1] ?? tokens[0]];
-  const [t, r = t, b = t, l = r] = tokens;
-  return [t, r, b, l];
+  return changed;
+}
+
+// Which horizontal margins are auto: the box sits flush against its
+// parent's content end ("left"), or centred in it ("both"); null if neither.
+function autoMargins(node, parent) {
+  const st = parent.style;
+  const start = parent.rect[0] + parseFloat(st["padding-left"]) + parseFloat(st["border-left-width"]);
+  const end = parent.rect[0] + parent.rect[2] - parseFloat(st["padding-right"]) - parseFloat(st["border-right-width"]);
+  const left = node.rect[0] - parseFloat(node.style["margin-left"]) - start;
+  const right = end - (node.rect[0] + node.rect[2] + parseFloat(node.style["margin-right"]));
+  if (Math.abs(right) <= 0.5 && left > 0.5) return "left";
+  if (Math.abs(left - right) <= 0.5 && left > 0.5) return "both";
+  return null;
+}
+
+// Whether a box fills its parent's content box along one axis.
+function fills(node, parent, axis) {
+  if (!parent) return false;
+  const st = parent.style;
+  const [a, b] = axis === "width" ? ["left", "right"] : ["top", "bottom"];
+  const inner = parent.rect[axis === "width" ? 2 : 3] - parseFloat(st[`padding-${a}`]) - parseFloat(st[`padding-${b}`]) - parseFloat(st[`border-${a}-width`]) - parseFloat(st[`border-${b}-width`]);
+  const own = node.rect[axis === "width" ? 2 : 3] + parseFloat(node.style[`margin-${a}`]) + parseFloat(node.style[`margin-${b}`]);
+  return Math.abs(own - inner) <= 0.5;
 }
 
 // ---- the app's own base ----
@@ -331,6 +353,7 @@ const kindOf = (node) => `${node.tag}|${node.svg ? 1 : 0}|${node.tag === "input"
 async function fontFaces(live) {
   const sheets = [];
   const listener = live.on("CSS.styleSheetAdded", ({ header }) => sheets.push(header));
+  await live.send("DOM.enable");
   await live.send("CSS.disable");
   await live.send("CSS.enable");
   await new Promise((r) => setTimeout(r, 150));
@@ -700,25 +723,25 @@ async function run(codebase, spec) {
     display = await displayOf(live);
     instances = [];
     for (const state of spec.states) {
+      // Read under the window's lock: another lane's held hover must not show in it.
       const read = await withForcedState(live, state.selector, state.force, async () => {
         const data = await evaluate(live, `(${READ_INSTANCE})(${JSON.stringify(state.selector)})`);
         if (!data) throw new Error(`nothing on the live page matches ${state.selector} (state ${state.name})`);
-        const declared = await declaredValues(live, state.selector, data.nodes.length);
-        return { ...data, declared };
+        return data;
       });
-      const items = [];
-      read.declared.forEach((values, i) => {
-        for (const [name, text] of Object.entries(values)) items.push({ i, name, text });
-      });
-      const resolved = await evaluate(live, `(${RESOLVE})(${JSON.stringify(state.selector)}, ${JSON.stringify(items.map(({ i, text }) => ({ i, text })))}, ${read.rootFontSize})`);
-      items.forEach((item, k) => {
-        read.declared[item.i][item.name] = resolved[k];
-      });
-      instances.push({ state, ...read });
+      const inst = { state, ...read, fit: read.nodes.map(() => ({})) };
+      inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0));
+      instances.push(inst);
     }
     faces = await fontFaces(live);
   } finally {
     live.close();
+  }
+
+  // A held state is its look with a pseudo-class on: it shares that look's fitted sizes.
+  for (const inst of instances.filter((x) => x.state.force)) {
+    const of = inst.state.of ? instances.find((x) => x.state.name === inst.state.of) : instances[0];
+    if (of && of.nodes.length === inst.nodes.length) inst.fit = of.fit;
   }
 
   // The app's base under each kind of element any instance holds.
@@ -763,6 +786,8 @@ async function run(codebase, spec) {
   }
   const imageOf = (node, inst) => images.get(new URL(node.attrs.src, inst.base).toString());
 
+  // Everything below is written again after each round of fitting sizes.
+  const emit = () => {
   // ---- one tree for every look: the default's elements, plus any a variant adds ----
   const defaultInst = instances[0];
   const variants = instances.filter((inst) => !inst.state.force);
@@ -982,6 +1007,20 @@ ${lines.join("\n")}
     if (inst.state.force) live.force = inst.state.force;
     return { name: inst.state.name, props, live };
   });
+  const unit = { states, tokens: [] };
+  if (defaultInst.backdrop) unit.backdrop = defaultInst.backdrop;
+  writeFileSync(join(folder, "component.json"), JSON.stringify(unit, null, 2) + "\n");
+  return { states, defaultInst, variants };
+  };
+
+  // ---- sizes: fitted against the product, look by look ----
+  let { states, defaultInst, variants } = emit();
+  for (let round = 0; round < 3; round++) {
+    const changed = await fitSizes(appUrl, spec.slug, variants, states, viewport, display);
+    if (!changed) break;
+    for (const inst of instances) inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0));
+    ({ states, defaultInst, variants } = emit());
+  }
   const tokens = await matchTokens(library, instances, appUrl, viewport, display);
   const unit = { states, tokens };
   if (defaultInst.backdrop) unit.backdrop = defaultInst.backdrop;
@@ -993,7 +1032,7 @@ ${lines.join("\n")}
     "",
     `Written by tools/snapshot.mjs on ${new Date().toISOString()} from ${defaultInst.base.split("?")[0]}.`,
     "",
-    "Every value in the stylesheet is the live element's computed style, except sizes, margins, offsets, grid tracks and line heights, which are the product's own declared values (CSS.getMatchedStylesForNode, variables resolved, rem at the page's root size). A value equal to the library app's own base for that element is left out.",
+    "Every value in the stylesheet is the live element's computed style; a value equal to the library app's own base for that element is left out. Widths and heights are left to the layout and pinned only where the component, rendered on its own, came out a different size from the product (100% where the product's box fills its parent, else its size); equal grid tracks that fill their container are written as fractions.",
     "",
     "## States and where they were read",
     "",

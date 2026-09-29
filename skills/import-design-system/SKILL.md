@@ -81,43 +81,34 @@ straight after.
    tell me") and survey again once they have. Never click in their
    window.
 
-3. **Plan.** Read the survey (`~/.proto/<codebase>/run/survey/` holds
-   its pictures; look at a few). Write
-   `~/.proto/<codebase>/run/plan.json`:
+3. **Plan: edit the survey's draft.** The survey writes
+   `~/.proto/<codebase>/run/survey/plan.draft.json`: every candidate as
+   a component, one state per look it saw, `Hover` and `Focus` on the
+   interactive ones, each with its picture. Its names are placeholders
+   ("Button: Connect GitHub", "Look 2"). Copy it to
+   `~/.proto/<codebase>/run/plan.json` and make the judgment it cannot,
+   quickly (this is the one step that is yours; the rest is tools):
+   - **Name everything the product's way**: components ("Button",
+     "FormItemLayout"; the class names and text in the survey, and a
+     glance at the source's component folder, settle it) and looks
+     ("Primary", "Unchecked", "With badge"). Slugs lowercase with dashes.
+   - **One component per kind**: two groups that are the same component
+     in two looks (a button and a primary button) merge, their
+     instances becoming states of one component.
+   - **Drop the page's decoration** (a promo banner's art, a close button
+     on it) and anything that is not a component of the product.
+   - **Add what the survey could not group** if the page shows it: a
+     state needs only a name and a selector (and `"force"` / `"of"` for
+     a held state).
+   The shape, for reference:
    ```jsonc
-   {
-     "palette": <survey palette, as is unless a name is wrong>,
-     "type": <survey type styles; give each a name the product would use>,
-     "components": [
-       { "slug": "button", "name": "Button", "picture": "<survey picture>",
-         "states": [
-           { "name": "Default", "selector": "<instance>" },
-           { "name": "Primary", "selector": "<instance of the other look>" },
-           { "name": "Hover", "selector": "<instance>", "force": "hover" },
-           { "name": "Focus", "selector": "<instance>", "force": "focus-visible" },
-           { "name": "Primary hover", "selector": "<instance>", "force": "hover", "of": "Primary" }
-         ] } ] }
+   { "palette": [...], "type": [...],
+     "components": [{ "slug": "button", "name": "Button", "picture": "<png>",
+       "states": [{ "name": "Default", "selector": "…" },
+                  { "name": "Primary", "selector": "…" },
+                  { "name": "Hover", "selector": "…", "force": "hover" },
+                  { "name": "Primary hover", "selector": "…", "force": "hover", "of": "Primary" }] }] }
    ```
-   The judgment is yours; the rest is copying selectors:
-   - **Exhaustive, not a census.** Every kind of component the page
-     shows gets a place: the primitives (buttons, inputs, selects,
-     checkboxes, badges, links, avatars, tabs), the fields that pair a
-     label with its control, and the composites the product leans on
-     (its page header, its panels and cards, its tables, its
-     navigation). One component per kind; its other looks are states.
-   - **Looks are states.** A survey group with several looks lists one
-     instance per look: each is a state, named for what it is in the
-     product ("Primary", "Unchecked", "With badge"), the default first.
-   - **Interactive components get their pointer and keyboard states**:
-     `Hover` (`"force": "hover"`) and `Focus` (`"force":
-     "focus-visible"`), and the same for another look with `"of"`.
-   - **Names are the product's**: the class names and the text in the
-     survey tell you ("LemonButton", "Create new project"), and a quick
-     look at the source repo's component folder settles doubts. Slugs
-     are lowercase with dashes.
-   - Prefer an instance the survey did not mark `cut` (whole on
-     screen). Leave out the page's decoration (a promo banner's art),
-     hidden native elements and anything 1px wide.
 
 4. **Run it.** `node tools/import.mjs <codebase> ~/.proto/<codebase>/run/plan.json`.
    It writes the palette, the type styles and the inventory with each

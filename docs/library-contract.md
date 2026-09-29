@@ -299,6 +299,19 @@ diffs against the live page. A component that throws
 shows its error in its own block; nothing else on the page is
 affected.
 
+## Published check pictures
+
+A published build carries at most 200 files, and every check makes
+three pictures. `tools/publish-library.mjs` packs each component's
+check pictures into a few sheets in `dist/` only
+(`components/<slug>/history/sheet-<k>.png`) and points the built
+manifest's pass pictures at their regions with a media fragment,
+`components/<slug>/history/sheet-1.png#xywh=x,y,w,h` (the file's own
+pixels). The app shows the region (`Crisp`). The live library keeps one
+file per picture. A pass also carries `verdict` (what the check found:
+`match`, `shifted`, `context`, `faint`, `offscreen` or `differs`); the
+app treats every verdict but `differs` as the product's look.
+
 ## components/<slug>/history/*.png
 
 The replica screenshot and diff image of every verification pass,

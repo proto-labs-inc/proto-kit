@@ -105,8 +105,11 @@ function summary(component: Component): string {
     if (component.unverified) return "not checked";
     return "";
   }
+  // Built means every state matched on its last check; a check may be
+  // one state of several, so the last one alone says little.
+  if (component.status === "done") return `matches the product, ${checks(history.length)}`;
   const last = history[history.length - 1];
-  if (identical(last)) return `identical after ${checks(history.length)}`;
+  if (identical(last)) return `${checks(history.length)} so far, the last one matching`;
   return `${checks(history.length)}, not identical yet`;
 }
 

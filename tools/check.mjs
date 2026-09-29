@@ -97,14 +97,15 @@ setTimeout(() => {
 // state must not leak into another state's capture.
 const results = [];
 for (const state of states) {
-  const pass = () =>
-    verifyPass({ appUrl, slug, state: state.name, liveMatch, target: { selector: state.live.selector }, force: state.live.force, out, codebase });
+  const pass = (frame) =>
+    verifyPass({ appUrl, slug, state: state.name, liveMatch, target: { selector: state.live.selector }, force: state.live.force, out, codebase: frame ? codebase : undefined });
   let result;
   try {
-    result = await pass();
-    // A capture can land on the tail of the previous state's transition:
-    // a state that differs is checked once more before it counts.
-    if (!ACCEPTED.includes(result.verdict)) result = await pass();
+    result = await pass(true);
+    // A state that differs is checked once more before it counts, against
+    // the live page itself: the first may have caught the tail of another
+    // state's transition, or a resting frame taken at a bad moment.
+    if (!ACCEPTED.includes(result.verdict)) result = await pass(false);
   } catch (error) {
     results.push({ state: state.name, verdict: "failed", error: error.message });
     continue;
@@ -143,6 +144,8 @@ function land(result, activity) {
       result.diff,
       "--live",
       result.live,
+      "--verdict",
+      result.verdict,
       "--mismatch",
       String(result.mismatch),
       "--activity",
