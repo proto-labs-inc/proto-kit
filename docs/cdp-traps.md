@@ -22,7 +22,7 @@ Traps we hit, so you don't:
 - An emulated device scale factor is not a real one. `Emulation.setDeviceMetricsOverride({ deviceScaleFactor: 2 })` on a 1x Chrome lays out in CSS pixels and snaps every fractional edge: a 1px border at left 496.328125px paints at device x 992 where the Retina window paints 993, a box at top 884.4140625 at row 1768 instead of 1769. Every component on a half pixel came out one device pixel off, which units then spent minutes proving. The headless Chrome is launched with `--force-device-scale-factor=<the window's>` (tools/cdp/headless.mjs); the same override on top of it changes nothing.
 - The colour profile differs too. The Proto window on a Retina Mac draws in Display P3; headless defaults to sRGB, so `oklch(0.43627 0.11 157.5)` came out 0,99,56 against the window's ~38,98,62. `--force-color-profile=display-p3-d65` (read from `matchMedia('(color-gamut: p3)')`) fixes it; greys never showed it.
 - Never pass `clip` to `Page.captureScreenshot` on a tab that is not the active one. Chrome resizes that tab's view to the clip while it waits for a new frame; on a background tab the frame sometimes never comes, and the resize outlives a capture that dies (the tab then reports the clip as its viewport until it is closed). `stableShot()` captures the whole viewport and cuts the clip in node instead.
-- The macOS system font is not the same face in the two Chromes: `system-ui` at weight 600 resolved to the variable `.SF NS` instance in the visible window and to the static `.SFNS-Bold` in headless (`CSS.getPlatformFontsForNode` shows it). Identical pages then differ by a few hundred pixels inside the glyphs, maxDelta near 185. A webfont declared beside the replica renders identically in both (zero). So: geometry agrees by rects, a residue confined to glyph clusters of system-font text is the browsers disagreeing, not the replica, and chasing it is the waste the 22 run paid 40 s for.
+- The macOS system font is not the same face in the two Chromes: `system-ui` at weight 600 resolved to the variable `.SF NS` instance in the visible window and to the static `.SFNS-Bold` in headless (`CSS.getPlatformFontsForNode` shows it). Once the headless Chrome runs at the window's real scale factor and colour profile (below), this is the one renderer difference left for text: a webfont declared beside the replica renders identically (zero), and system-font glyphs still differ by a few pixels (the Supabase search pill's ⌘ key: 21 to 24 pixels, all inside the glyph). A residue confined to glyph clusters of system-font text is the browsers disagreeing, not the replica; a residue anywhere else is not this trap.
 - The library app's base styles (Tailwind's preflight, the shadcn theme, its Geist font) sit under every imported component, and the product's base differs: `box-sizing`, `button { font: inherit }`, `line-height`, borders zeroed. A component module that leaves any of these to inheritance renders a pixel or two off in the library and clean nowhere else. Set them in the module; the first pass's clusters (a thin strip along an edge, text a hair taller) say which one was left out.
 - svg className is an object, not a string.
 - The live viewport can change under you mid-task (the person resizes, a
@@ -30,10 +30,14 @@ Traps we hit, so you don't:
   changed state, not that your replica is bad. Capture, then re-read the
   rect and innerWidth, and retry until two consecutive reads agree.
 - Render the replica at the element's absolute page coordinates, not just
-  the same fractional phase. Two independent discoveries forced this:
-  dashed borders (dash phase accumulates from absolute position) and
-  gradients (Skia's dithering is device-position-keyed). Absolute-position
-  placement subsumes phase matching: make it the default.
+  the same fractional phase: dash phase accumulates from absolute position
+  and Skia's gradient dithering is keyed to device position. This only
+  holds with a real device scale factor on both sides: under an emulated
+  one (above), the replica's fractional coordinates snapped to whole CSS
+  pixels and every half-pixel edge landed one device pixel off regardless.
+  Read the rect from the live element by selector at full precision
+  (`getBoundingClientRect()`); a rect typed with two decimals moves every
+  edge a fraction of a pixel.
 - Verify only after `document.fonts.status === "loaded"`: rect probes
   taken while a woff2 is still loading report plausible-looking
   fallback-font metrics that are all slightly wrong.
