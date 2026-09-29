@@ -131,7 +131,10 @@ step(`${plan.palette?.length ?? 0} colours, ${plan.type?.length ?? 0} type style
 const built = [];
 const toFix = [];
 const failed = [];
-const queue = [...components];
+// The heaviest first (most states to read and check), so a big
+// component starts in the first batch instead of becoming the tail; the
+// library still lists them in the plan's order.
+const queue = [...components].sort((a, b) => b.states.length - a.states.length);
 async function lane() {
   for (let component = queue.shift(); component; component = queue.shift()) {
     const began = Date.now();
