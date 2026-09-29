@@ -13,7 +13,8 @@
  *                "form-field-organization": "FormItemLayout|form-item-layout" },   from the name, or after a |
  *     "looks": { "checkbox": { "Default": "Checked", "Look 2": "Unchecked" } },   the product's names for looks
  *     "merge": { "button-connect-github": { "button-feedback": "Text" } },   another draft component joins this
- *                                                        one as a look (its held states come with it, "<look> hover")
+ *                                                        one as a look (its other looks come with it, "<look> <theirs>",
+ *                                                        and its held states, "<look> hover")
  *     "add":   [ { "slug", "name", "states": [ … ] } ]      components the survey did not find
  *   }
  *
@@ -54,10 +55,18 @@ for (const [target, joining] of Object.entries(edits.merge ?? {})) {
   for (const [other, look] of Object.entries(joining)) {
     known(other, `merge into ${target}`);
     const from = bySlug.get(other);
-    const resting = from.states.find((s) => !s.force);
-    into.states.push({ name: look, selector: resting.selector });
+    // Every resting look comes: the first takes the given name, the rest
+    // theirs after it; held states follow the look they were held on
+    // (their "of", else the first).
+    const renamed = new Map();
+    from.states.filter((s) => !s.force).forEach((resting, k) => {
+      const name = k === 0 ? look : `${look} ${resting.name.toLowerCase()}`;
+      renamed.set(resting.name, name);
+      into.states.push({ name, selector: resting.selector });
+    });
     for (const held of from.states.filter((s) => s.force)) {
-      into.states.push({ name: `${look} ${held.name.toLowerCase()}`, selector: held.selector, force: held.force, of: look });
+      const of = held.of ? renamed.get(held.of) : look;
+      into.states.push({ name: `${look} ${held.name.toLowerCase()}`, selector: held.selector, force: held.force, of });
     }
     bySlug.delete(other);
   }
