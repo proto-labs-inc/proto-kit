@@ -987,7 +987,9 @@ async function run(codebase, spec) {
         attrs.push("disabled");
         continue;
       }
-      attrs.push(`${jsxName}=${JSON.stringify(value)}`);
+      // As an expression, like a text child: a quoted JSX attribute reads
+      // backslashes literally, so a JSON string there is not the same string.
+      attrs.push(`${jsxName}={${JSON.stringify(value)}}`);
     }
     if (node.tag === "button" && !("type" in node.attrs)) attrs.push(`type="button"`);
     if (id === 0 && valueSlot === 0) attrs.push(`defaultValue={value}`);
