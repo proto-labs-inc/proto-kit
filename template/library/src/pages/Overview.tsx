@@ -56,7 +56,7 @@ export function Overview({ library, courier }: Props) {
                 <ComponentBlock
                   key={component.slug}
                   component={component}
-                  all={manifest.components}
+                  library={library}
                   view={componentView(component, library)}
                   courier={courier}
                   justAdded={justAdded.has(component.slug)}

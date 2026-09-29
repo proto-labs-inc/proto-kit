@@ -272,9 +272,16 @@ export function skipHeading(kind: SkipKind): string {
  * says so, and says when it came back with fewer states or fewer
  * checks than the components built in the first run.
  */
-export function rebuiltNote(component: Component, all: Component[]): string | null {
-  if (component.status !== "done" || !component.screenshot) return null;
-  const others = all.filter((c) => c.status === "done" && c.slug !== component.slug && !c.screenshot);
+// A component the user asked the import to build again: the writer
+// records that as its "Queued …" line (take-queued), so the stream says
+// it, not the picture (every component has the product's picture now).
+function askedFor(slug: string, events: ActivityEvent[]): boolean {
+  return events.some((e) => e.component === slug && e.activity.startsWith("Queued "));
+}
+
+export function rebuiltNote(component: Component, { manifest, events }: Library): string | null {
+  if (component.status !== "done" || !askedFor(component.slug, events)) return null;
+  const others = manifest.components.filter((c) => c.status === "done" && c.slug !== component.slug && !askedFor(c.slug, events));
   const parts: string[] = [];
   if (others.length > 0) {
     const fewestStates = Math.min(...others.map((c) => c.states.length));

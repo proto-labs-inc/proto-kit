@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { ArrowRightIcon, ExternalLinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { rebuiltNote, type Component, type ComponentView, type Courier } from "@/library";
+import { rebuiltNote, type Component, type ComponentView, type Courier, type Library } from "@/library";
 import { href } from "@/route";
 import type { SendOutcome } from "@/courier";
 import { CheckStrip } from "./Checks";
@@ -13,7 +13,7 @@ import { Stage } from "./Stage";
 
 type Props = {
   component: Component;
-  all: Component[];
+  library: Library;
   view: ComponentView;
   courier: Courier;
   justAdded: boolean;
@@ -34,14 +34,14 @@ type Ask = "idle" | "asking" | SendOutcome;
  * its frame and the latest check shows as it lands; once built, the
  * picture develops into the real thing.
  */
-export function ComponentBlock({ component, all, view, courier, justAdded }: Props) {
+export function ComponentBlock({ component, library, view, courier, justAdded }: Props) {
   const [comparing, setComparing] = useState(false);
   const [ask, setAsk] = useState<Ask>("idle");
   const send = async (call: Courier["ask"]) => {
     setAsk("asking");
     setAsk(await call(component.slug));
   };
-  const note = rebuiltNote(component, all);
+  const note = rebuiltNote(component, library);
   const holds = view.kind === "preview" ? "component" : "picture";
   return (
     <section id={component.slug} className="group flex scroll-mt-8 flex-col gap-2">

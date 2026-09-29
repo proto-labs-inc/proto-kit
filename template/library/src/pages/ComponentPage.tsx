@@ -38,7 +38,7 @@ export function ComponentPage({ slug, state, library, courier }: Props) {
   }
   const view = componentView(component, library);
   const moving = view.kind === "working";
-  const note = rebuiltNote(component, manifest.components);
+  const note = rebuiltNote(component, library);
   return (
     <main className="mx-auto grid max-w-5xl gap-10 px-6 py-10 md:grid-cols-[1fr_12rem]">
       <div className="flex min-w-0 flex-col gap-8">

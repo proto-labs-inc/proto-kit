@@ -1018,6 +1018,9 @@ ${lines.join("\n")}
   };
 }
 
+// The SVG elements that paint; the svg and g around them only pass colours down.
+const SHAPES = ["path", "circle", "rect", "line", "polyline", "polygon", "ellipse", "text", "use"];
+
 /** The manifest's palette colours the component paints with, compared as the display draws them. */
 async function matchTokens(library, instances, appUrl, viewport, display) {
   const manifestPath = join(library, "public", "manifest.json");
@@ -1027,7 +1030,13 @@ async function matchTokens(library, instances, appUrl, viewport, display) {
   const used = new Set();
   for (const inst of instances) {
     for (const node of inst.nodes) {
+      const hasText = node.children.some((c) => c.text !== undefined && c.text.trim() !== "");
       for (const name of ["color", "background-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "outline-color", "fill", "stroke", "text-decoration-color", "caret-color"]) {
+        // Only colours something is painted with: text colour where there
+        // is text, fill and stroke on an icon, a border where it is drawn.
+        if (name === "color" && !hasText && !node.svg) continue;
+        if ((name === "fill" || name === "stroke") && !SHAPES.includes(node.tag)) continue;
+        if (PAINTED_BY[name] && !PAINTED_BY[name](node.style, node)) continue;
         const value = node.style[name];
         if (value && !/^(none|transparent|currentcolor)$/i.test(value) && !/rgba\(0, 0, 0, 0\)/.test(value)) used.add(value);
       }
