@@ -61,7 +61,7 @@ export function ComponentCard({ component, view, courier, justAdded }: Props) {
         </AnimatePresence>
         {view.kind === "working" && <Light />}
         {picture && view.kind !== "working" && (
-          <span className="absolute top-2.5 left-3 flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="absolute top-2.5 left-3 z-[1] flex items-center gap-1 text-[11px] text-white mix-blend-difference">
             <ImageIcon className="size-3" /> Picture
           </span>
         )}
