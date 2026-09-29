@@ -254,7 +254,7 @@ export function skipHeading(kind: SkipKind): string {
     case "could-not-isolate":
       return "Could not be built on its own";
     case "did-not-match":
-      return "Never matched the product closely enough";
+      return "Not identical to the product yet";
     case "not-tried":
       return "Not tried this run";
   }
