@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Rendered, moduleOf, statesOf } from "@/components/Rendered";
+import { Rendered, moduleOf } from "@/components/Rendered";
 import type { ComponentState, Library } from "@/library";
 import type { Placement } from "@/route";
 
@@ -8,11 +8,26 @@ type Props = { slug: string; state: string; placement: Placement; library: Libra
 type Lookup =
   | { kind: "loading" }
   | { kind: "missing"; why: string }
-  | { kind: "ready"; module: string; look: ComponentState };
+  | { kind: "ready"; module: string; look: ComponentState; backdrop: string | null };
+
+// The unit's own component.json: its states, and the colour it sat on
+// in the product (its nearest painted ancestor), when the product
+// painted one. Read from the folder, not the manifest, so a unit
+// verifies before anything is landed.
+type Unit = { states: ComponentState[]; backdrop?: string };
+const UNITS = import.meta.glob<{ default: Unit }>("/src/components/*/component.json");
+
+async function unitOf(slug: string): Promise<Unit | null> {
+  const load = UNITS[`/src/components/${slug}/component.json`];
+  if (!load) return null;
+  return (await load()).default;
+}
 
 /**
  * One component in one state, alone on the product's surface, at the
- * absolute coordinates of the instance it is compared with: the
+ * absolute coordinates of the instance it is compared with, painted on
+ * the backdrop it sat on in the product (a translucent control reads
+ * differently on the page colour than on its card): the
  * fidelity check renders this route headlessly and diffs the clip
  * against the live page (docs/cdp-traps.md on why position matters).
  * The module and the state come from the unit's own folder, not the
@@ -28,11 +43,11 @@ export function RenderPage({ slug, state, placement, library }: Props) {
       setLookup({ kind: "missing", why: `no module in src/components/${slug}/` });
       return;
     }
-    statesOf(slug).then((states) => {
+    unitOf(slug).then((unit) => {
       if (!current) return;
-      const look = states?.find((s) => s.name === state);
+      const look = unit?.states.find((s) => s.name === state);
       if (!look) setLookup({ kind: "missing", why: `no state "${state}" in src/components/${slug}/component.json` });
-      else setLookup({ kind: "ready", module, look });
+      else setLookup({ kind: "ready", module, look, backdrop: unit?.backdrop ?? null });
     });
     return () => {
       current = false;
@@ -47,7 +62,10 @@ export function RenderPage({ slug, state, placement, library }: Props) {
       return <p data-render={lookup.why} className="m-0 p-4 text-sm text-muted-foreground">{lookup.why}</p>;
     case "ready":
       return (
-        <div data-render="ok" style={{ position: "absolute", left: placement.x, top: placement.y, width: placement.width ?? undefined }}>
+        <div
+          data-render="ok"
+          style={{ position: "absolute", left: placement.x, top: placement.y, width: placement.width ?? undefined, background: lookup.backdrop ?? undefined }}
+        >
           <Rendered name={name} module={lookup.module} state={lookup.look} />
         </div>
       );
