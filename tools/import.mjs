@@ -61,15 +61,26 @@ spawnSync("mkdir", ["-p", scratch]);
 const tool = (name) => join(kit, "tools", name);
 const step = (message) => console.error(`… ${message}`);
 
-/** Run a kit tool to the end; resolves { status, stdout, stderr }. */
+/**
+ * Run a kit tool to the end, or stop it after two minutes: one stuck
+ * component never holds up the import behind it (it is listed as
+ * failed). Resolves { status, stdout, stderr }.
+ */
 function run(name, toolArgs) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [tool(name), ...toolArgs], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
+    const limit = setTimeout(() => {
+      stderr += `\n${name} did not finish within 2 minutes and was stopped`;
+      child.kill("SIGKILL");
+    }, 120_000);
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
-    child.on("close", (status) => resolve({ status, stdout, stderr }));
+    child.on("close", (status) => {
+      clearTimeout(limit);
+      resolve({ status, stdout, stderr });
+    });
   });
 }
 

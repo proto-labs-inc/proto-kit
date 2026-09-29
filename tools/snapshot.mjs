@@ -259,12 +259,13 @@ async function fitSizes(appUrl, slug, looks, states, viewport, display) {
     try {
       rendered = await evaluate(
         page.page,
-        `new Promise((done) => { const tick = () => { const root = document.querySelector('[data-render="ok"]'); if (root && !document.querySelector('[data-loading]') && root.firstElementChild) { document.fonts.ready.then(() => { const el = root.firstElementChild; done([el, ...el.querySelectorAll('*')].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })); }); } else setTimeout(tick, 50); }; tick(); })`,
+        // At most 15 s: a look the route cannot show is left unfitted, never waited on.
+        `new Promise((done) => { const until = Date.now() + 15000; const tick = () => { const root = document.querySelector('[data-render="ok"]'); if (root && !document.querySelector('[data-loading]') && root.firstElementChild) { Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 3000))]).then(() => { const el = root.firstElementChild; done([el, ...el.querySelectorAll('*')].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })); }); } else if (Date.now() > until) done(null); else setTimeout(tick, 50); }; tick(); })`,
       );
     } finally {
       await page.close();
     }
-    if (rendered.length !== inst.nodes.length) continue;
+    if (!rendered || rendered.length !== inst.nodes.length) continue;
     inst.nodes.forEach((node, i) => {
       const [, , lw, lh] = node.rect;
       const [, , mw, mh] = rendered[i];
@@ -1180,6 +1181,12 @@ async function matchTokens(library, instances, appUrl, viewport, display) {
     await page.close();
   }
 }
+
+// A snapshot that cannot finish says so; it never hangs the import behind it.
+setTimeout(() => {
+  console.error("the component could not be written within 90 s (the page or the library app stopped answering); try it again");
+  process.exit(2);
+}, 90_000).unref();
 
 try {
   const result = await main();

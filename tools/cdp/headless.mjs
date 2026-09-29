@@ -136,10 +136,21 @@ export async function headlessPage(url, { width, height, display }, port = HEADL
     deviceScaleFactor: display.dpr,
     mobile: false,
   });
+  // Bounded: a navigation whose load event never comes (several lanes
+  // opening tabs at once) fails plainly instead of holding a lane forever.
   const loaded = page.once("Page.loadEventFired");
   await page.send("Page.navigate", { url });
-  await loaded;
-  await evaluate(page, "document.fonts.ready.then(() => document.fonts.status)");
+  const late = (ms, what) => new Promise((_, reject) => setTimeout(() => reject(new Error(`the headless page ${what} within ${ms / 1000} s`)), ms).unref());
+  try {
+    await Promise.race([loaded, late(20_000, "did not load")]);
+    await Promise.race([evaluate(page, "document.fonts.ready.then(() => document.fonts.status)"), late(8_000, "did not finish loading its fonts")]);
+  } catch (error) {
+    page.close();
+    const b = await connect(info.webSocketDebuggerUrl);
+    await b.send("Target.closeTarget", { targetId }).catch(() => {});
+    b.close();
+    throw error;
+  }
   const closeTab = async () => {
     page.close();
     const b = await connect(info.webSocketDebuggerUrl);
