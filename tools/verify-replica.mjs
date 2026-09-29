@@ -25,9 +25,10 @@
  *     rect, screenshot, diff, live, viewport, display }
  * verdict is "match" (no pixel differs), "shifted" (every difference
  * goes away with the replica moved one device pixel: a placement, not
- * a look), "context" (every difference lies in a photo, which each
- * browser scales with its own rasteriser, or under something the page
- * lays over the component), "faint" (a few stray edge pixels, under
+ * a look), "context" (every difference lies in a photo the replica
+ * shows too, loaded, differing in under a fifth of its pixels, which
+ * each browser scales with its own rasteriser, or under something the
+ * page lays over the component), "faint" (a few stray edge pixels, under
  * 0.3% of the component), "offscreen" (the live element is cut off by
  * the viewport, so only its visible part was compared) or "differs".
  * With a codebase, a resting state is cut from the import's one frame
@@ -151,6 +152,43 @@ function within(clusters, boxes) {
   );
 }
 
+// A photo scaled by two browsers' rasterisers differs along its edges
+// and in fine detail, never in most of its pixels: beyond a fifth of
+// them it is another picture, or none.
+const IMAGE_SLACK = 0.2;
+
+/** Differing device pixels inside one box (CSS px, relative to the capture), at the diff's threshold. */
+function mismatchIn(live, mine, [bx, by, bw, bh], dpr) {
+  const x0 = Math.max(0, Math.floor(bx * dpr));
+  const y0 = Math.max(0, Math.floor(by * dpr));
+  const x1 = Math.min(live.width, mine.width, Math.ceil((bx + bw) * dpr));
+  const y1 = Math.min(live.height, mine.height, Math.ceil((by + bh) * dpr));
+  let count = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * live.width + x) * 4;
+      const j = (y * mine.width + x) * 4;
+      const delta = Math.max(Math.abs(live.data[i] - mine.data[j]), Math.abs(live.data[i + 1] - mine.data[j + 1]), Math.abs(live.data[i + 2] - mine.data[j + 2]));
+      if (delta > THRESHOLD) count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * The live page's photos that count as context: all of them when the
+ * replica shows as many, every one loaded, and each differs in under
+ * IMAGE_SLACK of its pixels; none otherwise (a missing or different
+ * picture is the replica's own difference).
+ */
+function photosAsContext(images, replicaImages, livePath, minePath, dpr) {
+  if (images.length === 0 || replicaImages.count !== images.length || !replicaImages.loaded) return [];
+  const live = decodePng(readFileSync(livePath));
+  const mine = decodePng(readFileSync(minePath));
+  const close = images.every((box) => mismatchIn(live, mine, box, dpr) < IMAGE_SLACK * box[2] * box[3] * dpr * dpr);
+  return close ? images : [];
+}
+
 /** Differing device pixels with the replica moved by (dx, dy), at the diff's threshold. */
 function shiftedMismatch(live, mine, dx, dy) {
   let count = 0;
@@ -200,10 +238,10 @@ function third(point, size, names) {
   return names[1];
 }
 
-function activityFor(verdict, clusters, rect, context) {
+function activityFor(verdict, clusters, rect, photos) {
   switch (verdict) {
     case "context":
-      if (within(clusters, context.images)) return "Matches the product; its photo is scaled a little differently by each browser";
+      if (within(clusters, photos)) return "Matches the product; its photo is scaled a little differently by each browser";
       return "Matches the product where the page does not lay something over it";
     case "faint":
       return `Matches the product but for a faint edge ${whereOn(clusters[0], rect.w, rect.h)}`;
@@ -262,6 +300,7 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     live.close();
   }
 
+  let replicaImages;
   const url = `${appUrl.replace(/\/+$/, "")}/#/render/${encodeURIComponent(slug)}/${encodeURIComponent(state)}?x=${rect.x}&y=${rect.y}&w=${rect.w}`;
   const replica = await headlessPage(url, { width, height, display });
   try {
@@ -269,6 +308,12 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     const outcome = await evaluate(replica.page, "document.querySelector('[data-render]').dataset.render");
     if (outcome !== "ok") throw new Error(`the render route could not show ${slug}/${state}: ${outcome}`);
     await evaluate(replica.page, "document.fonts.ready.then(() => document.fonts.status)");
+    // The replica's own photos, to tell a photo each browser scales
+    // differently from one the replica lacks or never loaded.
+    replicaImages = await evaluate(
+      replica.page,
+      `(() => { const media = [...document.querySelector('[data-render]').querySelectorAll('img, video, canvas')]; return { count: media.length, loaded: media.every((e) => (e.tagName === 'IMG' ? e.complete && e.naturalWidth > 0 : e.tagName !== 'VIDEO' || e.readyState >= 2)) }; })()`,
+    );
     const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`;
     // The headless tab is the active one in its own browser, where a
     // clipped capture is safe: only the component's pixels come back, not
@@ -281,6 +326,7 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
   const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr });
   let verdict = "match";
   let shifted = null;
+  let photos = [];
   if (result.diffPixels > 0) {
     shifted = bestShift(files.live, files.screenshot);
     // A move uncovers a one-pixel rim; a residue no bigger than that rim is a placement.
@@ -288,8 +334,9 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     // A few stray edge pixels (under 0.3% of the component) are antialiasing
     // the page's own layers decide, not a look the component gets wrong.
     const faint = Math.max(12, Math.round(0.003 * rect.w * rect.h * display.dpr * display.dpr));
+    photos = photosAsContext(context.images, replicaImages, files.live, files.screenshot, display.dpr);
     if (shifted.mismatch <= rim && shifted.mismatch < result.diffPixels / 4) verdict = "shifted";
-    else if (within(result.clusters, [...context.images, ...context.covers])) verdict = "context";
+    else if (within(result.clusters, [...photos, ...context.covers])) verdict = "context";
     else if (result.diffPixels <= faint) verdict = "faint";
     else verdict = "differs";
   }
@@ -301,7 +348,7 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     shifted,
     maxDelta: result.maxDelta,
     clusters: result.clusters,
-    activity: activityFor(verdict, result.clusters, rect, context),
+    activity: activityFor(verdict, result.clusters, rect, photos),
     rect: [rect.x, rect.y, rect.w, rect.h],
     ...files,
     viewport: [width, height],
