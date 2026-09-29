@@ -115,17 +115,23 @@ A build the site did not start (no brief yet) streams too: the brief id
 
 ### Rebuilding one section
 
-A brief whose run is `rebuild-section` asks for one section of a
-finished build to be changed: `get_brief` gives the request
-(`description`), the section (`section`, a node id of the build's tree)
-and the build it belongs to (`parent_brief_id`, whose tree.json names
-the node and its `marker`). The site has already shown the section
-frosting over. Change that component in the prototype's workspace, then
-report on the rebuild's own brief id: `pass` for each attempt, and when it
-is done, capture the component as the prototype now draws it and send
-`matched <briefId> --codebase <id> <nodeId> --image <png> --rect x,y,w,h`
-so the old version turns to dust as the new one gathers. Close the brief
-with `report_progress` `done`.
+A brief whose run is `rebuild-section` is a change the user asked for
+from the Frame's element picker: `get_brief` gives the prototype
+(`prototype_slug`), the component (`section`, its `data-proto-id`) and
+the change itself (`description`, the Frame's full edit prompt: follow
+it, it scopes the edit to that component and its variant). The Frame
+has already frosted the component over. Report `started`, make the
+change in the prototype's workspace (the running dev server shows it as
+you save), then `report_progress` `done`: the Frame blows the frost away
+over the updated component.
+
+When the prototype came from a streamed build (`parent_brief_id` is
+set), also report on the build's stream so its history shows the
+change: `pass <briefId> --codebase <id> <nodeId> <n>` per attempt and,
+when done, capture the component as the prototype now draws it and send
+`matched <briefId> --codebase <id> <nodeId> --image <png> --rect
+x,y,w,h`. The node is the one whose `marker` is the section, in the
+parent build's `tree.json` curation.
 
 ## Where it lives
 
