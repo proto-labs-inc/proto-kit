@@ -11,7 +11,7 @@ import { clock } from "@/time";
 type Props = { component: Component; library: Library; moving: boolean };
 
 /**
- * Side by side with the product: the reveal beneath a component's preview (MAA-163),
+ * How this was matched: the reveal beneath a component's preview (MAA-163),
  * with every pass the import made against the product, opened on the
  * finished pass with the earlier ones a step back, and the activity
  * for the component underneath. Open by itself while the component is
@@ -24,7 +24,7 @@ export function MatchedView({ component, library, moving }: Props) {
         render={<button type="button" className="flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground" />}
       >
         <ChevronDownIcon className="size-4 transition-transform group-data-[panel-open]/matched:rotate-180" />
-        <span className="font-medium text-foreground">Side by side with the product</span>
+        <span className="font-medium text-foreground">How this was matched</span>
         <span>{summary(component)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -46,8 +46,8 @@ function summary(component: Component): string {
     return "";
   }
   const last = history[history.length - 1];
-  if (last.mismatch === 0) return `identical after ${tries(history.length)}`;
-  return `${tries(history.length)}, not identical yet`;
+  if (last.mismatch === 0) return `matches the product after ${tries(history.length)}`;
+  return `${tries(history.length)}, ${last.mismatch.toLocaleString("en-GB")} pixels still differ`;
 }
 
 function tries(n: number): string {
@@ -112,7 +112,7 @@ function Passes({ component, moving }: { component: Component; moving: boolean }
 }
 
 /** A pass's two captures share one frame: white, at 1x, with the same ring. */
-const PANEL = "flex-1 rounded-lg bg-background py-3 ring-1 ring-foreground/10";
+const PANEL = "flex-1 rounded-lg bg-white py-3 ring-1 ring-foreground/10";
 
 /** The diff image, or a plain "no difference" panel when the pass was clean. */
 function Difference({ pass, index }: { pass: Pass; index: number }) {

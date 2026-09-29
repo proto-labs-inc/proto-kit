@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import type { Component, Token } from "@/library";
 import { href } from "@/route";
 
@@ -21,18 +20,11 @@ export function TokenSwatches({ tokens, components }: Props) {
       {[...groups].map(([group, list]) => (
         <div key={group}>
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{group}</h3>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3">
             {list.map((token) => (
-              <motion.div
-                key={token.name}
-                layout
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: "spring", stiffness: 380, damping: 26 }}
-                className="flex flex-col gap-2"
-              >
+              <div key={token.name} className="flex flex-col gap-1.5">
                 <div
-                  className="h-16 rounded-xl ring-1 ring-foreground/10"
+                  className="h-12 rounded-lg ring-1 ring-foreground/10"
                   style={{ background: token.value }}
                   title={token.value}
                 />
@@ -44,7 +36,7 @@ export function TokenSwatches({ tokens, components }: Props) {
                   </div>
                   <UsedBy token={token} components={components} />
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>

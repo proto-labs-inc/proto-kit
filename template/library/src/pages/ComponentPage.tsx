@@ -134,7 +134,7 @@ function States({ component, view, state, courier }: StatesProps) {
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
-  return <div className="overflow-hidden rounded-xl bg-background ring-1 ring-foreground/10">{children}</div>;
+  return <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">{children}</div>;
 }
 
 /** The colours the component is made of, from the palette, each a swatch with its name. */
