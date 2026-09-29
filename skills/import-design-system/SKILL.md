@@ -43,8 +43,9 @@ read their source to learn them; the signatures here are complete.
 node tools/host-library.mjs <codebase>             serve the library (idempotent); prints local:, tunnel:
 node tools/library.mjs init <codebase> <codebase> <source> --page-url <url> --page-title "<title>" --favicon <file>
 node tools/publish-library.mjs <codebase> [--wait] publish; returns at once when one is running (it carries yours)
-node tools/survey.mjs <codebase>                    the page in one read (≈1 s): page, palette, type, candidates
-node tools/import.mjs <codebase> <plan.json>        run a plan: colours, type, inventory, every component
+node tools/survey.mjs <codebase>                    the page in one read (≈1 s): prints the draft plan's summary
+node tools/plan.mjs <codebase> '<edits>'            the draft plus your edits → run/plan.json
+node tools/import.mjs <codebase>                    run the plan: colours, type, inventory, every component
 node tools/snapshot.mjs <codebase> <json | @file>   write one component from its live instances
 node tools/check.mjs <codebase> <slug> [--state <name>] [--activity "<line>"]   check it; each pass lands
 node tools/courier-up.mjs <codebase>                this laptop's courier, up and answering (idempotent)
@@ -82,38 +83,37 @@ straight after.
    tell me") and survey again once they have. Never click in their
    window.
 
-3. **Plan: edit the survey's draft.** The survey writes
-   `~/.proto/<codebase>/run/survey/plan.draft.json`: every candidate as
-   a component, one state per look it saw, `Hover` and `Focus` on the
-   interactive ones, each with its picture. Its names are placeholders
-   ("Button: Connect GitHub", "Look 2"). Copy it to
-   `~/.proto/<codebase>/run/plan.json` and make the judgment it cannot,
-   quickly (this is the one step that is yours; the rest is tools; the
-   draft and its pictures hold what you need, so do not read the live
-   page yourself):
-   - **Name everything the product's way**: components ("Button",
-     "FormItemLayout"; the class names and text in the survey, and a
-     glance at the source's component folder, settle it) and looks
-     ("Primary", "Unchecked", "With badge"). Slugs lowercase with dashes.
-   - **One component per kind**: two groups that are the same component
-     in two looks (a button and a primary button) merge, their
-     instances becoming states of one component.
-   - **Drop the page's decoration** (a promo banner's art, a close button
-     on it) and anything that is not a component of the product.
-   - **Add what the survey could not group** if the page shows it: a
-     state needs only a name and a selector (and `"force"` / `"of"` for
-     a held state).
-   The shape, for reference:
-   ```jsonc
-   { "palette": [...], "type": [...],
-     "components": [{ "slug": "button", "name": "Button", "picture": "<png>",
-       "states": [{ "name": "Default", "selector": "…" },
-                  { "name": "Primary", "selector": "…" },
-                  { "name": "Hover", "selector": "…", "force": "hover" },
-                  { "name": "Primary hover", "selector": "…", "force": "hover", "of": "Primary" }] }] }
+3. **Plan: edit the survey's draft, briefly.** The survey prints the
+   draft one component a line: its slug, its looks with their text, and
+   its picture (open a few pictures if a name is unclear). The draft
+   takes every candidate as a component with placeholder names. Say
+   only what you change, in one call to `tools/plan.mjs`; it writes
+   `~/.proto/<codebase>/run/plan.json`:
    ```
+   node tools/plan.mjs <codebase> '{
+     "keep":  ["button-connect-github", "checkbox", "form-field-organization", …],
+     "merge": { "button-connect-github": { "button-feedback": "Text" } },
+     "name":  { "button-connect-github": "Button", "form-field-organization": "FormItemLayout|form-item-layout" },
+     "looks": { "checkbox": { "Default": "Checked", "Look 2": "Unchecked" } }
+   }'
+   ```
+   This is the one step that is yours; the rest is tools, and the
+   summary holds what you need, so do not read the live page yourself:
+   - **Keep every kind of component the product has**: primitives,
+     fields, composites (header, panel, table, navigation). Leave out
+     the page's decoration (a promo banner and its buttons) and
+     anything that is not the product's component.
+   - **One component per kind**: groups that are one component in two
+     looks merge (`merge`: the other's look joins, its hover and focus
+     with it).
+   - **The product's names** for components and looks (`name`, `looks`).
+     Slugs follow the name, or come after a `|`.
+   - **Anything missing** goes in `"add"` as `{ "slug", "name", "states":
+     [{ "name", "selector", "force"?, "of"? }] }`.
 
-4. **Run it.** `node tools/import.mjs <codebase> ~/.proto/<codebase>/run/plan.json`.
+4. **Run it.** `node tools/import.mjs <codebase>` (it reads the plan
+   `plan.mjs` wrote), with `node tools/courier-up.mjs <codebase>` in
+   the background beside it.
    It writes the palette, the type styles and the inventory with each
    component's picture, then writes and checks every component, eight
    at a time; each check lands in the library as it is made (the user

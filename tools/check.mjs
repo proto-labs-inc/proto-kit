@@ -30,7 +30,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { verifyPass } from "./verify-replica.mjs";
+import { nextPass, verifyPass } from "./verify-replica.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 // Verdicts that count as the product's look: identical, a one-pixel
@@ -93,36 +93,38 @@ setTimeout(() => {
   process.exit(2);
 }, budget).unref();
 
-// One state at a time: a pseudo-class held on the live element for one
-// state must not leak into another state's capture.
-const results = [];
-for (const state of states) {
-  const pass = (frame) =>
-    verifyPass({ appUrl, slug, state: state.name, liveMatch, target: { selector: state.live.selector }, force: state.live.force, out, codebase: frame ? codebase : undefined });
-  let result;
-  try {
-    result = await pass(true);
-    // A state that differs is checked once more before it counts, against
-    // the live page itself: the first may have caught the tail of another
-    // state's transition, or a resting frame taken at a bad moment.
-    if (!ACCEPTED.includes(result.verdict)) result = await pass(false);
-  } catch (error) {
-    results.push({ state: state.name, verdict: "failed", error: error.message });
-    continue;
-  }
-  const activity = options.activity ?? label(state.name, result.activity);
-  if (options.land) land(result, activity);
-  results.push({
-    state: state.name,
-    verdict: result.verdict,
-    mismatch: result.mismatch,
-    shifted: result.shifted,
-    clusters: result.clusters.slice(0, 4),
-    activity,
-  });
-}
-const matched = results.every((r) => ACCEPTED.includes(r.verdict));
-console.log(JSON.stringify({ slug, states: results, matched }));
+// Every state at once: the window's lock keeps one state's held
+// pseudo-class out of another's capture, and resting states are cut
+// from the run's frame. Each state has its own pass numbers (two per
+// state: its check and a possible second look), so none collide.
+const first = nextPass(out);
+const results = await Promise.all(
+  states.map(async (state, k) => {
+    const pass = (frame, n) =>
+      verifyPass({ appUrl, slug, state: state.name, liveMatch, target: { selector: state.live.selector }, force: state.live.force, out, codebase: frame ? codebase : undefined, pass: n });
+    let result;
+    try {
+      result = await pass(true, first + k * 2);
+      // A state that differs is checked once more before it counts, against
+      // the live page itself: the first may have caught the tail of another
+      // state's transition, or a resting frame taken at a bad moment.
+      if (!ACCEPTED.includes(result.verdict)) result = await pass(false, first + k * 2 + 1);
+    } catch (error) {
+      return { state: state.name, verdict: "failed", error: error.message };
+    }
+    const activity = options.activity ?? label(state.name, result.activity);
+    return { state: state.name, result, activity };
+  }),
+);
+// Landed in the order of component.json, so the history reads state by state.
+for (const entry of results) if (entry.result && options.land) land(entry.result, entry.activity);
+const summary = results.map((entry) => {
+  if (!entry.result) return entry;
+  const { result, activity } = entry;
+  return { state: entry.state, verdict: result.verdict, mismatch: result.mismatch, shifted: result.shifted, clusters: result.clusters.slice(0, 4), activity };
+});
+const matched = summary.every((r) => ACCEPTED.includes(r.verdict));
+console.log(JSON.stringify({ slug, states: summary, matched }));
 
 // The pass's line names the state when the component has more than one.
 function label(stateName, activity) {

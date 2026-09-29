@@ -9,7 +9,8 @@
  * never queues builds). What does not match stays "extracting" and is
  * listed for a unit to fix.
  *
- * Usage: node tools/import.mjs <codebase> <plan.json> [--lanes <n>]
+ * Usage: node tools/import.mjs <codebase> [<plan.json>] [--lanes <n>]
+ *   The plan defaults to ~/.proto/<codebase>/run/plan.json (tools/plan.mjs).
  *
  * The plan is the orchestrator's decisions on top of tools/survey.mjs:
  *   {
@@ -46,13 +47,14 @@ for (let i = 0; i < args.length; i += 1) {
     i += 1;
   } else positional.push(args[i]);
 }
-const [codebase, planPath] = positional;
-if (!codebase || !planPath) {
-  console.error("usage: node tools/import.mjs <codebase> <plan.json> [--lanes <n>]");
+const [codebase, planArg] = positional;
+if (!codebase) {
+  console.error("usage: node tools/import.mjs <codebase> [<plan.json>] [--lanes <n>]");
   process.exit(1);
 }
-const plan = JSON.parse(readFileSync(planPath, "utf8"));
 const home = join(process.env.HOME ?? "", ".proto", codebase);
+// The plan tools/plan.mjs wrote, unless another is named.
+const plan = JSON.parse(readFileSync(planArg ?? join(home, "run", "plan.json"), "utf8"));
 const scratch = join(home, "run", "import");
 spawnSync("mkdir", ["-p", scratch]);
 

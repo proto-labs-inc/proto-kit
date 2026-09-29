@@ -7,7 +7,8 @@
  *
  * Usage: node tools/survey.mjs <codebase> [--out <dir>]
  *
- * Prints one JSON object:
+ * Prints a summary (the page, the counts, and the draft one component a
+ * line with its looks and picture) and writes <out>/survey.json with:
  *   page:       { title, url, favicon, viewport: [w, h], display }
  *   palette:    [{ name, value, group, role? }]   the colours to import,
  *               ready for `library.mjs tokens`: every colour the page
@@ -377,14 +378,28 @@ for (const c of candidates) {
 const draftPath = join(out, "plan.draft.json");
 writeFileSync(draftPath, JSON.stringify(draft, null, 2) + "\n");
 
-console.log(
-  JSON.stringify({
-    draft: draftPath,
-    page: data.page,
-    palette: palette.map(({ px, ...rest }) => rest),
-    colours: colours.length,
-    type: data.type.map(({ tags, ...rest }) => ({ ...rest, tags })),
-    candidates,
-  }),
+// Everything, for whoever needs more than the summary.
+writeFileSync(
+  join(out, "survey.json"),
+  JSON.stringify({ draft: draftPath, page: data.page, palette: palette.map(({ px, ...rest }) => rest), colours: colours.length, type: data.type, candidates }, null, 1) + "\n",
 );
+
+// The summary the orchestrator plans from: the page, and the draft one
+// component a line with its looks, their texts and its picture.
+const lines = [
+  `page: ${data.page.title} | ${data.page.url.split("?")[0]} | favicon ${data.page.favicon}`,
+  `colours: ${palette.length} (of ${colours.length} colour properties) | type styles: ${data.type.length} | display ${data.page.display.dpr}x ${data.page.display.colorProfile}`,
+  `draft: ${draftPath} (full survey: ${join(out, "survey.json")})`,
+  "components (slug | looks | picture):",
+  ...draft.components.map((c) => {
+    const group = candidates.find((k) => k.picture === c.picture);
+    const looks = c.states.filter((st) => !st.force).map((st) => {
+      const text = group?.instances.find((i) => i.selector === st.selector)?.text ?? "";
+      return `${st.name}${text ? ` "${text.slice(0, 30)}"` : ""}${group?.instances.find((i) => i.selector === st.selector)?.cut ? " (cut)" : ""}`;
+    });
+    const held = c.states.some((st) => st.force) ? " +hover/focus" : "";
+    return `  ${c.slug} | ${looks.join(", ")}${held} | ${c.picture ?? "no picture"}`;
+  }),
+];
+console.log(lines.join("\n"));
 process.exit(0);
