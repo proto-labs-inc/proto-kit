@@ -1,13 +1,16 @@
 import { motion } from "motion/react";
 import type { Component, Token } from "@/library";
 import { href } from "@/route";
+import { hexOf } from "@/surface";
 
 type Props = { tokens: Token[]; components: Component[] };
 
 /**
  * The palette, grouped the way the product groups it, each swatch
  * naming the built components that use it, so a colour and the
- * things made of it are one click apart in both directions.
+ * things made of it are one click apart in both directions. Every
+ * value reads as hex whatever syntax the product wrote it in; the
+ * product's own spelling is on the swatch's tooltip.
  */
 export function TokenSwatches({ tokens, components }: Props) {
   const groups = new Map<string, Token[]>();
@@ -39,7 +42,7 @@ export function TokenSwatches({ tokens, components }: Props) {
                 <div className="text-xs leading-tight">
                   <div className="font-medium">{token.name}</div>
                   <div className="text-muted-foreground">
-                    {token.value}
+                    {hexOf(token.value)}
                     {token.role && <span className="ml-1">· {token.role}</span>}
                   </div>
                   <UsedBy token={token} components={components} />
