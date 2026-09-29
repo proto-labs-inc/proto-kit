@@ -198,7 +198,11 @@ const READ = String.raw`(names) => {
   }
   const candidates = [...groups.values()].map((g) => {
     g.instances.sort((a, b) => Number(a.cut) - Number(b.cut) || b.area - a.area);
-    return { kind: g.kind, count: g.instances.length, looks: g.looks.size, instances: g.instances.slice(0, 8).map(({ area, ...rest }) => rest) };
+    // One instance of every look first (the draft makes a state of each),
+    // then the rest, so the cap never drops a look behind repeats of another.
+    const reps = g.instances.filter((inst, k) => g.instances.findIndex((other) => other.look === inst.look) === k);
+    const kept = [...reps, ...g.instances.filter((inst) => !reps.includes(inst))].slice(0, Math.max(8, reps.length));
+    return { kind: g.kind, count: g.instances.length, looks: g.looks.size, instances: kept.map(({ area, ...rest }) => rest) };
   });
 
   const icon = [...document.querySelectorAll('link[rel~="icon"]')].map((l) => ({ href: l.href, size: parseInt(l.sizes?.value) || 0, type: l.type })).sort((a, b) => b.size - a.size)[0]?.href ?? new URL('/favicon.ico', location.href).href;
