@@ -139,7 +139,8 @@ const READ_INSTANCE = String.raw`(rootSelector) => {
       if (s.content && s.content !== 'none' && s.content !== 'normal') pseudo[which] = styleOf(el, which);
     }
     const r = el.getBoundingClientRect();
-    const tag = el.tagName.toLowerCase();
+    // The element's own name: an SVG's is case-sensitive (linearGradient, clipPath).
+    const tag = el.localName;
     return {
       i, tag, svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
       parent: i === 0 ? -1 : index.get(el.parentElement) ?? -1,
