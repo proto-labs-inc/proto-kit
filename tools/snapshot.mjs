@@ -438,6 +438,10 @@ const HTML_ATTRS = {
   "xlink:href": "xlinkHref", "xmlns:xlink": "xmlnsXlink", "xml:space": "xmlSpace", colspan: "colSpan", rowspan: "rowSpan",
 };
 
+// Attributes whose presence is their value, and the JSX name each is
+// written with (a checked box stays the user's to tick: defaultChecked).
+const BOOLEAN_ATTRS = { disabled: "disabled", checked: "defaultChecked" };
+
 // The product's own wiring between elements (ids and the aria
 // references to them, tab order) means nothing outside its page.
 const PAGE_WIRING = new Set(["id", "tabindex", "aria-describedby", "aria-labelledby", "aria-controls", "aria-owns", "aria-activedescendant", "aria-errormessage", "aria-details", "form"]);
@@ -933,14 +937,22 @@ async function run(codebase, spec) {
   // are the look's own, like its words: a prop, or for an image its file
   // chosen by look.
   const taken = new Set(["children", "value", "variant", "interaction", ...[...slots.values()].map((slot) => slot.prop)]);
-  const attrSlots = new Map(); // `${id}:${attr}` → { prop, default, byLook }
+  // A slot is "string" (a look without the attribute holds null, so it
+  // is not given the first look's value) or "boolean" (the attribute's
+  // presence is its value: a disabled button, a ticked box).
+  const attrSlots = new Map(); // `${id}:${attr}` → { prop, kind, default, byLook }
   const imageChoices = new Map(); // id → { name, byLook: Map(key → ident), fallback }
   tree.nodes.forEach((u, id) => {
     const looks = variants.filter((inst) => u.members.has(inst));
     const node0 = baseOf(u).inst.nodes[baseOf(u).i];
     const names = new Set(looks.flatMap((inst) => Object.keys(inst.nodes[u.members.get(inst)].attrs)));
     for (const name of names) {
-      const valueIn = (inst) => inst.nodes[u.members.get(inst)].attrs[name];
+      const kind = name in BOOLEAN_ATTRS ? "boolean" : "string";
+      const attrIn = (inst) => inst.nodes[u.members.get(inst)].attrs[name];
+      const valueIn = (inst) => {
+        if (kind === "boolean") return attrIn(inst) !== undefined;
+        return attrIn(inst) ?? null;
+      };
       if (new Set(looks.map(valueIn)).size < 2) continue;
       if (node0.tag === "img" && name === "src") {
         const byLook = new Map();
@@ -952,13 +964,15 @@ async function run(codebase, spec) {
         continue;
       }
       const jsxName = jsxAttr(name, node0);
-      if (!jsxName || ["type", "checked", "disabled"].includes(name)) continue;
+      if (!jsxName) continue;
+      // A button is always written type="button" (it never submits a form), whatever the product's.
+      if (name === "type" && node0.tag === "button") continue;
       const base = jsxName.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
       let prop = base;
       for (let n = 2; taken.has(prop); n++) prop = `${base}${n}`;
       taken.add(prop);
       const byLook = new Map(looks.map((inst) => [inst, valueIn(inst)]));
-      attrSlots.set(`${id}:${name}`, { prop, default: valueIn(looks[0]), byLook });
+      attrSlots.set(`${id}:${name}`, { prop, kind, default: valueIn(looks[0]), byLook });
     }
   });
 
@@ -994,7 +1008,9 @@ async function run(codebase, spec) {
       }
       const slot = attrSlots.get(`${id}:${name}`);
       if (slot) {
-        attrs.push(`${jsxName}={${slot.prop}}`);
+        // null is the product's absence; React's attribute types take undefined for it.
+        if (slot.kind === "boolean") attrs.push(`${BOOLEAN_ATTRS[name]}={${slot.prop}}`);
+        else attrs.push(`${jsxName}={${slot.prop} ?? undefined}`);
         continue;
       }
       if (value === undefined) continue;
@@ -1002,12 +1018,8 @@ async function run(codebase, spec) {
         attrs.push(`type="button"`);
         continue;
       }
-      if (name === "checked") {
-        attrs.push("defaultChecked");
-        continue;
-      }
-      if (name === "disabled") {
-        attrs.push("disabled");
+      if (name in BOOLEAN_ATTRS) {
+        attrs.push(BOOLEAN_ATTRS[name]);
         continue;
       }
       // As an expression, like a text child: a quoted JSX attribute reads
@@ -1054,15 +1066,16 @@ async function run(codebase, spec) {
     propDocs.push(`  /** ${JSON.stringify(slot.default)} in the product. */\n  ${slot.prop}?: ${slot.prop === "children" ? "ReactNode" : "string"};`);
     destructure.push(`${slot.prop} = ${JSON.stringify(slot.default)}`);
   }
-  // An attribute the first look does not have defaults to none, so React leaves it out.
+  // An attribute the first look does not have defaults to null (or false), so React leaves it out.
   for (const slot of attrSlots.values()) {
-    if (slot.default === undefined) {
-      propDocs.push(`  /** Not set in the product's first look. */\n  ${slot.prop}?: string;`);
-      destructure.push(slot.prop);
+    if (slot.kind === "boolean") {
+      propDocs.push(`  /** ${slot.default ? "Set" : "Not set"} in the product's first look. */\n  ${slot.prop}?: boolean;`);
+    } else if (slot.default === null) {
+      propDocs.push(`  /** Not set in the product's first look. */\n  ${slot.prop}?: string | null;`);
     } else {
-      propDocs.push(`  /** ${JSON.stringify(slot.default)} in the product's first look. */\n  ${slot.prop}?: string;`);
-      destructure.push(`${slot.prop} = ${JSON.stringify(slot.default)}`);
+      propDocs.push(`  /** ${JSON.stringify(slot.default)} in the product's first look; null for none. */\n  ${slot.prop}?: string | null;`);
     }
+    destructure.push(`${slot.prop} = ${JSON.stringify(slot.default)}`);
   }
   if (valueSlot !== -1) {
     propDocs.push(`  /** What the field holds, ${JSON.stringify(defaultInst.nodes[valueSlot].value)} in the product. */\n  value?: string;`);
@@ -1111,9 +1124,11 @@ ${lines.join("\n")}
       const text = item.texts.get(look);
       if (text !== undefined && text !== slot.default) props[slot.prop] = text;
     }
+    // Only looks that have the element say anything; null or false where theirs has no such attribute.
     for (const slot of attrSlots.values()) {
+      if (!slot.byLook.has(look)) continue;
       const value = slot.byLook.get(look);
-      if (value !== undefined && value !== slot.default) props[slot.prop] = value;
+      if (value !== slot.default) props[slot.prop] = value;
     }
     const live = { selector: inst.state.selector };
     if (inst.state.force) live.force = inst.state.force;

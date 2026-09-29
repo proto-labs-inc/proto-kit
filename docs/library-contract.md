@@ -280,6 +280,12 @@ a markup dump.
   it was read from and the pseudo-class held on it. `tools/check.mjs`
   checks every state that has one; the app ignores it.
 
+  A prop in `props` may be `null`: the state's element has no such
+  attribute in the product (a placeholder only the first look shows),
+  as distinct from leaving the prop out, which takes the component's
+  default. `tools/snapshot.mjs` types those props `string | null`, and
+  presence-only attributes (`disabled`, `checked`) as booleans.
+
   `status done` copies it into the manifest, and refuses a token the
   manifest does not hold, so push the tokens before landing the unit.
 - `notes.md`: the unit's working notes; the app never reads it.
