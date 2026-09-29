@@ -6,9 +6,10 @@
  * repairs what is missing and prints the same addresses.
  *
  *   1. Scaffold template/library into ~/.proto/<codebase>/library if
- *      it is not there yet, and refresh vite.config.ts from the
- *      template so the dev server reads this run's port.
- *   2. pnpm install --frozen-lockfile there, once per codebase.
+ *      it is not there yet, and replace the app with this kit's copy
+ *      on every run (the import's public/ and unit folders stay).
+ *   2. pnpm install --frozen-lockfile there, once per codebase and
+ *      again when the kit's lockfile changes.
  *   3. Settle this run's port — the one an up run is already bound
  *      to, else a free one — then provision_tunnel { kind: "library",
  *      codebase, port } through the Proto app, which chooses and
@@ -34,7 +35,7 @@
  * Usage: node host-library.mjs <codebase>
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,13 +67,29 @@ if (!existsSync(join(library, "package.json"))) {
   });
 }
 
-// The dev server's config is the kit's, not the copy's: it is what
-// reads PROTO_PORT, so a codebase scaffolded by an older kit picks up
-// this run's port. The import's own work lives in src/ and public/.
-cpSync(join(kit, "template", "library", "vite.config.ts"), join(library, "vite.config.ts"));
+// The app is the kit's; the import's work is public/ and each unit's
+// folder under src/components/. Every run replaces the app with this
+// kit's copy, so a library scaffolded by an older kit looks and
+// behaves like the current one, and never touches the import's work.
+const template = join(kit, "template", "library");
+const lockBefore = existsSync(join(library, "pnpm-lock.yaml")) ? readFileSync(join(library, "pnpm-lock.yaml"), "utf8") : "";
+const units = join(library, "src", "components");
+const shipped = new Set(readdirSync(join(template, "src", "components")));
+for (const entry of existsSync(units) ? readdirSync(units, { withFileTypes: true }) : []) {
+  const unit = entry.isDirectory() && !shipped.has(entry.name);
+  if (!unit) rmSync(join(units, entry.name), { recursive: true, force: true });
+}
+for (const entry of readdirSync(join(library, "src"), { withFileTypes: true })) {
+  if (entry.name !== "components") rmSync(join(library, "src", entry.name), { recursive: true, force: true });
+}
+cpSync(template, library, {
+  recursive: true,
+  filter: (source) => !/[\\/](node_modules|dist|public)([\\/]|$)/.test(source.slice(template.length)),
+});
+const lockChanged = readFileSync(join(library, "pnpm-lock.yaml"), "utf8") !== lockBefore;
 
-// 2. Install, once.
-if (!existsSync(join(library, "node_modules"))) {
+// 2. Install, once per codebase and again when the kit's lockfile moves.
+if (!existsSync(join(library, "node_modules")) || lockChanged) {
   step("installing the library's dependencies (once per codebase)");
   const install = spawnSync("pnpm", ["install", "--frozen-lockfile"], { cwd: library, stdio: ["ignore", "inherit", "inherit"] });
   if (install.status !== 0) fail("pnpm install failed in the library folder");

@@ -219,7 +219,11 @@ export function readConfig() {
   } catch {
     throw new Error(NOT_SET_UP);
   }
-  const app = typeof config.app === "string" ? config.app.trim() : "";
+  // PROTO_APP points the kit at another deployment of the site (a branch
+  // under test) without touching the laptop's link: same credentials, other
+  // address. Unset, the linked site is used.
+  const override = process.env.PROTO_APP?.trim();
+  const app = override || (typeof config.app === "string" ? config.app.trim() : "");
   const credentials = credentialsIn(config);
   if (app.length === 0 || credentials.length === 0) throw new Error(NOT_SET_UP);
   return { ...config, app: app.replace(/\/+$/, ""), credentials };
