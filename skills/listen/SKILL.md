@@ -91,7 +91,9 @@ checkout root.
    - `{"run": "<name>", "briefId"?}`: handle command `<name>`
      in-session. It names the kit skill to follow (create-prototype,
      import-design-system, serve), scoped to this codebase's
-     workspaces. Cloud actions inside those flows go through the
+     workspaces. `rebuild-section` is the create-prototype skill's
+     "Rebuilding one section": one section of a finished build changed
+     on request, in that build's workspace. Cloud actions inside those flows go through the
      proto MCP tools (`provision_tunnel`, `register_prototype`,
      `list_comments`, …).
 

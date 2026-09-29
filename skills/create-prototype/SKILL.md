@@ -75,6 +75,58 @@ serve flow starts, and `failed` or `needs-input` whenever that is
 the truth. Registration, inside the serve skill, flips the brief to
 done.
 
+## Stream the build
+
+The user watches the build happen in New prototype: the reference page
+seen through frosted glass, its structure drawn root first, each part
+landing as you finish it. Tell the site each step as you take it, with
+`tools/build-stream.mjs` (resolve kit tools from the installed host's
+plugin root, as below). Every command takes the brief id and
+`--codebase <id>`; it sends build events for you, uploads images itself,
+and keeps the build's tree in `~/.proto/<codebase>/run/builds/<briefId>/`.
+
+1. **Read the page** as soon as the reference tab is open in the Proto
+   window: `build-stream.mjs read <briefId> --codebase <id> --page
+   <url-substring>`. It captures the page, reads its tree root first and
+   writes `tree.json` (node ids, tag.class, boxes, a selector each).
+2. **Name it** once you know the prototype's title:
+   `build-stream.mjs title <briefId> --codebase <id> "<title>"`.
+3. **Curate the tree.** Write `curation.json` next to `tree.json`: one
+   entry per node, `{ "id", "name", "role", "marker" }`. The name is what
+   the part is ("Sidebar", "Member list"); the role is `section` (holds
+   other parts), `leaf` (a part you build as one component) or
+   `packaging` (a box whose only job is to hold another). `marker` is the
+   `data-proto-id` the part becomes in the prototype, so the build's
+   sections and the Frame's components are the same things. Then
+   `build-stream.mjs name <briefId> --codebase <id> <curation.json>`.
+4. **Build leaf by leaf.** `build-stream.mjs queue <briefId> --codebase
+   <id>` lists every leaf. For each leaf, as you write it:
+   `pass <briefId> --codebase <id> <nodeId> <n> [pixelsOff]` for each
+   attempt you check against the page (pixelsOff when you measured it),
+   then `matched <briefId> --codebase <id> <nodeId>` when it is right.
+5. **Check the whole page** before serving: `phase <briefId> --codebase
+   <id> composing "<one sentence>"`; and `phase ... serving` when the
+   serve skill starts.
+6. **Ask when blocked:** `question <briefId> --codebase <id> "<question>"`
+   alongside `report_progress` with `needs-input`.
+
+A build the site did not start (no brief yet) streams too: the brief id
+`begin_prototype_build` returns works the same way.
+
+### Rebuilding one section
+
+A brief whose run is `rebuild-section` asks for one section of a
+finished build to be changed: `get_brief` gives the request
+(`description`), the section (`section`, a node id of the build's tree)
+and the build it belongs to (`parent_brief_id`, whose tree.json names
+the node and its `marker`). The site has already shown the section
+frosting over. Change that component in the prototype's workspace, then
+report on the rebuild's own brief id: `pass` for each attempt, and when it
+is done, capture the component as the prototype now draws it and send
+`matched <briefId> --codebase <id> <nodeId> --image <png> --rect x,y,w,h`
+so the old version turns to dust as the new one gathers. Close the brief
+with `report_progress` `done`.
+
 ## Where it lives
 
 Scaffold `~/.proto/<codebase>/prototypes/<slug>/` by copying the

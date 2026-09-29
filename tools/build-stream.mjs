@@ -21,9 +21,10 @@
 //   node tools/build-stream.mjs focus    <briefId> --codebase <id> <nodeId|none>
 //   node tools/build-stream.mjs question <briefId> --codebase <id> "<question>"
 //
-// curation.json is a list: [{ "id": "n3", "name": "Sidebar", "role": "section" }, ...]
-// with role one of section, leaf, packaging. Name every node read; the
-// site strikes packaging through and replicates leaves.
+// curation.json is a list: [{ "id": "n3", "name": "Sidebar", "role": "section", "marker": "sidebar" }, ...]
+// with role one of section, leaf, packaging, and marker the data-proto-id
+// the part becomes in the prototype (none for packaging). Name every node
+// read; the site strikes packaging through and replicates leaves.
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { findPage } from "./cdp/attach.mjs";
@@ -211,7 +212,9 @@ switch (command) {
     for (const entry of curation) {
       if (!known.has(entry.id)) fail(`curation names ${entry.id}, which \`read\` did not find`);
       if (!["section", "leaf", "packaging"].includes(entry.role)) fail(`${entry.id}: role must be section, leaf or packaging`);
-      events.push({ kind: "named", id: entry.id, name: entry.name, role: entry.role });
+      const named = { kind: "named", id: entry.id, name: entry.name, role: entry.role };
+      if (entry.marker) named.marker = entry.marker;
+      events.push(named);
     }
     tree.curation = curation;
     writeFileSync(treePath, JSON.stringify(tree, null, 2));
