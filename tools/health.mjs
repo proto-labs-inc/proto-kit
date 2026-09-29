@@ -7,6 +7,7 @@
  * something's down. Never restarts anything, never errors: a machine
  * with no ~/.proto prints nothing and exits 0.
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,15 +39,23 @@ try {
   process.exit(0); // no ~/.proto: not set up, nothing to say
 }
 
-// The kit's folder names its version: an installed plugin lives in a
-// cache folder named after it (…/proto/<version>), a kit run from a
-// checkout in that checkout. The site is config.json's, or PROTO_APP's.
+// Which kit this is: a plugin installed from GitHub runs from a cache
+// folder named after its version (…/proto/<version>); one installed from
+// a local marketplace runs straight from that checkout, so its version is
+// the checkout's branch and commit, and any edits not yet committed. The
+// site is config.json's, or PROTO_APP's.
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
+const git = (...args) => execFileSync("git", ["-C", kit, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+let version = kit;
+try {
+  const edits = git("status", "--porcelain").length > 0 ? ", with uncommitted edits" : "";
+  version = `${kit} (${git("rev-parse", "--abbrev-ref", "HEAD")} at ${git("rev-parse", "--short", "HEAD")}${edits})`;
+} catch {}
 let site = "not linked";
 try {
   site = readConfig().app;
 } catch {}
-console.log(`proto kit ${kit}, site ${site}`);
+console.log(`proto kit ${version}, site ${site}`);
 
 for (const codebase of codebases) {
   const runRoot = join(root, codebase.name, "run");
