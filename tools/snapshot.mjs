@@ -169,8 +169,14 @@ const READ_INSTANCE = String.raw`(rootSelector) => {
     const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
     backdrop = 'color(display-p3 ' + [r, g, b].map((v) => +(v / 255).toFixed(4)).join(' ') + ')';
   }
+  // How much room the root had: its parent's content width.
+  let room = null;
+  if (root.parentElement) {
+    const ps = getComputedStyle(root.parentElement);
+    room = root.parentElement.getBoundingClientRect().width - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight) - parseFloat(ps.borderLeftWidth) - parseFloat(ps.borderRightWidth);
+  }
   return {
-    nodes, backdrop,
+    nodes, backdrop, room,
     rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
     base: location.href,
   };
@@ -186,7 +192,7 @@ const READ_INSTANCE = String.raw`(rootSelector) => {
  * component needs one (`fit`), or where the element is drawn at a size
  * its content does not give it (an image, an icon, an empty box).
  */
-function layoutOf(node, nodes, fit, isRoot) {
+function layoutOf(node, nodes, fit, isRoot, room = null) {
   const st = node.style;
   const out = {};
   if (!isRoot) {
@@ -205,6 +211,15 @@ function layoutOf(node, nodes, fit, isRoot) {
   if (drawn && !isRoot) {
     out.width = `${node.rect[2]}px`;
     out.height = `${node.rect[3]}px`;
+  }
+  // A root that did not fill the room its parent gave it sized to its
+  // content in the product; set in a stretching container (the library's
+  // stage) it would fill it instead.
+  // A large one (a panel) was held to its width by something around it
+  // (a page column's maximum), so it keeps that width as its maximum.
+  if (isRoot && room !== null && node.rect[2] < room - 0.5 && fit.width === undefined) {
+    out.width = "fit-content";
+    if (node.rect[2] >= 240) out["max-width"] = `${node.rect[2]}px`;
   }
   if (fit.margin === "left" || fit.margin === "both") out["margin-left"] = "auto";
   if (fit.margin === "both") out["margin-right"] = "auto";
@@ -730,7 +745,7 @@ async function run(codebase, spec) {
         return data;
       });
       const inst = { state, ...read, fit: read.nodes.map(() => ({})) };
-      inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0));
+      inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0, inst.room));
       instances.push(inst);
     }
     faces = await fontFaces(live);
@@ -1018,7 +1033,7 @@ ${lines.join("\n")}
   for (let round = 0; round < 3; round++) {
     const changed = await fitSizes(appUrl, spec.slug, variants, states, viewport, display);
     if (!changed) break;
-    for (const inst of instances) inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0));
+    for (const inst of instances) inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0, inst.room));
     ({ states, defaultInst, variants } = emit());
   }
   const tokens = await matchTokens(library, instances, appUrl, viewport, display);
