@@ -16,6 +16,7 @@ import { ProductCrop } from "@/components/ProductCrop";
 import { Rendered } from "@/components/Rendered";
 import { componentView, rebuiltNote, type Component, type ComponentView, type Courier, type Library, type Token } from "@/library";
 import { href } from "@/route";
+import { hexOf } from "@/surface";
 
 type Props = {
   slug: string;
@@ -146,9 +147,9 @@ function Colours({ component, tokens }: { component: Component; tokens: Token[] 
       <ul className="m-0 flex list-none flex-wrap gap-x-5 gap-y-2 p-0 text-xs">
         {used.map((token) => (
           <li key={token.name} className="flex items-center gap-2">
-            <span className="size-4 rounded ring-1 ring-foreground/10" style={{ background: token.value }} />
+            <span className="size-4 rounded ring-1 ring-foreground/10" style={{ background: token.value }} title={token.value} />
             <span className="font-medium">{token.name}</span>
-            <span className="text-muted-foreground">{token.value}</span>
+            <span className="text-muted-foreground">{hexOf(token.value)}</span>
           </li>
         ))}
       </ul>
