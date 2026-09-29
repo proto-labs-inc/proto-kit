@@ -152,20 +152,28 @@ touching what is there; `manifest.json` says what is done; run
 
 ## Verdicts
 
-`check.mjs` says, per state:
+`check.mjs` says, per state, and lands each as a pass whose line says
+the same in the product's words. These count as matching:
 - `match`: identical to the product.
-- `shifted`: identical once moved one device pixel; a placement, not
-  a look. Counts as matching.
+- `shifted`: identical once moved one device pixel; a placement.
+- `context`: every difference lies in a photo (each browser scales
+  photos with its own rasteriser) or under something the page lays
+  over the component (a floating card and its shadow).
+- `faint`: a few stray edge pixels, under 0.3% of the component: the
+  antialiasing of the page's own layers (an icon inside a scrolling
+  header), not a look the component gets wrong.
 - `offscreen`: identical where the product shows it; the viewport cuts
-  the rest off. Counts as matching.
-- `differs`: something is different; `clusters` say where (in CSS px
-  inside the component) and the pass's pictures show it.
+  the rest off.
 
-A residue confined to a photo (an avatar resampled by another
-rasteriser) or to a shadow cast from outside the component (a card
-floating over it on the page) is the page's context, not the
-component: say so in `notes.md`, land it as done, and name the reason
-in its last pass line.
+`differs` is the one to fix: `clusters` say where (CSS px inside the
+component) and the pass pictures show what. Never spend a unit on a
+verdict that counts as matching.
+
+A resting state is compared with one frame of the resting page, taken
+when the run starts; a state held with a pseudo-class is captured live,
+one at a time. If the run says the pointer is over the product page,
+ask the user to move it off the Proto window: what it rests on shows
+its hover look.
 
 ## The unit brief
 

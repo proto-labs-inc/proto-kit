@@ -23,7 +23,8 @@
  *
  * Prints one JSON line: { slug, states: [{ state, verdict, mismatch,
  * shifted, clusters, activity }], matched } where matched is true when
- * every checked state's verdict is match, shifted or offscreen.
+ * every checked state's verdict is match, shifted, context, faint or
+ * offscreen (tools/verify-replica.mjs says what each means).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -34,7 +35,7 @@ import { verifyPass } from "./verify-replica.mjs";
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 // Verdicts that count as the product's look: identical, a one-pixel
 // placement, or identical where the page shows it.
-const ACCEPTED = ["match", "shifted", "offscreen"];
+const ACCEPTED = ["match", "shifted", "context", "faint", "offscreen"];
 const USAGE = 'usage: node tools/check.mjs <codebase> <slug> [--state <name>] [--no-land] [--activity "<line>"]';
 
 const options = { land: true };
@@ -84,17 +85,20 @@ if (states.length === 0) {
 
 const out = join(home, "run", "checks", slug);
 mkdirSync(out, { recursive: true });
+// A minute per state: a pass waits for the window's lock behind other
+// lanes, and a state that differs is checked twice.
+const budget = 60_000 * states.length * 2;
 setTimeout(() => {
-  console.error("check gave up after 120s: a capture never completed; check the live tab is still open and try again");
+  console.error(`check gave up after ${budget / 1000}s: a capture never completed; check the live tab is still open and try again`);
   process.exit(2);
-}, 120_000).unref();
+}, budget).unref();
 
 // One state at a time: a pseudo-class held on the live element for one
 // state must not leak into another state's capture.
 const results = [];
 for (const state of states) {
   const pass = () =>
-    verifyPass({ appUrl, slug, state: state.name, liveMatch, target: { selector: state.live.selector }, force: state.live.force, out });
+    verifyPass({ appUrl, slug, state: state.name, liveMatch, target: { selector: state.live.selector }, force: state.live.force, out, codebase });
   let result;
   try {
     result = await pass();

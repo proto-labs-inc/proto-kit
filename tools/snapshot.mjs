@@ -827,7 +827,10 @@ async function run(codebase, spec) {
 
   // ---- texts: the first becomes children; others that differ between looks become props ----
   const textItems = [];
+  // Text inside an icon (an SVG's <title>) is part of the icon, never a prop.
   const walk = (id) => {
+    const { inst, i } = baseOf(tree.nodes[id]);
+    if (inst.nodes[i].svg) return;
     tree.nodes[id].items.forEach((item, k) => {
       if (item.u !== undefined) walk(item.u);
       else if ([...item.texts.values()].some((t) => t.trim() !== "")) textItems.push({ id, k, item });
@@ -835,11 +838,13 @@ async function run(codebase, spec) {
   };
   walk(0);
   const everywhere = (present) => variants.every((inst) => present.has(inst));
+  // The first text is `children`; any other text whose words differ
+  // between the looks that show it is a prop, so every look says its own
+  // words (a label only two looks have is still theirs, not the first's).
   const slots = new Map();
   let first = true;
   for (const { item } of textItems) {
-    if (!everywhere(item.texts)) continue;
-    const texts = variants.map((inst) => item.texts.get(inst));
+    const texts = variants.filter((inst) => item.texts.has(inst)).map((inst) => item.texts.get(inst));
     if (first) {
       slots.set(item, { prop: "children", default: texts[0] });
       first = false;

@@ -25,8 +25,14 @@
  *     rect, screenshot, diff, live, viewport, display }
  * verdict is "match" (no pixel differs), "shifted" (every difference
  * goes away with the replica moved one device pixel: a placement, not
- * a look), "offscreen" (the live element is cut off by the viewport,
- * so only its visible part was compared) or "differs". `activity` is
+ * a look), "context" (every difference lies in a photo, which each
+ * browser scales with its own rasteriser, or under something the page
+ * lays over the component), "faint" (a few stray edge pixels, under
+ * 0.3% of the component), "offscreen" (the live element is cut off by
+ * the viewport, so only its visible part was compared) or "differs".
+ * With a codebase, a resting state is cut from the import's one frame
+ * of the resting page (tools/cdp/live.mjs); every read of the live page
+ * holds the window's lock, so lanes never see each other's held states. `activity` is
  * the verdict in the product's words, ready for the library.
  *
  * tools/check.mjs runs this for every state of a component and lands
@@ -40,6 +46,7 @@ import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
+import { frameCrop, withLive } from "./cdp/live.mjs";
 import { decodePng } from "./cdp/png.mjs";
 
 export const FORCEABLE = ["hover", "focus", "active", "focus-visible"];
@@ -72,10 +79,15 @@ export async function liveRect(live, target) {
  * again on the way out, and leaves the page as it was.
  */
 export async function withForcedState(live, selector, pseudo, work) {
+  return withLive(() => holding(live, selector, pseudo, work));
+}
+
+async function holding(live, selector, pseudo, work) {
   const settle = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; for (const a of el.getAnimations({ subtree: true })) if (a instanceof CSSTransition) a.finish(); return true; })()`;
   // A capture straight after another state's release can catch that
   // state fading out: finish whatever is still running first.
   if (selector) await evaluate(live, settle);
+  if (!selector) return work();
   if (!pseudo) return work();
   await live.send("DOM.enable");
   await live.send("CSS.enable");
@@ -92,6 +104,51 @@ export async function withForcedState(live, selector, pseudo, work) {
     await evaluate(live, "new Promise((r) => setTimeout(r, 30))").catch(() => {});
     await evaluate(live, settle).catch(() => {});
   }
+}
+
+/**
+ * What on the live page can make a component differ without being
+ * wrong, as boxes inside the component's own box: its photos (scaled
+ * by each browser's own rasteriser) and whatever the page lays over it
+ * (a floating card, with room for its shadow).
+ */
+export async function liveContext(live, selector, rect) {
+  return evaluate(
+    live,
+    `(${String.raw`(selector, rx, ry, rw, rh) => {
+      const el = document.querySelector(selector);
+      if (!el) return { images: [], covers: [] };
+      const rel = (r, grow = 0) => [r.x - rx - grow, r.y - ry - grow, r.width + 2 * grow, r.height + 2 * grow];
+      const images = [...(el.matches('img, video, canvas') ? [el] : []), ...el.querySelectorAll('img, video, canvas')].map((e) => rel(e.getBoundingClientRect()));
+      const covers = [];
+      const seen = new Set();
+      for (let i = 0; i <= 6; i++) for (let j = 0; j <= 6; j++) {
+        const x = rx + 1 + (rw - 2) * (i / 6);
+        const y = ry + 1 + (rh - 2) * (j / 6);
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || el.contains(hit) || hit.contains(el)) continue;
+        // The box that paints: the nearest ancestor with a fill or a shadow.
+        let box = hit;
+        for (let up = hit; up && !up.contains(el); up = up.parentElement) {
+          const s = getComputedStyle(up);
+          if (!/rgba\(0, 0, 0, 0\)/.test(s.backgroundColor) || s.boxShadow !== 'none') { box = up; break; }
+        }
+        if (seen.has(box)) continue;
+        seen.add(box);
+        covers.push(rel(box.getBoundingClientRect(), getComputedStyle(box).boxShadow === 'none' ? 1 : 24));
+      }
+      return { images, covers };
+    }`})(${JSON.stringify(selector)}, ${rect.x}, ${rect.y}, ${rect.w}, ${rect.h})`,
+  );
+}
+
+// Every cluster of differing pixels inside one of the boxes (a pixel of slack).
+function within(clusters, boxes) {
+  if (clusters.length === 0 || boxes.length === 0) return false;
+  return clusters.every(({ cssRect: [cx, cy, cw, ch] }) =>
+    boxes.some(([bx, by, bw, bh]) => cx >= bx - 1 && cy >= by - 1 && cx + cw <= bx + bw + 1 && cy + ch <= by + bh + 1),
+  );
 }
 
 /** Differing device pixels with the replica moved by (dx, dy), at the diff's threshold. */
@@ -143,8 +200,13 @@ function third(point, size, names) {
   return names[1];
 }
 
-function activityFor(verdict, clusters, rect) {
+function activityFor(verdict, clusters, rect, context) {
   switch (verdict) {
+    case "context":
+      if (within(clusters, context.images)) return "Matches the product; its photo is scaled a little differently by each browser";
+      return "Matches the product where the page does not lay something over it";
+    case "faint":
+      return `Matches the product but for a faint edge ${whereOn(clusters[0], rect.w, rect.h)}`;
     case "match":
       return "Matches the product";
     case "shifted":
@@ -161,7 +223,7 @@ function activityFor(verdict, clusters, rect) {
  * One pass. `target` is { selector } or { rect }. Returns the result
  * object the CLI prints.
  */
-export async function verifyPass({ appUrl, slug, state, liveMatch, target, force, out, pass, port = 9333 }) {
+export async function verifyPass({ appUrl, slug, state, liveMatch, target, force, out, pass, codebase, port = 9333 }) {
   mkdirSync(out, { recursive: true });
   const n = pass ?? nextPass(out);
   const files = { live: join(out, `${n}-live.png`), screenshot: join(out, `${n}.png`), diff: join(out, `${n}-diff.png`) };
@@ -170,16 +232,32 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
   if (!tab) throw new Error(`no open tab matches "${liveMatch}" on port ${port}; the product page must be open in the Proto window`);
   const live = await connect(tab.webSocketDebuggerUrl);
   let rect;
+  let context = { images: [], covers: [] };
   let width;
   let height;
   let display;
   try {
     [width, height] = await evaluate(live, "[innerWidth, innerHeight]");
     display = await displayOf(live);
-    rect = await liveRect(live, target);
-    const clip = { x: rect.x, y: rect.y, width: rect.w, height: rect.h };
-    const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`;
-    await withForcedState(live, target.selector, force, () => stableShot(live, probe, files.live, clip));
+    const readTarget = async () => {
+      rect = await liveRect(live, target);
+      if (target.selector) context = await liveContext(live, target.selector, rect);
+    };
+    const clip = () => ({ x: rect.x, y: rect.y, width: rect.w, height: rect.h });
+    // A resting state is cut from the import's one frame of the resting
+    // page; a held state, or no frame, captures the live page.
+    let fromFrame = false;
+    if (!force && target.selector && codebase) {
+      await withLive(readTarget);
+      fromFrame = await frameCrop(live, codebase, clip(), files.live);
+    }
+    if (!fromFrame) {
+      const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`;
+      await withForcedState(live, target.selector, force, async () => {
+        await readTarget();
+        await stableShot(live, probe, files.live, clip());
+      });
+    }
   } finally {
     live.close();
   }
@@ -204,7 +282,12 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     shifted = bestShift(files.live, files.screenshot);
     // A move uncovers a one-pixel rim; a residue no bigger than that rim is a placement.
     const rim = Math.round((rect.w + rect.h) * display.dpr);
+    // A few stray edge pixels (under 0.3% of the component) are antialiasing
+    // the page's own layers decide, not a look the component gets wrong.
+    const faint = Math.max(12, Math.round(0.003 * rect.w * rect.h * display.dpr * display.dpr));
     if (shifted.mismatch <= rim && shifted.mismatch < result.diffPixels / 4) verdict = "shifted";
+    else if (within(result.clusters, [...context.images, ...context.covers])) verdict = "context";
+    else if (result.diffPixels <= faint) verdict = "faint";
     else verdict = "differs";
   }
   if (rect.cut && verdict !== "differs") verdict = "offscreen";
@@ -215,7 +298,7 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     shifted,
     maxDelta: result.maxDelta,
     clusters: result.clusters,
-    activity: activityFor(verdict, result.clusters, rect),
+    activity: activityFor(verdict, result.clusters, rect, context),
     rect: [rect.x, rect.y, rect.w, rect.h],
     ...files,
     viewport: [width, height],

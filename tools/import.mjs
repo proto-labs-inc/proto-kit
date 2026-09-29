@@ -31,6 +31,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findPage } from "./cdp/attach.mjs";
+import { connect } from "./cdp/cdp.mjs";
+import { takeFrame } from "./cdp/live.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
@@ -95,6 +98,21 @@ write(
 );
 publish();
 step(`${plan.palette?.length ?? 0} colours, ${plan.type?.length ?? 0} type styles and ${components.length} components listed`);
+
+// ---- the resting page, once: every resting state is cut from this frame ----
+{
+  const liveUrl = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8")).source.liveUrl;
+  const page = new URL(liveUrl);
+  const tab = await findPage(`${page.host}${page.pathname}`);
+  if (!tab) {
+    console.error("the product page is not open in the Proto window");
+    process.exit(1);
+  }
+  const live = await connect(tab.webSocketDebuggerUrl);
+  const frame = await takeFrame(live, codebase);
+  live.close();
+  if (frame.hovered.length > 0) step("the pointer is over the product page in the Proto window; what it rests on is read live, not from the resting frame");
+}
 
 // ---- components, a few lanes at a time ----
 const built = [];
