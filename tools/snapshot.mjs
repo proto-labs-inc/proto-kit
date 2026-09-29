@@ -615,6 +615,33 @@ function diffProps(props, base, node) {
 }
 
 /**
+ * The same for its pseudo-elements, by which one: what this look's
+ * ::before, ::after or ::placeholder sets differently from the base
+ * look's, the base's other properties put back to this look's value, the
+ * whole pseudo-element where only this look has it, and content: none
+ * where only the base has it.
+ */
+function pseudoDiffs(node, baseNode, baseline) {
+  const out = {};
+  for (const which of new Set([...Object.keys(baseNode.pseudo), ...Object.keys(node.pseudo)])) {
+    if (!(which in node.pseudo)) {
+      out[which] = { content: "none" };
+      continue;
+    }
+    const mine = pseudoProps(node, which, baseline);
+    if (!(which in baseNode.pseudo)) {
+      out[which] = mine;
+      continue;
+    }
+    const base = pseudoProps(baseNode, which, baseline);
+    const diff = Object.fromEntries(Object.entries(mine).filter(([k, v]) => base[k] !== v));
+    for (const name of Object.keys(base)) if (!(name in mine)) diff[name] = node.pseudo[which][name];
+    out[which] = diff;
+  }
+  return out;
+}
+
+/**
  * One element tree for several looks of a component: the first look's
  * elements, with each other look's children matched to them in order
  * (a longest common run of the same kinds of element and text) and the
@@ -887,6 +914,8 @@ async function run(codebase, spec) {
       const props = diffProps(propsAt(inst, i), baseProps[id], inst.nodes[i]);
       const selector = id === 0 ? `.root.${key}` : `.root.${key} .${names[id]}`;
       css.push(cssBlock(selector, props));
+      const { inst: baseInst, i: baseI } = baseOf(tree.nodes[id]);
+      for (const [which, own] of Object.entries(pseudoDiffs(inst.nodes[i], baseInst.nodes[baseI], baseline))) css.push(cssBlock(`${selector}${which}`, own));
     }
   }
   // Interactions: the pseudo-class and the forced class share one rule.
@@ -902,6 +931,9 @@ async function run(codebase, spec) {
       const tail = id === 0 ? "" : ` .${names[id]}`;
       const selectors = [`.root${variantClass}:${pseudo}${tail}`, `.root${variantClass}.interaction-${pseudo}${tail}`];
       css.push(cssBlock(selectors.join(",\n"), props));
+      for (const [which, own] of Object.entries(pseudoDiffs(inst.nodes[i], of.nodes[i], baseline))) {
+        css.push(cssBlock(selectors.map((selector) => `${selector}${which}`).join(",\n"), own));
+      }
     }
   }
 
