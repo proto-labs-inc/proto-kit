@@ -10,17 +10,22 @@ import type { Token } from "./library";
 
 type Rgb = { r: number; g: number; b: number };
 
+let pixel: CanvasRenderingContext2D | null = null;
+
+/**
+ * The browser resolves the colour, so any syntax it paints (hex, rgb,
+ * hsl, oklch, oklab, color(), relative colours) reads the same here as
+ * on the page. The value is painted on one sRGB pixel and read back.
+ */
 function parseColor(value: string): Rgb | null {
-  const hex = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (hex) {
-    let digits = hex[1];
-    if (digits.length === 3) digits = digits.split("").map((d) => d + d).join("");
-    const n = parseInt(digits, 16);
-    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-  }
-  const rgb = value.trim().match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
-  if (rgb) return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
-  return null;
+  if (!CSS.supports("color", value)) return null;
+  pixel ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!pixel) return null;
+  pixel.clearRect(0, 0, 1, 1);
+  pixel.fillStyle = value;
+  pixel.fillRect(0, 0, 1, 1);
+  const [r, g, b] = pixel.getImageData(0, 0, 1, 1).data;
+  return { r, g, b };
 }
 
 function luminance({ r, g, b }: Rgb): number {
