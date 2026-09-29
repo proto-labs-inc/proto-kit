@@ -807,7 +807,16 @@ async function run(codebase, spec) {
   const defaultInst = instances[0];
   const variants = instances.filter((inst) => !inst.state.force);
   const interactions = instances.filter((inst) => inst.state.force);
-  const variantKey = (inst) => (inst === defaultInst ? "default" : keyOf(inst.state.name));
+  // Each look's key for the `variant` prop: the first is "default", the
+  // rest from their names, never two alike (a later look the product
+  // also calls "Default" becomes "default-2").
+  const lookKeys = new Map();
+  for (const inst of instances.filter((x) => !x.state.force)) {
+    let key = inst === defaultInst ? "default" : keyOf(inst.state.name);
+    for (let n = 2; [...lookKeys.values()].includes(key); n++) key = `${keyOf(inst.state.name)}-${n}`;
+    lookKeys.set(inst, key);
+  }
+  const variantKey = (inst) => lookKeys.get(inst);
   const ofOf = (inst) => {
     if (!inst.state.of) return defaultInst;
     const of = instances.find((x) => x.state.name === inst.state.of);
@@ -892,6 +901,40 @@ async function run(codebase, spec) {
   }
   const valueSlot = defaultInst.nodes.findIndex((n) => n.value !== null && n.value !== "");
 
+  // Attributes whose value differs between the looks that have the
+  // element (a field's placeholder, a link's address, an image's file)
+  // are the look's own, like its words: a prop, or for an image its file
+  // chosen by look.
+  const taken = new Set(["children", "value", "variant", "interaction", ...[...slots.values()].map((slot) => slot.prop)]);
+  const attrSlots = new Map(); // `${id}:${attr}` → { prop, default, byLook }
+  const imageChoices = new Map(); // id → { name, byLook: Map(key → ident), fallback }
+  tree.nodes.forEach((u, id) => {
+    const looks = variants.filter((inst) => u.members.has(inst));
+    const node0 = baseOf(u).inst.nodes[baseOf(u).i];
+    const names = new Set(looks.flatMap((inst) => Object.keys(inst.nodes[u.members.get(inst)].attrs)));
+    for (const name of names) {
+      const valueIn = (inst) => inst.nodes[u.members.get(inst)].attrs[name];
+      if (new Set(looks.map(valueIn)).size < 2) continue;
+      if (node0.tag === "img" && name === "src") {
+        const byLook = new Map();
+        for (const inst of looks) {
+          const img = imageOf(inst.nodes[u.members.get(inst)], inst);
+          if (img) byLook.set(variantKey(inst), img.ident);
+        }
+        imageChoices.set(id, { name: `imageFor${id}`, byLook, fallback: byLook.values().next().value });
+        continue;
+      }
+      const jsxName = jsxAttr(name, node0);
+      if (!jsxName || ["type", "checked", "disabled"].includes(name)) continue;
+      const base = jsxName.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      let prop = base;
+      for (let n = 2; taken.has(prop); n++) prop = `${base}${n}`;
+      taken.add(prop);
+      const byLook = new Map(looks.map((inst) => [inst, valueIn(inst)]));
+      attrSlots.set(`${id}:${name}`, { prop, default: valueIn(looks[0]), byLook });
+    }
+  });
+
   // ---- JSX ----
   const lines = [];
   const indent = (d) => "  ".repeat(d);
@@ -910,14 +953,24 @@ async function run(codebase, spec) {
     const attrs = [];
     if (id === 0) attrs.push("className={cx(styles.root, styles[`variant-${variant}`], interaction === \"rest\" ? undefined : styles[`interaction-${interaction}`])}");
     else attrs.push(`className={styles[${JSON.stringify(names[id])}]}`);
-    for (const [name, value] of Object.entries(node.attrs)) {
+    const attrNames = new Set([...u.members.entries()].filter(([look]) => variants.includes(look)).flatMap(([look, k]) => Object.keys(look.nodes[k].attrs)));
+    for (const name of attrNames) {
+      const value = node.attrs[name];
       const jsxName = jsxAttr(name, node);
       if (!jsxName) continue;
       if (node.tag === "img" && name === "src") {
-        const img = imageOf(node, inst);
-        if (img) attrs.push(`src={${img.ident}}`);
+        const choice = imageChoices.get(id);
+        const img = value !== undefined ? imageOf(node, inst) : undefined;
+        if (choice) attrs.push(`src={${choice.name}[variant] ?? ${choice.fallback}}`);
+        else if (img) attrs.push(`src={${img.ident}}`);
         continue;
       }
+      const slot = attrSlots.get(`${id}:${name}`);
+      if (slot) {
+        attrs.push(`${jsxName}={${slot.prop}}`);
+        continue;
+      }
+      if (value === undefined) continue;
       if (name === "type" && node.tag === "button") {
         attrs.push(`type="button"`);
         continue;
@@ -972,6 +1025,16 @@ async function run(codebase, spec) {
     propDocs.push(`  /** ${JSON.stringify(slot.default)} in the product. */\n  ${slot.prop}?: ${slot.prop === "children" ? "ReactNode" : "string"};`);
     destructure.push(`${slot.prop} = ${JSON.stringify(slot.default)}`);
   }
+  // An attribute the first look does not have defaults to none, so React leaves it out.
+  for (const slot of attrSlots.values()) {
+    if (slot.default === undefined) {
+      propDocs.push(`  /** Not set in the product's first look. */\n  ${slot.prop}?: string;`);
+      destructure.push(slot.prop);
+    } else {
+      propDocs.push(`  /** ${JSON.stringify(slot.default)} in the product's first look. */\n  ${slot.prop}?: string;`);
+      destructure.push(`${slot.prop} = ${JSON.stringify(slot.default)}`);
+    }
+  }
   if (valueSlot !== -1) {
     propDocs.push(`  /** What the field holds, ${JSON.stringify(defaultInst.nodes[valueSlot].value)} in the product. */\n  value?: string;`);
     destructure.push(`value = ${JSON.stringify(defaultInst.nodes[valueSlot].value)}`);
@@ -998,6 +1061,7 @@ ${propDocs.join("\n")}
 }
 
 const cx = (...names: (string | undefined)[]) => names.filter(Boolean).join(" ");
+${[...imageChoices.values()].map((c) => `const ${c.name}: Partial<Record<${Name}Variant, string>> = { ${[...c.byLook].map(([k, ident]) => `${JSON.stringify(k)}: ${ident}`).join(", ")} };`).join("\n")}
 
 export default function ${Name}({ ${destructure.join(", ")} }: ${Name}Props) {
   return (
@@ -1017,6 +1081,10 @@ ${lines.join("\n")}
     for (const [item, slot] of slots) {
       const text = item.texts.get(look);
       if (text !== undefined && text !== slot.default) props[slot.prop] = text;
+    }
+    for (const slot of attrSlots.values()) {
+      const value = slot.byLook.get(look);
+      if (value !== undefined && value !== slot.default) props[slot.prop] = value;
     }
     const live = { selector: inst.state.selector };
     if (inst.state.force) live.force = inst.state.force;
