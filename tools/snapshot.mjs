@@ -866,7 +866,10 @@ async function run(codebase, spec) {
   for (const inst of interactions) {
     const of = ofOf(inst);
     const pseudo = inst.state.force;
-    const variantClass = of === defaultInst ? "" : `.variant-${variantKey(of)}`;
+    // Scoped to its look whenever there are several: the first look's
+    // hover must not land on the others (they only say how theirs differ
+    // from their own rest).
+    const variantClass = variants.length > 1 ? `.variant-${variantKey(of)}` : "";
     for (const [i, id] of tree.at.get(of)) {
       const props = diffProps(propsAt(inst, i), propsAt(of, i), inst.nodes[i]);
       const tail = id === 0 ? "" : ` .${names[id]}`;
