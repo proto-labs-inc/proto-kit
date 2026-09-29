@@ -414,6 +414,18 @@ const fileNameOf = (url, fallback) => {
   }
 };
 
+const IMAGE_TYPES = { "image/svg+xml": "svg", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif" };
+
+// The file a data: URL holds: its bytes (base64, or percent-encoded text
+// such as an SVG) and an extension from its type.
+function inlineImage(url) {
+  const comma = url.indexOf(",");
+  const head = url.slice("data:".length, comma).split(";");
+  const data = decodeURIComponent(url.slice(comma + 1));
+  const bytes = head.includes("base64") ? Buffer.from(data, "base64") : Buffer.from(data, "utf8");
+  return { bytes, extension: IMAGE_TYPES[head[0].toLowerCase()] ?? "png" };
+}
+
 // ---- writing the component ----
 
 const pascal = (slug) => slug.replace(/(^|-)([a-z0-9])/g, (_, __, c) => c.toUpperCase());
@@ -793,12 +805,22 @@ async function run(codebase, spec) {
   const images = new Map();
   for (const inst of instances) {
     for (const node of inst.nodes) {
-      if (node.tag !== "img" || !node.attrs.src || node.attrs.src.startsWith("data:")) continue;
+      if (node.tag !== "img" || !node.attrs.src) continue;
       const absolute = new URL(node.attrs.src, inst.base).toString();
       if (images.has(absolute)) continue;
-      const file = `image${images.size + 1}${/\.(svg|png|jpe?g|webp|gif|avif)$/i.exec(new URL(absolute).pathname)?.[0] ?? ".png"}`;
-      await download(absolute, join(folder, file));
-      images.set(absolute, { file, ident: `image${images.size + 1}` });
+      const ident = `image${images.size + 1}`;
+      let file;
+      // An inline image (a data: URL) is written out as the file it holds,
+      // so it is imported like any other and chosen by look the same way.
+      if (absolute.startsWith("data:")) {
+        const inline = inlineImage(absolute);
+        file = `${ident}.${inline.extension}`;
+        writeFileSync(join(folder, file), inline.bytes);
+      } else {
+        file = `${ident}${/\.(svg|png|jpe?g|webp|gif|avif)$/i.exec(new URL(absolute).pathname)?.[0] ?? ".png"}`;
+        await download(absolute, join(folder, file));
+      }
+      images.set(absolute, { file, ident });
     }
   }
   const imageOf = (node, inst) => images.get(new URL(node.attrs.src, inst.base).toString());
