@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
-const options = { lanes: "5" };
+const options = { lanes: "8" };
 const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {

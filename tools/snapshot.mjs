@@ -150,6 +150,8 @@ const READ_INSTANCE = String.raw`(rootSelector) => {
     }
     const attrs = {};
     for (const a of el.attributes) attrs[a.name] = a.value;
+    // An image is the file the browser picked for this display, not its 1x fallback.
+    if (el.tagName === 'IMG' && el.currentSrc) { attrs.src = el.currentSrc; delete attrs.srcset; delete attrs.sizes; }
     const pseudo = {};
     for (const which of ['::before', '::after', '::placeholder', '::marker']) {
       const s = getComputedStyle(el, which);
@@ -398,18 +400,37 @@ function jsxAttr(name, node) {
   return keep.includes(name) ? name : null;
 }
 
-// Classes named for what the element is, so the stylesheet reads.
+// Classes named for what the element is, so the stylesheet reads: the
+// product's own name for it where it has one (a data-slot, a BEM or
+// component class such as LemonButton__icon, a role), else what it is.
+const CAMEL = (text) => text.replace(/[^A-Za-z0-9]+([A-Za-z0-9])/g, (_, c) => c.toUpperCase()).replace(/^[A-Z]/, (c) => c.toLowerCase());
+function ownName(node) {
+  const slot = node.attrs["data-slot"];
+  if (slot) return CAMEL(slot);
+  for (const token of (node.attrs.class ?? "").split(/\s+/)) {
+    const bem = /^[A-Z][A-Za-z0-9]*(?:__([A-Za-z0-9-]+))?(?:--[A-Za-z0-9-]+)?$/.exec(token);
+    if (bem?.[1]) return CAMEL(bem[1]);
+  }
+  const role = node.attrs.role;
+  if (role && !["presentation", "none", "img"].includes(role)) return CAMEL(role);
+  return null;
+}
+
 function nameNodes(nodes) {
   const used = new Map();
   return nodes.map((node, i) => {
     let base = "part";
     const texts = node.children.filter((c) => c.text !== undefined && c.text.trim() !== "");
     if (i === 0) base = "root";
+    else if (ownName(node)) base = ownName(node);
     else if (node.tag === "svg") base = "icon";
     else if (node.svg) base = node.tag;
     else if (node.tag === "img") base = "image";
-    else if (["input", "textarea", "select", "label", "button", "a"].includes(node.tag)) base = node.tag === "a" ? "link" : node.tag;
+    else if (node.tag === "a") base = "link";
+    else if (["input", "textarea", "select", "label", "button", "kbd", "code"].includes(node.tag)) base = node.tag;
     else if (texts.length > 0 && node.children.every((c) => c.text !== undefined)) base = "text";
+    if (["root", "hover", "default"].includes(base) && i !== 0) base = `${base}Part`;
+    if (/^(variant|interaction)-/.test(base)) base = `part${base}`;
     const n = (used.get(base) ?? 0) + 1;
     used.set(base, n);
     return n === 1 ? base : `${base}${n}`;
@@ -488,6 +509,14 @@ function propsFor(node, nodes, baseline, declared, isRoot) {
   if (!("line-height" in out) && (isRoot || !parent || parent.style["line-height"] !== node.style["line-height"])) out["line-height"] = node.style["line-height"];
   if (isRoot) {
     if (out.position === "absolute" || out.position === "fixed" || out.position === "sticky") out.position = "relative";
+    // An inline root's box is its text; set on its own it would sit in a
+    // line box of its own and move. As an inline-block at the text's
+    // natural height it keeps that box, and still sits on a baseline.
+    if (node.style.display === "inline") {
+      out.display = "inline-block";
+      out["line-height"] = "normal";
+      out["vertical-align"] = "top";
+    }
     out["box-sizing"] = node.style["box-sizing"];
   }
   return out;

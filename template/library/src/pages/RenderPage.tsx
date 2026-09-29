@@ -64,7 +64,18 @@ export function RenderPage({ slug, state, placement, library }: Props) {
       return (
         <div
           data-render="ok"
-          style={{ position: "absolute", left: placement.x, top: placement.y, width: placement.width ?? undefined, background: lookup.backdrop ?? undefined }}
+          style={{
+            position: "absolute",
+            left: placement.x,
+            top: placement.y,
+            width: placement.width ?? undefined,
+            background: lookup.backdrop ?? undefined,
+            // A grid cell, not a line: an inline-level root would otherwise
+            // sit on the app's own line height, a few pixels low, and the
+            // cell stretches the root to the width it had in the product.
+            display: "grid",
+            alignItems: "start",
+          }}
         >
           <Rendered name={name} module={lookup.module} state={lookup.look} />
         </div>

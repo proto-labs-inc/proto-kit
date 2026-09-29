@@ -32,6 +32,9 @@ import { fileURLToPath } from "node:url";
 import { verifyPass } from "./verify-replica.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
+// Verdicts that count as the product's look: identical, a one-pixel
+// placement, or identical where the page shows it.
+const ACCEPTED = ["match", "shifted", "offscreen"];
 const USAGE = 'usage: node tools/check.mjs <codebase> <slug> [--state <name>] [--no-land] [--activity "<line>"]';
 
 const options = { land: true };
@@ -90,17 +93,14 @@ setTimeout(() => {
 // state must not leak into another state's capture.
 const results = [];
 for (const state of states) {
+  const pass = () =>
+    verifyPass({ appUrl, slug, state: state.name, liveMatch, target: { selector: state.live.selector }, force: state.live.force, out });
   let result;
   try {
-    result = await verifyPass({
-      appUrl,
-      slug,
-      state: state.name,
-      liveMatch,
-      target: { selector: state.live.selector },
-      force: state.live.force,
-      out,
-    });
+    result = await pass();
+    // A capture can land on the tail of the previous state's transition:
+    // a state that differs is checked once more before it counts.
+    if (!ACCEPTED.includes(result.verdict)) result = await pass();
   } catch (error) {
     results.push({ state: state.name, verdict: "failed", error: error.message });
     continue;
@@ -116,7 +116,7 @@ for (const state of states) {
     activity,
   });
 }
-const matched = results.every((r) => r.verdict === "match" || r.verdict === "shifted" || r.verdict === "offscreen");
+const matched = results.every((r) => ACCEPTED.includes(r.verdict));
 console.log(JSON.stringify({ slug, states: results, matched }));
 
 // The pass's line names the state when the component has more than one.

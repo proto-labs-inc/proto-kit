@@ -156,6 +156,11 @@ const READ = String.raw`(names) => {
     const role = el.getAttribute('role');
     if (role && /^(checkbox|switch|radio|tab|tablist|combobox|menuitem|slider|progressbar|separator|tooltip|dialog|alert|status|link|button)$/.test(role)) return role;
     if (['button', 'input', 'textarea', 'select', 'a', 'label', 'img', 'table', 'nav', 'header', 'aside', 'h1', 'h2', 'h3', 'h4', 'kbd', 'code', 'hr'].includes(tag)) return tag;
+    // A form field: a label and its control laid out together, the smallest box holding both.
+    if (/flex|grid/.test(s.display) && r.height < 240 && el.querySelector('label') && el.querySelector('input, textarea, select, [role=combobox], [role=checkbox], [role=switch]')) {
+      const inner = [...el.children].some((c) => c.querySelector && c.querySelector('label') && c.querySelector('input, textarea, select, [role=combobox], [role=checkbox], [role=switch]'));
+      if (!inner) return 'field';
+    }
     const radius = parseFloat(s.borderTopLeftRadius) || 0;
     const filled = !/rgba\(0, 0, 0, 0\)/.test(s.backgroundColor);
     const bordered = parseFloat(s.borderTopWidth) > 0;
@@ -175,7 +180,15 @@ const READ = String.raw`(names) => {
     const entry = groups.get(shape) ?? { kind, instances: [], looks: new Set() };
     entry.looks.add(look);
     const cut = r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth;
-    entry.instances.push({ selector: uniq(el), rect: [r.x, r.y, r.width, r.height], text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('alt') || '').trim().replace(/\s+/g, ' ').slice(0, 60), cut, area: r.width * r.height, look });
+    // The box you see: an element whose wrapper has exactly its box
+    // (an input inside the group that draws its border) is read as the wrapper.
+    let box = el;
+    for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+      const u = up.getBoundingClientRect();
+      if (Math.abs(u.x - r.x) > 0.01 || Math.abs(u.y - r.y) > 0.01 || Math.abs(u.width - r.width) > 0.01 || Math.abs(u.height - r.height) > 0.01) break;
+      box = up;
+    }
+    entry.instances.push({ selector: uniq(box), rect: [r.x, r.y, r.width, r.height], text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('alt') || '').trim().replace(/\s+/g, ' ').slice(0, 60), cut, area: r.width * r.height, look });
     groups.set(shape, entry);
   }
   const candidates = [...groups.values()].map((g) => {
