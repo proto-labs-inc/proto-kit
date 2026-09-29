@@ -112,7 +112,7 @@ function Passes({ component, moving }: { component: Component; moving: boolean }
 }
 
 /** A pass's two captures share one frame: white, at 1x, with the same ring. */
-const PANEL = "flex-1 rounded-lg bg-white py-3 ring-1 ring-foreground/10";
+const PANEL = "flex-1 rounded-lg bg-background py-3 ring-1 ring-foreground/10";
 
 /** The diff image, or a plain "no difference" panel when the pass was clean. */
 function Difference({ pass, index }: { pass: Pass; index: number }) {

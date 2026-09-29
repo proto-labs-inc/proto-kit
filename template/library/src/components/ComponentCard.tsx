@@ -46,7 +46,7 @@ export function ComponentCard({ component, view, courier, justAdded }: Props) {
       className={`group relative flex scroll-mt-8 flex-col overflow-hidden rounded-xl bg-card ring-1 transition-shadow hover:shadow-md ${justAdded ? "ring-2 ring-emerald-500/60" : "ring-foreground/10"}`}
     >
       <a href={href.component(component.slug)} className="absolute inset-0 z-10" aria-label={`Open ${component.name}`} />
-      <div className="relative flex h-44 items-center justify-center overflow-hidden bg-white p-5">
+      <div className="relative flex h-44 items-center justify-center overflow-hidden bg-background p-5">
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
             key={view.kind === "preview" ? "rendered" : "picture"}
