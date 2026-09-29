@@ -47,6 +47,7 @@ node tools/survey.mjs <codebase>                    the page in one read (≈1 s
 node tools/import.mjs <codebase> <plan.json>        run a plan: colours, type, inventory, every component
 node tools/snapshot.mjs <codebase> <json | @file>   write one component from its live instances
 node tools/check.mjs <codebase> <slug> [--state <name>] [--activity "<line>"]   check it; each pass lands
+node tools/courier-up.mjs <codebase>                this laptop's courier, up and answering (idempotent)
 node tools/library.mjs component <codebase> <slug> status done
 node tools/library.mjs component <codebase> <slug> status skipped --kind <kind> --reason "<sentence>" --screenshot <png>
 node tools/library.mjs event <codebase> [slug] "<activity>"
@@ -87,7 +88,9 @@ straight after.
    interactive ones, each with its picture. Its names are placeholders
    ("Button: Connect GitHub", "Look 2"). Copy it to
    `~/.proto/<codebase>/run/plan.json` and make the judgment it cannot,
-   quickly (this is the one step that is yours; the rest is tools):
+   quickly (this is the one step that is yours; the rest is tools; the
+   draft and its pictures hold what you need, so do not read the live
+   page yourself):
    - **Name everything the product's way**: components ("Button",
      "FormItemLayout"; the class names and text in the survey, and a
      glance at the source's component folder, settle it) and looks
@@ -120,12 +123,18 @@ straight after.
    is left to fix, with each failing state's verdict and where the
    difference sits.
 
-5. **The courier, while it runs.** If
-   `~/.proto/<codebase>/run/courier/` has no `courier.json`, bring the
-   courier up now (the serve skill's "The courier"), in the minute the
-   run takes.
+5. **The courier, while it runs**: `node tools/courier-up.mjs
+   <codebase>` in the background, started with the runner. It does the
+   serve skill's courier steps in one call (registering, tunnel, secret,
+   supervisor, a status check through the edge) and never prints the
+   secret. Do not build the courier by hand.
 
-6. **Fix what is left, in parallel.** For every component in `toFix`
+6. **Nothing left to fix? Finish at once.** When the runner lists no
+   `toFix` and no `failed`, go straight to the Finish: `complete` and the
+   final publish come before anything else, so the import's time is the
+   import's. Otherwise:
+
+   **Fix what is left, in parallel.** For every component in `toFix`
    or `failed`, dispatch one `importer` sub-agent, **all in one turn**,
    with the brief below. Never pass a model: the importer role runs on
    the fast model by design, and the work is small. While they run,
@@ -233,9 +242,9 @@ Every line, in order, before you say the import is done:
 - `node tools/library.mjs complete <codebase>` (it refuses otherwise);
 - `node tools/publish-library.mjs <codebase> --wait`: this last publish
   carries `completedAt`, so the published copy says the import finished;
-- the courier is up (`node tools/supervise.mjs status
-  ~/.proto/<codebase>/run/courier` shows the listener and tunnel up,
-  and a `{"status": true}` POST through the edge answers);
+- the courier is up: `node tools/courier-up.mjs <codebase>` prints
+  `local: true` and `edge: true` (on a network that blocks the tunnel,
+  `edge: false`; say the serve skill's sentence);
 - one sentence to the user: the library is published and stays
   viewable after this laptop closes;
 - then listen: continue into the next thing setup asked for (a
