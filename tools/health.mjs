@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /**
  * Read-only health check across ~/.proto — the proto plugin's
- * session-start hook. One line per codebase: what's serving and whether
+ * session-start hook. First, which kit this session runs and which site
+ * it talks to; then one line per codebase: what's serving and whether
  * the courier is listening, with the one command that fixes it when
  * something's down. Never restarts anything, never errors: a machine
  * with no ~/.proto prints nothing and exits 0.
  */
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readConfig } from "./mcp-call.mjs";
 
 const root = join(process.env.HOME ?? "", ".proto");
 const alive = (pid) => {
@@ -34,6 +37,16 @@ try {
 } catch {
   process.exit(0); // no ~/.proto: not set up, nothing to say
 }
+
+// The kit's folder names its version: an installed plugin lives in a
+// cache folder named after it (…/proto/<version>), a kit run from a
+// checkout in that checkout. The site is config.json's, or PROTO_APP's.
+const kit = dirname(dirname(fileURLToPath(import.meta.url)));
+let site = "not linked";
+try {
+  site = readConfig().app;
+} catch {}
+console.log(`proto kit ${kit}, site ${site}`);
 
 for (const codebase of codebases) {
   const runRoot = join(root, codebase.name, "run");
