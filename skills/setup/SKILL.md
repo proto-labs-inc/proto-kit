@@ -365,8 +365,13 @@ browser. Set that up once per machine, here:
    drive the browser's interface** (no clicking its address bar, no
    typing into it, no computer-use automation): the kit reads pages
    through the debug port only. If the page shows no signed-in
-   marker, tell the user to sign in in the Proto window and wait
-   until they say they have; then read again. Record the page in
+   marker, bring the Proto window to the front on that tab
+   (`node tools/cdp/raise.mjs <url-substring>`: the one time the kit
+   raises it, because the user must act in it), tell the user to sign
+   in there and wait until they say they have; then read again. A
+   password field on a signed-in page (a form asking for a new
+   database password) is not a sign-in form: look for the account
+   control. Record the page in
    `codebase.json` as `source.liveUrl`: the import-design-system
    skill takes it from there instead of asking again.
 3. From then on, skills find the page by looking at the open tabs
