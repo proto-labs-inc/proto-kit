@@ -112,10 +112,12 @@ const READ = String.raw`(names) => {
 
   // The colours visible elements paint with, and how often.
   const painted = {};
-  for (const { s } of visible) {
+  for (const { el, s } of visible) {
     for (const p of ['color', 'background-color', 'border-top-color', 'fill', 'stroke']) {
       const v = s.getPropertyValue(p);
       if (!v || v === 'none' || /rgba\(0, 0, 0, 0\)/.test(v)) continue;
+      // Fill and stroke paint only in an SVG; every HTML element computes a black fill.
+      if ((p === 'fill' || p === 'stroke') && !(el instanceof SVGElement)) continue;
       if (p === 'border-top-color' && s.borderTopWidth === '0px') continue;
       painted[v] = (painted[v] ?? 0) + 1;
     }
@@ -240,13 +242,27 @@ const RESOLVE = String.raw`(raws, painted) => {
     const got = resolve(raw);
     if (got) colours.push({ name, raw, ...got });
   }
-  const paintedPx = Object.entries(painted).map(([value, n]) => ({ value, n, px: resolve(value)?.px })).filter((p) => p.px);
+  const paintedPx = Object.entries(painted).map(([value, n]) => ({ value, n, ...resolve(value) })).filter((p) => p.px);
   const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
+  const matched = new Set();
   for (const c of colours) {
     c.uses = 0;
-    for (const p of paintedPx) if (p.value === c.computed || near(p.px, c.px)) c.uses += p.n;
+    for (const p of paintedPx) {
+      if (p.value !== c.computed && !near(p.px, c.px)) continue;
+      c.uses += p.n;
+      matched.add(p);
+    }
   }
-  return colours;
+  // A colour the page paints with that no custom property holds (a
+  // stylesheet of literal colours) is still one of its colours: named by
+  // how often it is used, most first.
+  const unmatched = [];
+  for (const p of paintedPx.filter((q) => !matched.has(q)).sort((a, b) => b.n - a.n)) {
+    const same = unmatched.find((c) => near(c.px, p.px));
+    if (same) same.uses += p.n;
+    else unmatched.push({ name: '--painted-' + (unmatched.length + 1), raw: p.value, computed: p.computed, px: p.px, uses: p.n });
+  }
+  return [...colours, ...unmatched];
 }`;
 const resolver = await headlessPage("data:text/html,<body></body>", { width: 100, height: 100, display: data.page.display });
 let resolved;
