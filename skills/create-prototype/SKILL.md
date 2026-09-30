@@ -71,6 +71,10 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    the site needs (phases, queued, pass, matched, composing) is sent by
    the tools; you send none of them yourself. `--accept-curation` skips
    the stop when the draft names are already right.
+   Pictures (logos, icons, illustrations, charts: `<img>`, inline
+   `<svg>`, `<canvas>` and stylesheet images) are copied as the page's
+   own files and set in as they are, never redrawn; nobody edits one to
+   make a check pass.
 5. **Serve early.** The dev server the copy used has stopped; start the
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
@@ -153,7 +157,10 @@ Blocked at any step: `build-stream.mjs question <briefId> --codebase
 > (`<n>-live.png` the product, `<n>.png` ours, `<n>-diff.png` the
 > difference). Read the value that differs from `<build>/read.json`
 > (the element's computed style; `tree.json` names the element index),
-> never from the live page. Fix it in the module or stylesheet, then run
+> never from the live page. Never edit, redraw or restyle a picture
+> file (`picture*`, `image*`, `background*`): it is the page's own;
+> a difference inside one is its size or what is around it. Fix it in
+> the module or stylesheet, then run
 > `node <kit>/tools/check-part.mjs <briefId> --codebase <codebase>
 > <slug>`. At most six checks; write only in the part's folder. Report
 > the last check's verdict and mismatch per state.

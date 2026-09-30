@@ -7,7 +7,8 @@ import { href } from "@/route";
 import type { SendOutcome } from "@/courier";
 import { CheckStrip } from "./Checks";
 import { NotBuilt } from "./NotBuilt";
-import { PLACEHOLDER_HEIGHT, ProductCrop } from "./ProductCrop";
+import { Fit } from "./Fit";
+import { PLACEHOLDER_HEIGHT, ProductCrop, usePictureWidth } from "./ProductCrop";
 import { Rendered } from "./Rendered";
 import { Stage } from "./Stage";
 
@@ -131,12 +132,13 @@ function Develop({ children }: { children: React.ReactNode }) {
 }
 
 function Body({ component, view }: { component: Component; view: ComponentView }) {
+  const productWidth = usePictureWidth(component.screenshot ?? null);
   switch (view.kind) {
     case "preview":
       return (
-        <div className="p-5">
+        <Fit width={view.state.width ?? productWidth ?? undefined} className="p-5">
           <Rendered name={component.name} module={component.module} state={view.state} />
-        </div>
+        </Fit>
       );
     case "working":
       if (view.latest !== null) return <CheckStrip pass={view.latest} name={component.name} />;

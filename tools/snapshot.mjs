@@ -49,6 +49,7 @@ import { fileURLToPath } from "node:url";
 import { findPage } from "./cdp/attach.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
+import { INSIDE, PICTURE_OF, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
 import { FORCEABLE, withForcedState } from "./verify-replica.mjs";
 
 const USAGE = "usage: node tools/snapshot.mjs <codebase> <json | @file> [--theme <light|dark>]";
@@ -113,6 +114,7 @@ export const READ_INSTANCE = String.raw`(rootSelector) => {
   if (!root) return null;
   const elements = [root, ...root.querySelectorAll('*')];
   const index = new Map(elements.map((el, i) => [el, i]));
+  const pictureOf = ${PICTURE_OF};
   const styleOf = (el, pseudo) => {
     const s = getComputedStyle(el, pseudo);
     const out = {};
@@ -148,6 +150,7 @@ export const READ_INSTANCE = String.raw`(rootSelector) => {
       attrs, children, style: styleOf(el), pseudo,
       value: tag === 'input' || tag === 'textarea' ? el.value : null,
       rect: [r.x, r.y, r.width, r.height],
+      picture: pictureOf(el),
     };
   });
   // The colour the component sits on: its painted ancestors from the
@@ -423,7 +426,7 @@ export const familiesIn = (value) =>
     .map((f) => f.trim().replace(/^["']|["']$/g, ""))
     .filter((f) => f && !/^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-[a-z-]+|-apple-system|emoji|math|fangsong|inherit|initial)$/i.test(f));
 
-async function download(url, to) {
+export async function download(url, to) {
   const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36" } });
   if (!res.ok) throw new Error(`could not fetch a file the component uses (${res.status})`);
   writeFileSync(to, Buffer.from(await res.arrayBuffer()));
@@ -828,6 +831,14 @@ export async function readLiveInstances(live, states) {
     const read = await withForcedState(live, state.selector, state.force, async () => {
       const data = await evaluate(live, `(${READ_INSTANCE})(${JSON.stringify(state.selector)})`);
       if (!data) throw new Error(`nothing on the live page matches ${state.selector} (state ${state.name})`);
+      // A cross-origin canvas cannot give its pixels; its screenshot is the picture.
+      for (const node of data.nodes) {
+        if (node.picture?.kind !== "canvas" || node.picture.data !== null) continue;
+        const [x, y, w, h] = node.rect;
+        if (w <= 0 || h <= 0) continue;
+        const shot = await live.send("Page.captureScreenshot", { format: "png", clip: { x, y, width: w, height: h, scale: 1 } });
+        node.picture.data = `data:image/png;base64,${shot.data}`;
+      }
       return data;
     });
     instances.push(instanceOf(state, read));
@@ -997,6 +1008,9 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   const { fontCss, fontFiles } = await writeFonts(folder, instances, faces);
   const images = await writeImages(folder, instances, assets);
   const imageOf = (node, inst) => images.get(new URL(node.attrs.src, inst.base).toString());
+  // Pictures are the product's own files, set in as they are (tools/pictures.mjs).
+  const pictures = writePictures(folder, instances);
+  const styleImages = await writeStyleImages(folder, instances, assets, download);
 
   // Everything below is written again after each round of fitting sizes.
   const emit = () => {
@@ -1043,7 +1057,13 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
     const { inst, i } = baseOf(u);
     return propsAt(inst, i);
   });
+  // An element inside an svg picture carries its look in the picture's markup.
+  const drawnInPicture = tree.nodes.map((u) => {
+    const { inst, i } = baseOf(u);
+    return inSvgPicture(inst.nodes, i);
+  });
   tree.nodes.forEach((u, id) => {
+    if (drawnInPicture[id]) return;
     const { inst, i } = baseOf(u);
     css.push(cssBlock(`.${names[id]}`, baseProps[id]));
     for (const which of Object.keys(inst.nodes[i].pseudo)) css.push(cssBlock(`.${names[id]}${which}`, pseudoProps(inst.nodes[i], which, baseline, tokenByValue)));
@@ -1052,7 +1072,7 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   for (const inst of variants) {
     const key = `variant-${variantKey(inst)}`;
     for (const [i, id] of tree.at.get(inst)) {
-      if (baseOf(tree.nodes[id]).inst === inst) continue;
+      if (baseOf(tree.nodes[id]).inst === inst || drawnInPicture[id]) continue;
       const props = diffProps(propsAt(inst, i), baseProps[id], inst.nodes[i], tokenByValue);
       const selector = id === 0 ? `.root.${key}` : `.root.${key} .${names[id]}`;
       css.push(cssBlock(selector, props));
@@ -1069,6 +1089,7 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
     // from their own rest).
     const variantClass = variants.length > 1 ? `.variant-${variantKey(of)}` : "";
     for (const [i, id] of tree.at.get(of)) {
+      if (drawnInPicture[id]) continue;
       const props = diffProps(propsAt(inst, i), propsAt(of, i), inst.nodes[i], tokenByValue);
       const tail = id === 0 ? "" : ` .${names[id]}`;
       const selectors = [`.root${variantClass}:${pseudo}${tail}`, `.root${variantClass}.interaction-${pseudo}${tail}`];
@@ -1116,8 +1137,19 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   // presence is its value: a disabled button, a ticked box).
   const attrSlots = new Map(); // `${id}:${attr}` → { prop, kind, default, byLook }
   const imageChoices = new Map(); // id → { name, byLook: Map(key → ident), fallback }
+  // An svg picture that differs between looks is a file chosen by look, like an image.
+  const pictureChoices = new Map(); // id → { name, byLook: Map(key → ident), fallback }
   tree.nodes.forEach((u, id) => {
+    if (drawnInPicture[id]) return;
     const looks = variants.filter((inst) => u.members.has(inst));
+    const pictureIn = (inst) => inst.nodes[u.members.get(inst)].picture;
+    if (pictureIn(looks[0] ?? baseOf(u).inst)?.kind === "svg") {
+      const byLook = new Map(looks.flatMap((inst) => {
+        const picture = pictureIn(inst);
+        return picture?.kind === "svg" ? [[variantKey(inst), pictures.svgs.get(picture.markup).ident]] : [];
+      }));
+      if (new Set(byLook.values()).size > 1) pictureChoices.set(id, { name: `pictureFor${id}`, byLook, fallback: byLook.values().next().value });
+    }
     const node0 = baseOf(u).inst.nodes[baseOf(u).i];
     const names = new Set(looks.flatMap((inst) => Object.keys(inst.nodes[u.members.get(inst)].attrs)));
     for (const name of names) {
@@ -1171,11 +1203,15 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
       // The part's marker: what the Frame's comment mode hit-tests in a prototype.
       if (marker) attrs.push(`data-proto-id=${JSON.stringify(marker)}`);
     } else attrs.push(`className={styles[${JSON.stringify(names[id])}]}`);
+    const picture = node.picture ?? null;
+    // A canvas is shown as the picture of its pixels.
+    const canvas = picture?.kind === "canvas" ? pictures.canvases.get(picture.data) : undefined;
     const attrNames = new Set([...u.members.entries()].filter(([look]) => variants.includes(look)).flatMap(([look, k]) => Object.keys(look.nodes[k].attrs)));
     for (const name of attrNames) {
       const value = node.attrs[name];
       const jsxName = jsxAttr(name, node);
       if (!jsxName) continue;
+      if (canvas && (name === "width" || name === "height")) continue;
       if (node.tag === "img" && name === "src") {
         const choice = imageChoices.get(id);
         const img = value !== undefined ? imageOf(node, inst) : undefined;
@@ -1207,6 +1243,18 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
     if (id === 0 && valueSlot === 0) attrs.push(`defaultValue={value}`);
     if (id !== 0 && inst === defaultInst && i === valueSlot) attrs.push(`defaultValue={value}`);
     if (node.tag === "input" || node.tag === "textarea") attrs.push("readOnly");
+    if (canvas) {
+      lines.push(`${indent(d)}<img ${attrs.join(" ")} src={${canvas.ident}} alt="" />`);
+      if (condition) lines.push(`${indent(depth)})}`);
+      return;
+    }
+    if (picture?.kind === "svg") {
+      const choice = pictureChoices.get(id);
+      const markup = choice ? `${choice.name}[variant] ?? ${choice.fallback}` : pictures.svgs.get(picture.markup).ident;
+      lines.push(`${indent(d)}<${node.tag} ${attrs.join(" ")} dangerouslySetInnerHTML={{ __html: inside(${markup}) }} />`);
+      if (condition) lines.push(`${indent(depth)})}`);
+      return;
+    }
     const open = `<${node.tag} ${attrs.join(" ")}`;
     const kids = u.items.filter((item) => item.u !== undefined || [...item.texts.values()].some((t) => t !== ""));
     if (kids.length === 0) lines.push(`${indent(d)}${open} />`);
@@ -1270,6 +1318,8 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   const tsx = `import type { ReactNode } from "react";
 import styles from "./${Name}.module.css";
 ${[...images.values()].map((img) => `import ${img.ident} from "./${img.file}";`).join("\n")}
+${[...pictures.svgs.values()].map((svg) => `import ${svg.ident} from "./${svg.file}?raw";`).join("\n")}
+${[...pictures.canvases.values()].map((png) => `import ${png.ident} from "./${png.file}";`).join("\n")}
 
 /**
  * ${spec.name}, as the product renders it (${defaultInst.base.split("?")[0]}).
@@ -1284,6 +1334,8 @@ ${propDocs.join("\n")}
 }
 
 const cx = (...names: (string | undefined)[]) => names.filter(Boolean).join(" ");
+${pictures.svgs.size > 0 ? INSIDE : ""}
+${[...pictureChoices.values()].map((c) => `const ${c.name}: Partial<Record<${Name}Variant, string>> = { ${[...c.byLook].map(([k, ident]) => `${JSON.stringify(k)}: ${ident}`).join(", ")} };`).join("\n")}
 ${[...imageChoices.values()].map((c) => `const ${c.name}: Partial<Record<${Name}Variant, string>> = { ${[...c.byLook].map(([k, ident]) => `${JSON.stringify(k)}: ${ident}`).join(", ")} };`).join("\n")}
 
 export default function ${Name}({ ${destructure.join(", ")} }: ${Name}Props) {
@@ -1293,7 +1345,7 @@ ${lines.join("\n")}
 }
 `;
   writeFileSync(join(folder, `${Name}.tsx`), tsx.replace(/\n\n\n+/g, "\n\n"));
-  writeFileSync(join(folder, `${Name}.module.css`), [...fontCss, ...css].filter(Boolean).join("\n"));
+  writeFileSync(join(folder, `${Name}.module.css`), localStyleImages([...fontCss, ...css].filter(Boolean).join("\n"), styleImages));
 
   // ---- component.json ----
   const states = instances.map((inst) => {
@@ -1313,7 +1365,8 @@ ${lines.join("\n")}
     }
     const live = { selector: inst.state.selector };
     if (inst.state.force) live.force = inst.state.force;
-    return { name: inst.state.name, props, live };
+    // The width the product gave it, which the library shows it at.
+    return { name: inst.state.name, props, live, width: inst.nodes[0].rect[2] };
   });
   const unit = { states, tokens: theme ? { light: [], dark: [] } : [], shape: shapeFingerprint(defaultInst.nodes) };
   if (defaultInst.backdrop) unit.backdrop = tokenByValue.get(defaultInst.backdrop) ?? defaultInst.backdrop;
@@ -1352,6 +1405,8 @@ ${lines.join("\n")}
     "",
     `Fonts: ${[...fontFiles.values()].join(", ") || "none beyond the system's"}, from the page's @font-face rules.`,
     "",
+    `Pictures: ${[...images.values(), ...pictures.svgs.values(), ...pictures.canvases.values()].map((p) => p.file).concat([...styleImages.values()].map((f) => f.slice(2))).join(", ") || "none"}, the product's own files, set in as they are. A difference inside one is never fixed by editing it: a picture that differs is the wrong file or the wrong size.`,
+    "",
   ].join("\n");
   writeFileSync(join(folder, "notes.md"), notes);
 
@@ -1363,7 +1418,7 @@ ${lines.join("\n")}
     backdrop: defaultInst.backdrop,
     nodes: defaultInst.nodes.length,
     fonts: [...fontFiles.values()],
-    images: [...images.values()].map((i) => i.file),
+    images: [...images.values(), ...pictures.svgs.values(), ...pictures.canvases.values()].map((i) => i.file).concat([...styleImages.values()].map((f) => f.slice(2))),
   };
 }
 

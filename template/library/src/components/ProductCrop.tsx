@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Fit } from "./Fit";
 
 export const PLACEHOLDER_HEIGHT = 120;
 
@@ -18,41 +19,56 @@ function regionOf(src: string): { file: string; region: Region | null } {
 }
 
 /**
- * A 2x capture shown at its natural size, half the file's pixels, so
- * it is crisp and never scaled: the width is measured once it loads
- * (a srcset density would make the browser report a corrected size on
- * some displays and not others). Sits in a frame that scrolls when the
- * capture is wider than the page, never clipping or stretching it. A
- * region of a sheet shows just that region, at the same half size.
+ * The width a 2x file has at its natural size, in CSS px: half its
+ * pixels, measured once it loads; null until then. (A srcset density
+ * would make the browser report a corrected size on some displays and
+ * not others.)
+ */
+function useFileWidth(file: string | null): number | null {
+  const [measured, setMeasured] = useState<{ file: string; width: number } | null>(null);
+  useEffect(() => {
+    if (file === null) return;
+    const img = new Image();
+    img.onload = () => setMeasured({ file, width: img.naturalWidth / 2 });
+    img.src = file;
+  }, [file]);
+  if (file === null || measured?.file !== file) return null;
+  return measured.width;
+}
+
+/** The width a capture shows at its natural size, in CSS px (a region of a sheet, the region's); null until known. */
+export function usePictureWidth(src: string | null): number | null {
+  const fileWidth = useFileWidth(src === null ? null : regionOf(src).file);
+  if (src === null) return null;
+  const { region } = regionOf(src);
+  if (region !== null) return region.width / 2;
+  return fileWidth;
+}
+
+/**
+ * A 2x capture at its natural size, half the file's pixels, so it is
+ * crisp; wider than its frame, it is scaled down to fit, with its own
+ * size a click away for a pixel-for-pixel look (Fit). A region of a
+ * sheet shows just that region, the same way.
  */
 export function Crisp({ src, alt, className = "" }: CrispProps) {
-  const [width, setWidth] = useState<number | null>(null);
   const { file, region } = regionOf(src);
+  const fileWidth = useFileWidth(file);
+  // Hidden until measured: at the file's own pixels it would show twice its size for a frame.
+  const hidden = fileWidth === null ? "hidden" : undefined;
   if (region !== null) {
     return (
-      <div className={`overflow-x-auto ${className}`}>
-        <div role="img" aria-label={alt} className="relative mx-auto overflow-hidden" style={{ width: region.width / 2, height: region.height / 2 }}>
-          <img
-            src={file}
-            alt=""
-            className="absolute block max-w-none"
-            style={{ left: -region.x / 2, top: -region.y / 2, width: width ?? undefined }}
-            onLoad={(e) => setWidth(e.currentTarget.naturalWidth / 2)}
-          />
+      <Fit width={region.width / 2} align="center" className={className}>
+        <div role="img" aria-label={alt} className="relative overflow-hidden" style={{ width: region.width / 2, height: region.height / 2 }}>
+          <img src={file} alt="" className="absolute block max-w-none" style={{ left: -region.x / 2, top: -region.y / 2, width: fileWidth ?? undefined, visibility: hidden }} />
         </div>
-      </div>
+      </Fit>
     );
   }
   return (
-    <div className={`overflow-x-auto ${className}`}>
-      <img
-        src={src}
-        alt={alt}
-        className="mx-auto block max-w-none"
-        style={{ width: width ?? undefined }}
-        onLoad={(e) => setWidth(e.currentTarget.naturalWidth / 2)}
-      />
-    </div>
+    <Fit width={fileWidth ?? undefined} align="center" className={className}>
+      <img src={src} alt={alt} className="block max-w-none" style={{ width: fileWidth ?? undefined, visibility: hidden }} />
+    </Fit>
   );
 }
 
