@@ -107,6 +107,12 @@ serveHttp({ port: config.port, secret: config.secret, handle }, () =>
 // app answers with its staleness window and the loop paces itself
 // from that (heartbeat.mjs). Fail soft always: a beat that cannot be
 // sent is a missed beat, never a crash.
+//
+// Nothing here says whether this laptop's tunnel is up (MAA-182). The
+// site pushes commands through that tunnel, so on a network that blocks
+// it a dispatch fails, and the site says so from the failure itself
+// rather than from anything stored. That question disappears when the
+// courier pulls its own work over HTTPS (MAA-200).
 if (config.courierId) {
   const { beatForever } = await import("./heartbeat.mjs");
   beatForever(() => ({

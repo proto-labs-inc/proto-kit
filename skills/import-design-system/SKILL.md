@@ -1,541 +1,259 @@
 ---
 name: import-design-system
-description: Import your product's design system into Proto. Reads a live page of your product in your own browser, plus its source code when available, and fills the library with its light and dark colours, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
+description: Import your product's design system into Proto. Reads a live page of your product in your own browser, and fills the library with its light and dark colours, type styles and components, each written from the product's own rendering and checked against it pixel for pixel, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
 ---
 
 # Import a design system
 
-You are turning a real product into its design system: the colours,
-the type styles, the fonts, and the notable components: buttons,
-inputs, badges, the handful of composites the product leans on, each
-type appearing **once**, as a React component with typed props whose
-states are prop sets, with a line of realistic sample copy. The page
-you read is a specimen catalog of living instances; matching a whole
-page is create-prototype's job. The output is the **library
-contract** (`docs/library-contract.md`) inside the library app at
-`~/.proto/<codebase>/library/`: components in `src/components/`,
-everything else in `public/`. The user is watching that app fill in
-as you write, so the write rhythm is the product, not polish, and
-prototypes will import these components later, so they are clean and
-typed, not markup dumps.
+You are turning a real product into its design system: its colours,
+its type styles and its components, each a React component with typed
+props whose looks and states are prop sets, identical to the product
+in every state the page shows. The output is the **library contract**
+(`docs/library-contract.md`) inside the library app at
+`~/.proto/<codebase>/library/`. The user watches that app fill in as
+you work, and prototypes import these components later.
 
-Speed is a feature. The first component should be visible in the
-library within a minute of the prompt; the whole run for a small page
-takes a few minutes, not sixteen. Every slow step in the last real
-run was the model writing a program for something the kit now does in
-one line. So: **you never write a node script**. Every write goes
-through `tools/library.mjs`, every hosting step through
-`tools/host-library.mjs`, every verification pass through
-`tools/verify-replica.mjs`. If you find yourself composing more than
-one line to do one thing, stop: the line exists.
-
-## The live product is required; source is optional
-
-Always use the live product. Use the source too when it is available:
-
-- **The source repo, when available**: path in
-  `~/.proto/<codebase>/codebase.json`.
-  This is where names live: token definitions (CSS custom properties,
-  Tailwind `@theme`/config, design-token files), font faces, the
-  component inventory, and the mechanism behind every look.
-- **A live page, always**: the product page setup recorded
-  (`codebase.json`'s `source.liveUrl`), open and signed in in a browser
-  the current host can already read; setup confirmed the sign-in, so don't
-  ask again. Reuse that existing tab before starting Proto Chrome or opening
-  any tab. This is ground truth for values: deployed builds drift
-  from checkouts (feature flags, hotfixes, build-time changes). The
-  source explains mechanisms; the live page arbitrates values.
-
-An absent or unreadable source path does not block the import. Read structure,
-matched styles, CSS custom properties, fonts and states from the live page;
-give inferred semantic token and component names plain product-language names,
-and say in `notes.md` that the name was inferred from its live use. When source
-exists and disagrees with the live page, the live page wins.
+**The page already knows every value.** The kit's tools read it: one
+call surveys the page, one call writes a component from the live
+element and one call checks it against the product. Your job is the
+judgment the tools cannot make: which components the product has,
+what the product calls them, and which of their looks and states
+matter. Everything else is a tool call. A small import finishes in a
+couple of minutes; if you find yourself writing CSS by hand, reading
+computed styles one at a time, or composing a script, stop: the tool
+exists.
 
 ## The one rule
 
-Never invent a value. Every color, size, gap, weight, and wrap in your
-output must trace back to something you read: from CDP or from the
-source. If you catch yourself estimating a margin from a screenshot,
-stop. You have the tools to know. Guessed values look fine until they
-break, and when they break you can't tell which guess did it.
-
-This applies to mechanisms too, not just numbers. A button that
-spaces its icon with flex `gap` behaves differently from one using a
-margin the moment the label wraps. If you use a different mechanism
-that lands in the same place today, it drifts tomorrow when content
-changes. Copy the component's mechanism.
+Never invent a value. Every colour, size, gap, weight and wrap comes
+from the live page, and the tools take it from there: computed styles
+for the look, the product's own declared rules for sizes, margins and
+grid tracks, its own @font-face files, its own images. A component
+that does not match the product is fixed by reading what differs,
+never by nudging numbers until the diff goes quiet.
 
 ## Tools
 
-Deterministic helpers. Use them; do not rewrite them; do not read
-their source to learn them, the signatures here are complete. (All
-`tools/…` paths resolve from the kit root: the installed plugin root
-the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
-`CURSOR_PLUGIN_ROOT`), otherwise the root above this skill's `skills/`
-directory.)
-
-The writer, one line per write (`<library>` is the codebase id or
-the app's folder; JSON is a literal or `@file`):
+All paths from the kit root (the installed plugin root the host
+exposes: `PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, `CURSOR_PLUGIN_ROOT`;
+otherwise the root above this skill's `skills/` directory). Do not
+read their source to learn them; the signatures here are complete.
 
 ```
-node tools/library.mjs init <library> <codebase> <source> --page-url <liveUrl> --page-title "<the page's title, verbatim>" --favicon <icon file>
-node tools/library.mjs token <library> light '{"name":"text","value":"#0f172a","group":"gray","role":"text"}'
-node tools/library.mjs token <library> dark '{"name":"text","value":"#f8fafc","group":"gray","role":"text"}'
-node tools/library.mjs type <library> '{"name":"Heading L","family":"Inter","size":"24px","weight":650,"lineHeight":"32px","sample":"Expense report: September"}'
-node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button"}, …]'
-node tools/library.mjs component <library> <slug> status extracting
-node tools/library.mjs history <library> <slug> --theme <light|dark> --screenshot <n>.png --diff <n>-diff.png --mismatch <n> --activity "Padding is 2px short on the right; widening"
-node tools/library.mjs component <library> <slug> status done
-node tools/library.mjs component <library> <slug> status skipped --kind <could-not-isolate|did-not-match|not-tried> --reason "<one plain sentence, at most 140 characters>" --screenshot <crop.png>
-node tools/library.mjs event <library> [slug] "<activity>"
-node tools/library.mjs take-queued <library>
-node tools/library.mjs complete <library>
+node tools/host-library.mjs <codebase>             serve the library (idempotent); prints local:, tunnel:
+node tools/library.mjs init <codebase> <codebase> <source> --page-url <url> --page-title "<title>" --favicon <file>
+node tools/publish-library.mjs <codebase> [--wait] publish; returns at once when one is running (it carries yours)
+node tools/survey.mjs <codebase> --theme <light|dark>  the visible theme in one read (≈1 s); writes palette.json
+node tools/plan.mjs <codebase> '<edits>'            the draft plus your edits → run/plan.json
+node tools/import.mjs <codebase> --theme <light|dark>  run the plan: colours, type, inventory, every component
+node tools/import.mjs <codebase> --check-theme <light|dark>   check every built component in the visible theme
+node tools/snapshot.mjs <codebase> <json | @file> --theme <light|dark>  write one component from its live instances
+node tools/check.mjs <codebase> <slug> --theme <light|dark> [--state <name>] [--activity "<line>"]   check it; each pass lands
+node tools/courier-up.mjs <codebase>                this laptop's courier, up and answering (idempotent)
+node tools/library.mjs component <codebase> <slug> status done
+node tools/library.mjs component <codebase> <slug> status skipped --kind <kind> --reason "<sentence>" --screenshot <png>
+node tools/library.mjs event <codebase> [slug] "<activity>"
+node tools/library.mjs take-queued <codebase>
+node tools/library.mjs complete <codebase>
 ```
 
-Each call flushes the manifest and appends its own event line, so the
-app moves on every call; add an `event` only for something the
-default lines do not say. `status done` reads the unit's folder in
-`src/components/<slug>/` (the module, its stylesheet,
-`component.json`) and copies the module path, the states and the
-tokens into the manifest; it refuses a token the manifest does not
-hold yet, so the tokens land before any unit does. A call that
-cannot apply refuses in one sentence and writes nothing.
-
-Every activity line is read by the person whose product it is, in
-the app: write it in the product's terms (see **Activity voice**).
-
-The readers and renderers:
-
-- `node tools/host-library.mjs <codebase>`: scaffold, install, tunnel,
-  supervised run, edge check, in one call; prints the public and local
-  addresses. Idempotent.
-- An available in-app browser or user-Chrome tool: inspect its already-open
-  tabs first and reuse a matching signed-in product page when it provides the
-  DOM and capture access the import needs.
-- `tools/cdp/chrome.mjs`: the fallback visible Proto window (port 9333), used
-  only when no usable matching tab exists in any browser the host can read.
-  Read it, and interact only with the product's own light/dark control while
-  capturing both themes; restore the original theme before the run ends.
-- `tools/cdp/headless.mjs`: the headless Chrome (port 9444) that
-  renders every replica. Nothing it draws is on screen.
-- `tools/cdp/cdp.mjs`: `connect(wsUrl)`, `evaluate(page, expression)`.
-- `tools/cdp/attach.mjs`: `findPage(urlSubstring)`,
-  `openBackground(url)`, `navigate(page, url)`, `closePage(tab)`.
-- `tools/cdp/wireframe.mjs <tab-url> [out.html]`: the raw layout tree
-  as labeled boxes. The map, not the understanding.
-- `tools/cdp/capture.mjs`: `stableShot(page, probeExpr, out, clip)`,
-  clip screenshots behind the stability gate.
-- `node tools/verify-replica.mjs http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h> --theme <light|dark> --out <dir>`:
-  one verification pass: captures the live element, renders the
-  library app's `#/render/<slug>/<state>` (the component alone, at
-  those coordinates) headlessly at the same viewport and ratio, diffs
-  in node, writes `<n>-live.png`, `<n>.png`, `<n>-diff.png` into
-  `--out`, prints `{ pass, mismatch, pct, maxDelta, clusters,
-  screenshot, diff }`. The state comes from the unit's
-  `component.json` through the app, so it renders before anything is
-  landed.
-- `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png>`: the
-  component cropped from the live page at 2x, for a skipped card.
-- `node tools/publish-library.mjs <library>`: build the library app and
-  upload the build, one publish at a time; prints the published URL.
-  Run it after every landing and at the finish.
-- `node tools/serve.mjs <dir> 0`: a static server on a free port, for
-  a static folder that must be reached by URL.
-
-## Where things go
-
-- `~/.proto/<codebase>/library/public/`: the manifest, the events,
-  the queue, each component's product crop and history, written by
-  `library.mjs` only. Nothing else lands there.
-- `~/.proto/<codebase>/library/src/components/<slug>/`: the unit's
-  folder, and the only place a unit writes: `<Slug>.tsx`,
-  `<Slug>.module.css`, the font files, `component.json`, and `notes.md`
-  (every value with its source). The app imports it from here, live,
-  which is how the render route can show a state before it is landed.
-- `~/.proto/<codebase>/imports/<run>/units/<slug>/passes/`: what
-  `verify-replica.mjs` writes for the unit; `history` moves the pass
-  images from here into the library. The artifacts are how claims get
-  checked.
-
-## Setup
-
-One reference browser plus one headless Chrome:
-
-- **The reference browser comes first.** Before running
-  `node tools/cdp/chrome.mjs` or calling `openBackground`, inspect every
-  browser and tab the current host can already read: the in-app browser, the
-  user's Chrome through an available Chrome tool, and an already-running
-  Proto Chrome on port 9333. Match `source.liveUrl` by exact URL first, then
-  project or product path, then origin. Prefer the active matching tab. Reuse
-  a signed-in match when it provides the DOM and capture access the import
-  needs. Do not start a browser or open a duplicate tab when a usable match
-  exists.
-- **The Proto window is fallback only.** When no usable existing match exists,
-  run `node tools/cdp/chrome.mjs`, then call `findPage(urlSubstring)` before
-  considering `openBackground`. An empty tab list right after launch means try
-  again, not broken. Never navigate a user-owned tab. Never steal focus: `PUT
-  /json/new` raises the window every time, so it is never used.
-- In either browser, the one allowed UI change is using the product's own
-  light/dark control while capturing its themes; restore the original theme
-  afterward. If you need any other page state, ask the user to put it there.
-- **The headless Chrome** (`node tools/cdp/headless.mjs`, port 9444)
-  renders every replica and every capture of one. Nothing it draws
-  appears on screen. `verify-replica.mjs` starts it when it is not
-  running; start it yourself once at the beginning so the first pass
-  does not pay for it.
-
-The debug ports give full read access to both Chromes: treat them as
-sensitive. Working artifacts from logged-in apps contain real user
-data; never commit or share them without a check.
+The headless Chrome that draws every copy is launched with the Proto
+window's own display (its real device scale factor and colour
+profile), so a component written from the page matches it to the
+pixel. Every tool reads the Proto window and never changes it: no
+navigation, no clicks, no focus. Holding a hover or focus look on an
+element (`"force"`) is done with the DevTools pseudo-class and let go
+straight after.
 
 ## Order of operations
 
-The order is built so the user sees something within a minute and
-the fan-out starts as soon as the inventory exists. Every step is one
-call; chain the short ones in one shell line.
+1. **Host and open the run**, in one shell line: `host-library.mjs`
+   (setup usually started it; it returns at once), then `survey.mjs
+   <codebase> --theme light`
+   for the page's title and favicon, then `init` (fetch the favicon to
+   a file first; leave `--favicon` out when there is none), then
+   `publish-library.mjs` in the background. `init` appends "Reading
+   the source": the user sees the import is alive in seconds. On
+   `tunnel: blocked` the import runs exactly the same (checks use the
+   local address, publishing goes over 443); say the serve skill's
+   sentence once and carry on.
 
-0. **Host the library.** `node tools/host-library.mjs <codebase>`.
-   Setup usually ran it in the background at codebase creation; run
-   it again anyway, it returns at once when the run is up and prints
-   the address. The site's Design system page loads that address (the
-   one the site chose and stored), so hosting first is what lets the
-   user watch. Also `node tools/cdp/headless.mjs start`.
-1. **Open the run.** Read the live tab's `document.title` and its
-   icon (the `href` of `link[rel~="icon"]`, else `/favicon.ico`,
-   fetched to a file), then `node tools/library.mjs init <library>
-   <codebase> <source> --page-url <liveUrl> --page-title "<title>"
-   --favicon <icon file>` (`<source>` is the repo name or the live
-   host; leave `--favicon` out when the page has no icon). This appends "Reading the source":
-   the line that tells the user the import is alive, and sets the
-   product entry: the name is taken from the title ("Expenses ·
-   Meridian" names Meridian), and when the page has no title the
-   codebase's display name is used, never its id. Make a run folder
-   `~/.proto/<codebase>/imports/<UTC stamp>/units/`.
-2. **Read.** When source is available, read its component directories,
-   token files and font faces. Always read the live page's outline,
-   class names and computed styles (see **Reading the page**). Small
-   reads, printed, looked at.
-3. **The page's state: one question at most.** A page with obvious
-   states hides its components behind them: a start button, a sign-in
-   wall, an empty list, a welcome screen before the real thing. The
-   22 run read the welcome state and skipped both composites for it.
-   If the page you read is in a state like that, put it in the
-   representative one yourself when a read-only route or hash does it
-   (never by clicking in their window), otherwise ask the user one
-   plain question naming what to do ("Press Start in the Proto window
-   so the garden is showing, then tell me") and wait. Note the state
-   in your run notes; every unit reads the same page.
-4. **Inventory, flushed at once.** Decide the shelf (see **A curated
-   shelf**) and write it in one call: `inventory <library> '[…]'`.
-   Every component is `found` and the user sees the whole queue.
-   This comes *before* tokens and type styles: the fan-out is the
-   critical path and it waits on nothing but this list.
-5. **Fan out, in one turn.** Start a unit for every component the
-   inventory lists, every spawn issued in the same turn (see **Fan
-   out**), as many as the harness runs in parallel. Mark each
-   `component <slug> status extracting` as you spawn it.
-6. **Tokens and type styles, while the units run.** Push each token
-   and each type style as you confirm it, one `token`/`type` line
-   each (chain a dozen in one shell line): the source has the names
-   and the grouping, the live page's computed styles arbitrate the
-   values, and a disagreement goes in your run notes with the live
-   value winning. `role: "surface"` on the page background token and
-   `role: "text"` on the page text token, once each. Use real product
-   copy for every `sample`. Every token a unit will name in its
-   `component.json` must be in the manifest before that unit lands:
-   push the palette first, then land units.
-7. **The courier, while the units run.** If
-   `~/.proto/<codebase>/run/courier/` has no `courier.json`, bring
-   the courier up now, per the serve skill's "The courier" section.
-   It depends only on the codebase id; doing it here, in the window
-   where you would otherwise be waiting on sub-agents, is what makes
-   the run end when the library does. Landing a report always comes
-   first: check for reports between its steps.
-8. **Land units as they report.** The moment a report arrives, land
-   it before anything else (see **Landing a unit**): a report that is
-   not landed is a unit the user never sees finish. The manifest, not
-   your memory, is the record of what is done.
-9. **Finish**, per the checklist below.
+   **Listen from here on.** In the same turn, start `node
+   tools/courier-up.mjs <codebase>` in the background (`--codex` on
+   Codex) and arm the listen skill's watch (its step 1), unless setup
+   already did both. `courier-up` does the serve skill's courier steps
+   in one call (registering, tunnel, secret, supervisor, a status
+   check through the edge) and never prints the secret; do not build
+   the courier by hand. Both are light, and from then on the site
+   shows this laptop as listening: a Build the user presses mid-import
+   lands in the feed and waits its turn (the listen skill's "Busy when
+   a command lands").
 
-Side errand, once, while the live page is attached: if the codebase
-has no icon yet, take the page's `<link rel="icon">` (largest png or
-svg) and call `set_codebase_icon { codebase, image }` with a
-data URL of at most 256 KB. Fail soft; never let it interrupt.
+2. **The page's state and light theme.** If the page is showing
+   a welcome screen, an empty list or a sign-in wall instead of the
+   product, ask the user one plain question naming what to do ("Open
+   a project in the Proto window so its dashboard is showing, then
+   tell me") and survey again once they have. Never click in their
+   window. The first survey and build use the product's light mode. If
+   the page is dark, ask the user to switch it to light first; never
+   click the theme control yourself.
 
-**If anything interrupts you** (the user asks for something else
-mid-import, a recovery prompt from the site, a crash, a resumed
-session): do that thing, then come back here. `init` again resumes
-an open run without touching what is there; read `manifest.json`,
-treat every component that is not `done` or `skipped` as still yours,
-and carry on from step 5. Never declare the import finished from
-memory; the manifest says what is finished.
+3. **Plan: edit the survey's draft, briefly.** The survey prints the
+   draft one component a line: its slug, its looks with their text, and
+   its picture (open a few pictures if a name is unclear). The draft
+   takes every candidate as a component with placeholder names. Say
+   only what you change, in one call to `tools/plan.mjs`; it writes
+   `~/.proto/<codebase>/run/plan.json`:
+   ```
+   node tools/plan.mjs <codebase> '{
+     "keep":  ["button-connect-github", "checkbox", "form-field-organization", …],
+     "merge": { "button-connect-github": { "button-feedback": "Text" } },
+     "name":  { "button-connect-github": "Button", "form-field-organization": "FormItemLayout|form-item-layout" },
+     "looks": { "checkbox": { "Default": "Checked", "Look 2": "Unchecked" } }
+   }'
+   ```
+   This is the one step that is yours; the rest is tools, and the
+   summary holds what you need, so do not read the live page yourself:
+   - **Keep every kind of component the product has**: primitives,
+     fields, composites (header, panel, table, navigation). Leave out
+     the page's decoration (a promo banner and its buttons) and
+     anything that is not the product's component.
+   - **One component per kind**: groups that are one component in two
+     looks merge (`merge`: the other's look joins, its hover and focus
+     with it).
+   - **The product's names** for components and looks (`name`, `looks`).
+     Slugs follow the name, or come after a `|`.
+   - **Anything missing** goes in `"add"` as `{ "slug", "name", "states":
+     [{ "name", "selector", "force"?, "of"? }] }`.
 
-## A curated shelf, not a census
+4. **Run it.** `node tools/import.mjs <codebase> --theme light` (it reads the plan
+   `plan.mjs` wrote).
+   It writes the palette, the type styles and the inventory with each
+   component's picture, then writes and checks every component, eight
+   at a time; each check lands in the library as it is made (the user
+   sees the product, the copy and the difference stream in), each
+   component that matches in every state lands as built, and the
+   library publishes as they land. It prints what is built and what
+   is left to fix, with each failing state's verdict and where the
+   difference sits. Matching captured colours are written as stable
+   `--proto-token-<name>` variables rather than literals, so the same
+   generated component can resolve another theme's values.
 
-Pick the **notable** components: the primitives everything is made of
-(button, input, badge, and their peers), then the few composites the
-product visibly leans on (its card, its table, its page header). The
-source's component directories and the live page's class names
-(`LemonButton--secondary` names both component and variant) tell you
-what exists; your judgment picks what earns a shelf spot: a first
-import of a dozen-odd components that renders faithfully beats an
-exhaustive one. Primitives first; the inventory order is the
-extraction order and the order the library shows. Slugs are lowercase
-with dashes; names are what the product's own code calls the thing.
+   Then ask the user to switch the product page to dark mode. Run
+   `node tools/survey.mjs <codebase> --theme dark`, replace the provisional
+   dark palette with `node tools/library.mjs tokens <codebase> dark
+   @"$HOME/.proto/<codebase>/run/survey/dark/palette.json"`, and run
+   `node tools/import.mjs <codebase> --check-theme dark`. The writer and
+   `complete` require the light and dark palettes to have the same token
+   names. Fix every dark `toFix` result just like a light result; a pass
+   records its theme and the library labels it.
 
-## Reading the page
+5. **Nothing left to fix? Finish at once.** When the runner lists no
+   `toFix` and no `failed`, go straight to the Finish: `complete` and the
+   final publish come before anything else, so the import's time is the
+   import's. Otherwise:
 
-### Read both product themes
+   **Fix what is left, in parallel.** For every component in `toFix`
+   or `failed`, dispatch one `importer` sub-agent, **all in one turn**,
+   with the brief below. Never pass a model: the importer role runs on
+   the fast model by design, and the work is small. While they run,
+   check the queue. As each reports, spot-check it (re-run
+   `check.mjs --theme <theme>` on one state) and land it: `status done`,
+   or `status skipped` with
+   its kind, reason and picture. Publish after each landing.
 
-Light and dark are one extraction axis, not two separate imports. Before the
-first component read, inspect the live document and, when available, the source
-theme provider and token stylesheets. Record the original active theme and the
-mechanism that changes it.
+6. **Finish**, per the checklist below.
 
-The hosted library page owns its light/dark toggle. Render the control inside
-the library app itself so it is present on both the live and published design
-system pages; never rely on the surrounding Frame or another host page to
-provide it.
+If anything interrupts you (a question, a crash, a resumed session):
+do that, then come back here. `init` resumes an open run without
+touching what is there; `manifest.json` says what is done; run
+`import.mjs` again with a plan listing only the components not
+`done` or `skipped`.
 
-Find the live switch before asking the user. Read the accessibility tree and
-visible controls for `theme`, `appearance`, `light`, `dark` and `system`.
-A theme control may sit inside the account or settings menu: opening only the
-menu needed to reach that control is allowed. Toggle only theme controls; do
-not submit forms or change any unrelated product state. After each change,
-confirm the root class or attribute and a representative surface and text
-colour actually changed. If the product follows `prefers-color-scheme`, use
-CDP media emulation. Do not write a guessed local-storage key or cookie. If no
-safe switch can be found, ask the user to put the live page in the other theme
-once, then continue from that state.
+## Verdicts
 
-For every token and component read, activate light and dark one at a time using
-that product control or media emulation and wait for the page to settle before
-reading or capturing. Do not derive one palette from the other. If the product
-genuinely has only one theme, stop and report that plainly rather than
-inventing the missing theme.
+`check.mjs` says, per state, and lands each as a pass whose line says
+the same in the product's words. These count as matching:
+- `match`: identical to the product.
+- `shifted`: identical once moved one device pixel; a placement.
+- `context`: every difference lies in a photo (each browser scales
+  photos with its own rasteriser) or under something the page lays
+  over the component (a floating card and its shadow).
+- `faint`: a few stray edge pixels, under 0.3% of the component: the
+  antialiasing of the page's own layers (an icon inside a scrolling
+  header), not a look the component gets wrong.
+- `offscreen`: identical where the product shows it; the viewport cuts
+  the rest off.
 
-Write tokens with `token <library> <light|dark> '<json>'`. Use the same semantic
-token names in both palettes: lowercase letters, digits and dashes. The library
-exposes the active palette as `--proto-token-<name>` on its root, so component
-modules use `var(--proto-token-surface)`, `var(--proto-token-text)` and their
-peers instead of hardcoded light/dark colours. Theme selectors are only for a
-real non-colour mechanism that differs between themes. `component.json` lists
-`{ "tokens": { "light": [...], "dark": [...] } }` so the library can explain
-which palette entries the component uses in each theme.
-Verify each component's default and important interactive states in both
-themes with `verify-replica.mjs --theme <light|dark>`, then land each pass with
-the same `--theme`. Restore the live page's original theme in a `finally`
-cleanup, including when a read or verification fails.
+`differs` is the one to fix: `clusters` say where (CSS px inside the
+component) and the pass pictures show what. Never spend a unit on a
+verdict that counts as matching.
 
-Work in small reads against the selected existing live tab. Each
-read is a couple of lines over the websocket. Print the result. Look
-at it before deciding the next read. Reads and captures work on the
-occluded window (capture forces a frame commit); waiting on anything
-that paints does not, which is one reason replicas render headlessly.
+A resting state is compared with one frame of the resting page, taken
+when the run starts; a state held with a pseudo-class is captured live,
+one at a time. If the run says the pointer is over the product page,
+ask the user to move it off the Proto window: what it rests on shows
+its hover look.
 
-1. Outline first. Tag, classes, rect, leaf text, a few levels deep
-   from one selector. This tells you the anatomy.
-2. Class names carry meaning. Harvest names before anything else.
-3. The accessibility tree is free semantics. role=navigation beats any
-   heuristic.
-4. Matched rules tell you how a look is achieved.
-   CSS.getMatchedStylesForNode is the DevTools styles panel as data.
-   Use it when you need the mechanism behind a box.
-5. When source is available, read the component's source file. It answers
-   questions the rendered page cannot, like why a container wraps at 4
-   buttons. Without source, use matched rules and the live DOM and mark the
-   inferred mechanism in `notes.md`.
-6. When source and live page disagree, the live page wins.
+## The unit brief
 
-Before your first read, and again before your first pixel diff,
-read **`docs/cdp-traps.md`**: the accumulated traps of reading and
-pixel-verifying live pages. Every one of them was paid for.
+> Fix `<Name>` (`<slug>`) so it matches the product in every state.
+> Its folder is `~/.proto/<codebase>/library/src/components/<slug>/`
+> (`<Slug>.tsx`, `<Slug>.module.css`, `component.json`, `notes.md`),
+> written from the live page by `tools/snapshot.mjs`; `component.json`
+> names each state's live element. What differs: `<the toFix entry>`.
+> Kit root `<kit>`; do not read the tools' source.
+> Loop, at most six times: look at the latest pass pictures in
+> `~/.proto/<codebase>/run/checks/<slug>/` (`<n>-live.png` is the
+> product, `<n>.png` our copy, `<n>-diff.png` the difference); read
+> the live element for the value that differs (the Proto window, port
+> 9333, read only: `tools/cdp/attach.mjs` findPage and
+> `tools/cdp/cdp.mjs` evaluate); fix that value in the module or its
+> stylesheet; run `node <kit>/tools/check.mjs <codebase> <slug> --theme <theme>
+> --activity "<what you changed, in the product's words>"`. If a
+> state's live element is the wrong one, correct the plan entry and
+> run `node <kit>/tools/snapshot.mjs <codebase> <spec> --theme <theme>` again instead.
+> Write only in the component's folder; never touch `public/` or run
+> `library.mjs`. Report as data: done or skipped, each state's last
+> verdict, and for a skip the kind (`did-not-match` or
+> `could-not-isolate`), one sentence of at most 140 characters in the
+> product's terms, and the survey picture's path.
 
-## Extracting a component
+## Components, as the tools write them
 
-Each unit works in its own `src/components/<slug>/` folder in the
-library app, and writes only there (passes go to its `passes/` folder
-under the run). The loop:
+`snapshot.mjs` writes a clean, typed component, not a markup dump:
+- `<Slug>.tsx`: the default export and an exported `<Slug>Props`; the
+  first text is `children` and other texts that differ between looks
+  are props; `variant` names the product's looks and `interaction`
+  the pointer and focus looks (`"rest"` by default); every prop's
+  default is the product's default look with its real copy, so `{}`
+  renders the default. Elements only some looks have render only in
+  those looks. Classes take the product's own names where it has them.
+- `<Slug>.module.css`: every value from the page; only what differs
+  from the library app's own base is written; the pseudo-class and the
+  forced class share one rule (`.root:hover, .root.interaction-hover`);
+  the product's @font-face files beside it. Palette colours are stable
+  `var(--proto-token-<name>)` references whose values change with the
+  library's light/dark switch.
+- `component.json`: the states as prop sets with the live element each
+  was read from, the palette colours it uses, and `backdrop`, the
+  colour it sits on in the product, which the library paints behind it.
 
-1. **Find it live.** Locate an instance on the page. Read its
-   anatomy: outline, rect, matched rules, the source component file,
-   the resolved font (`CSS.getPlatformFontsForNode`). Note every state
-   the product shows: the default, then hover, focus, disabled, open,
-   empty and loading where they exist, then everything else it shows
-   (selected, error, each named variant and size). List all of them;
-   a state the product has and the library lacks is the thing a
-   prototype later reaches for and cannot find. The rect is the
-   `x,y,w,h` every pass uses.
-2. **Author the component.** Three files, the shape a prototype will
-   import later:
-   - `<Slug>.tsx`: one React component, the default export, with an
-     exported `<Slug>Props` interface. Every prop has a default that
-     gives the product's own default look with real product copy, so
-     `{}` is the default state. The states the product reaches with
-     a pointer or focus are props too (`hover`, `focused`,
-     `disabled`) that force the look the native `:hover`, `:focus`
-     and `:disabled` rules give, so a state renders without a
-     pointer. The forced class and the pseudo-class share one rule
-     in the module (`.primary:hover, .primary.hover { … }`), so a tab
-     shows exactly what a pointer would. Variants the product names (`variant`, `size`, `tone`)
-     are typed unions from its class names.
-   - `<Slug>.module.css`: the whole look, from read values, with
-     *their* mechanisms; class names scoped by the module, no global
-     rules, nothing outside the component. The app's base styles sit
-     under yours and differ from the product's, so set box-sizing,
-     font, line-height and borders explicitly (the traps doc).
-     Webfonts the product uses are copied beside it and declared with
-     `@font-face` in the module, with a real fallback stack: a
-     component that silently falls back to Helvetica fails the bar. Every
-     palette colour is a `var(--proto-token-<name>)` reference; the resolved
-     values live once in the light and dark manifest palettes, never repeated
-     as hardcoded theme colours in the component.
-   - `component.json`: `{ "states": [{ "name": "Default", "props": {} },
-     …], "tokens": { "light": ["slate-900", …], "dark": ["slate-100", …] } }`. The states: the default first,
-     then hover, focus, disabled, open, empty and loading where the
-     product has them, then every other state it shows, as many as the
-     product has, each name used once. The tokens: the names of the
-     manifest tokens the component's values come from (the app lists
-     them on the component's page and the components on each swatch).
-     A component that made no pass (a state with no live instance and
-     nothing to diff against) adds `"unverified"`: one sentence, in the
-     product's terms, on why; the app shows it where the passes would be.
-   A generative component (a canvas, a chart, a p5 sketch) renders
-   several variations side by side in its default state rather than
-   one frozen instance.
-3. **Verify, one call per pass and theme.** Put the live page in the named
-   theme, then run `node tools/verify-replica.mjs
-   http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h>
-   --theme <light|dark> --out passes`. It mounts your state alone at the instance's
-   absolute coordinates (position matters for dash phase and
-   gradient dithering; the traps doc says why) and diffs the clip.
-   Read the numbers, not the red map: rects must agree exactly (a
-   geometry bug is a clean number here and thousands of red pixels
-   in the diff); clusters say where. Fix the cause, run the next
-   pass. Stop when the mismatch is zero, or when what remains is
-   confined to glyph clusters of text set in the system font, which
-   is the two Chromes choosing different faces (the traps doc), not
-   your component. Every pass's files stay in `passes/`; the
-   orchestrator moves them into the library's history, where the
-   user sees how the match was reached: every pass is kept, and the
-   reveal opens on the finished one with the earlier ones a step back.
-   Ten is a reasonable number of passes to spend on one component: past
-   it, skip with kind `did-not-match` and what you learned as the reason.
-4. **Verify the other states** the same way against their live
-   instances where the page shows them (a hovered row, a focused
-   field: ask the orchestrator to ask the user only when the state
-   cannot be reached without a pointer in their window); a state
-   with no live instance is authored from the matched rules and
-   noted as unverified in `notes.md`.
-5. **Or skip it honestly.** A component you can't isolate cleanly
-   (portals, canvas you cannot reproduce, a state you can't reach)
-   is skipped: `node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h>
-   screenshot.png` for the block, cropped to the component's own rect
-   (never the viewport: a page-tall screenshot is not a block), a
-   kind (`could-not-isolate` when it could not be lifted out on its
-   own, `did-not-match` when the passes never got close enough,
-   `not-tried` when the import never got to it), and one plain
-   sentence for the user in the product's own terms, at most 140
-   characters, no import voice: "The flowers are drawn with p5 on a
-   canvas, which the library cannot rebuild yet", not "could not be
-   measured or pixel-verified", and not "rendered inside a portal":
-   a portal is not a thing the user has. `library.mjs` refuses a
-   longer reason, a skip without the kind and a skip without the
-   crop. Never silently dropped, never faked.
-
-The component renders inside the library's own page, no iframe: the
-module's scoping is what keeps the product's styles from leaking, so
-a global rule in a module is a bug, not a shortcut.
-
-## Fan out: this is a parallel job
-
-Extraction is embarrassingly parallel and the user is watching the
-library fill. Dispatch one sub-agent per component, every component in
-the inventory, **all spawns in one turn**, and let the harness run as
-many of them at once as it will: a component waiting for a lane is a
-component the user is watching an empty card for. Use the cheap
-importer role: `importer` on Claude Code (Haiku), `spawn_agent` with
-`proto-importer` on Codex. Serial extraction is wrong unless one unit
-remains.
-
-One orchestrator, you, owns the run and the contract files: **only
-you call `library.mjs`**. A sub-agent writes inside its unit folder
-and nowhere else, and reports. Its brief is short and complete, in
-this shape:
-
-> Extract `<Name>` (`<slug>`) into
-> `~/.proto/<codebase>/library/src/components/<slug>/`: `<Slug>.tsx`
-> (default export, exported `<Slug>Props`), `<Slug>.module.css`,
-> `component.json` (states, and the palette tokens it uses, from this
-> list: `<token names>`), `notes.md`; passes go to
-> `<run>/units/<slug>/passes/`.
-> This skill and `docs/cdp-traps.md` are already in your context; source
-> files are included when the codebase is available. Do not search for or
-> re-read those inputs. Live tab:
-> `<liveUrl>` in the selected existing browser tab, read only; when it is in
-> Proto Chrome its port is 9333, otherwise use the available browser tool; the
-> instance is `<selector>` at `<x,y,w,h>`; the states the product
-> shows are `<list>`. Tools, complete signatures:
-> `node <kit>/tools/verify-replica.mjs http://localhost:5210 <slug> <state> <liveUrl> <x,y,w,h> --out <run>/units/<slug>/passes`
-> (one pass of one state, prints mismatch and clusters);
-> `node <kit>/tools/cdp/crop.mjs <liveUrl> <x,y,w,h> screenshot.png`
-> (only if you skip, into your passes folder). Author from read
-> values only; put every value's source in `notes.md`. Never write
-> outside your two folders; never touch `public/` or the manifest.
-> Report, as data: status (done or skipped), the states in
-> `component.json` order with which were verified, each pass as `n,
-> mismatch, one activity line` in order, written for the product's
-> owner ("The corners are 2px too round; tightening", never "matched
-> rules" or "threshold"), and for a skip the kind, the reason
-> sentence (one line, at most 140 characters, in the product's terms)
-> and the screenshot path.
-
-Do not trust reports: spot-check claims against the artifacts (re-run
-a pass, re-read a cited source line) before landing a unit as done.
-Verified surprises flow back into your run notes; recurring ones
-belong in `docs/cdp-traps.md`.
-
-## Landing a unit
-
-One shell line, chained, the moment the report arrives:
-
-```
-node tools/library.mjs history <library> <slug> --theme light --screenshot passes/1.png --diff passes/1-diff.png --mismatch 4212 --activity "…" \
-&& node tools/library.mjs history <library> <slug> --theme dark --screenshot passes/2.png --diff passes/2-diff.png --mismatch 0 --activity "…" \
-&& node tools/library.mjs component <library> <slug> status done \
-&& node tools/publish-library.mjs <library>
-```
-
-`done` reads the unit's folder itself and refuses if the module, its
-stylesheet or `component.json` is not what the contract says, or if
-it names a token the manifest lacks; a refusal goes back to the unit
-as one line. A skip is `component <slug> status skipped --kind <kind>
---reason "…" --screenshot passes/screenshot.png`, after its `history`
-lines if it made passes, and it publishes too.
-
-Every landing ends in that publish line, `done` or `skipped`.
-Publishing is cheap and the published library is what outlives the
-laptop, so the user's link is one component behind at worst. The
-command takes a publish lock of its own, so two landings at the same
-moment build one after the other; a publish that waits carries
-everything landed by the time it builds.
+Sharpen it where the tool could not know better: a prop name the
+product uses, a variant key its code calls something else. Re-run
+`check.mjs` after any change; it must stay matching.
 
 ## The queue
 
-While the session lasts, the library's "Queue it" button is a request
-to extract a skipped component, and its "Import again" a request to
-run the whole import again. `node tools/library.mjs take-queued
-<library>` pops one request and prints its slug (nothing printed
-means nothing queued). A component's slug: the component is now
-`queued` and `completedAt` is cleared, so the app is watching again;
-extract it like any other unit (a fresh unit folder; the reason it
-was skipped is your first clue), land it (the landing publishes),
-then `complete` and publish once more. `*`: start this skill over
-from step 1 (`init` on a completed run starts fresh). Check the queue
-after each landing, at the finish, and on every wake while you
-listen. A request nothing takes stays in the file: the block says the
-agent picks it up next time it runs, which is the resumed run's job.
+While the session lasts, the library's "Build it" button is a request
+to build a skipped component, and its "Import again" a request to run
+the whole import again. `node tools/library.mjs take-queued <codebase>`
+pops one request and prints its slug (nothing printed means nothing
+queued). A component's slug: survey again, plan that component alone,
+run `import.mjs` with it, fix what is left as above, then `complete`
+and publish. `*`: start this skill over from step 1 (`init` on a
+completed run starts fresh). Check the queue after each landing, at
+the finish, and on every wake while you listen.
 
 ## Finish
 
@@ -543,19 +261,17 @@ Every line, in order, before you say the import is done:
 
 - every component in the manifest is `done` or `skipped`, none
   `found`, `extracting` or `queued`;
-- `node tools/library.mjs complete <library>` (it refuses otherwise);
-- `node tools/publish-library.mjs <library>`: the library outlives the
-  laptop, and this last publish carries `completedAt`, so the
-  published copy says the import finished;
-- the courier is up (`node tools/supervise.mjs status
-  ~/.proto/<codebase>/run/courier` shows the listener and tunnel up,
-  and a `{"status": true}` POST through the edge answers); step 6
-  brought it up, and if it is not, the serve skill's courier section
-  is the fix;
+- `node tools/library.mjs complete <codebase>` (it refuses otherwise);
+- `node tools/publish-library.mjs <codebase> --wait`: this last publish
+  carries `completedAt`, so the published copy says the import finished;
+- the courier is up: `node tools/courier-up.mjs <codebase>` prints
+  `local: true` and `edge: true` (on a network that blocks the tunnel,
+  `edge: false`; say the serve skill's sentence);
 - one sentence to the user: the library is published and stays
   viewable after this laptop closes;
-- then listen: continue into the next thing setup asked for (a
-  prototype brief, or the listen skill), and keep taking the queue.
+- keep listening: take any command that queued up during the import
+  (oldest first), then continue into the next thing setup asked for
+  (a prototype brief), and keep taking the queue.
 
 ## Activity voice
 
@@ -564,24 +280,21 @@ the library by the person whose product it is, so it says what
 happened in the product's terms: short, present tense, naming the
 concrete thing.
 
-- `Reading colours (slate-900)`, `Reading Button on the live page`,
-  `Found 6 components`: what is being done, named.
-- `The corners are 2px too round; tightening`, `The right padding is
-  2px short; widening`, `Matches the product`: a pass says what was
-  off and what changes, or that nothing differs.
+- `Reading colours (83 of them)`, `Found 15 components`: what is being
+  done, named.
+- `Matches the product`, `The corners were 2px too round; tightened`:
+  a pass says what was off and what changed, or that nothing differs.
 - `The calendar only exists while it is open over the page, so the
   import could not capture it on its own`: a skip says what about the
   product stopped it.
 
 Never `matched rules`, `threshold`, `extracted`, `replica`, `CDP`,
-`pixel-verified`, `portal`, a file path or a percentage: those are
-your words, not theirs. The headings in the library are "Type
-styles", "Colours" and "Components"; use the same words ("colours",
-never "color tokens").
+`pixel-verified`, `portal`, a file path, a pixel count or a
+percentage: those are your words, not theirs. The headings in the
+library are "Type styles", "Colours" and "Components"; use the same
+words ("colours", never "color tokens").
 
-## Working style
+## Traps
 
-Small steps. One line, run it, look at the output, then continue.
-When a result surprises you, chase it before building on it. The
-surprises are the product: every entry in `docs/cdp-traps.md` came
-from looking at real output instead of assuming.
+`docs/cdp-traps.md` holds the rendering traps the tools already handle
+and the ones they cannot. Read it before chasing a difference by hand.

@@ -19,7 +19,7 @@ directory, which is also the proto-kit checkout root.
 ## Start
 
 1. **Register the prototype** first: `register_prototype { codebase,
-   slug, title }`. The laptop token identifies the member and org. It
+   slug, title }`. The laptop token identifies the member and team. It
    upserts on (codebase, slug), so re-registering after a title change
    is correct. The row must exist before the next step: the site
    stores the prototype's address on it. An authorization error means
@@ -54,7 +54,8 @@ directory, which is also the proto-kit checkout root.
        // up, at the cadence the app answers with; its lifetime is the
        // serving lifetime, so stopping the run silences it and staleness
        // tells the Frame to use the published build. No "is live" flag
-       // exists anywhere.
+       // exists anywhere, and the beat says nothing about the tunnel: the
+       // viewer's browser tries the address and finds out.
        { "name": "heartbeat", "command": ["node", "<kit>/tools/prototype-heartbeat.mjs", "--kind", "prototype", "<run-dir>", "<codebase>", "<slug>"] }
      ]
    }
@@ -88,6 +89,26 @@ directory, which is also the proto-kit checkout root.
      (The site itself never loads the address until the row has one
      and a fresh heartbeat, so registering first is safe.)
 
+   **Before you wait on the edge at all, ask cloudflared.** It writes
+   its own verdict into `<run-dir>/tunnel.log` within about fifteen
+   seconds of starting: `precheck complete hard_fail=true` means this
+   network cannot carry a tunnel, and `Registered tunnel connection`
+   means it can and has. `<kit>/tools/tunnel-state.mjs` is that reading
+   as a module: `tunnelState(runDir)` answers `connecting`, `connected`
+   or `blocked`, and the heartbeat and `host-library.mjs` both use it. On `blocked`, stop waiting and say this, once, in
+   these words:
+
+   > This network blocks the connection the tunnel needs (port 7844), so nothing here can go live on it. Publishing still works, and so does everything else this laptop sends to Proto; for a live view use a phone hotspot or another network.
+
+   Then carry on: the dev server is up, the prototype publishes over
+   443, and the Frame shows the published build. Do not stop, do not
+   retry the edge, and do not restart anything when the network
+   recovers: the site tries the address on every read, so it picks the
+   live view back up on its own. If a brief is running,
+   `report_progress {briefId, status: "failed"}` with that sentence as
+   the message: the live view is what failed, and the sentence says
+   what still works.
+
 6. **Publish** a permanent snapshot. Build the workspace with its
    own build script (`pnpm build`; the templates configure relative
    asset paths, which a published build needs because it lives under
@@ -114,17 +135,25 @@ node tools/host-library.mjs <codebase>
 ```
 
 It scaffolds the app from `template/library/` if the folder is not
-there, runs `pnpm install --frozen-lockfile` if `node_modules` is
-missing, calls `provision_tunnel { kind: "library", codebase, port:
-5210 }` (the port in the library's `vite.config.ts`; the site chooses
-the address), writes `~/.proto/<codebase>/run/library/spec.json` with
+there, refreshes the copy's `vite.config.ts` from the template, runs
+`pnpm install --frozen-lockfile` if `node_modules` is
+missing, takes a free port for this run, calls `provision_tunnel {
+kind: "library", codebase, port }` with it (the site chooses the
+address), writes `~/.proto/<codebase>/run/library/spec.json` with
 three processes (`dev` = `["pnpm", "dev"]` in the library folder with
-`PROTO_TUNNEL=1`; `tunnel` = cloudflared with the connector token;
+`PROTO_TUNNEL=1` and `PROTO_PORT=<port>`, which is what the library's
+`vite.config.ts` binds; `tunnel` = cloudflared with the connector token;
 `heartbeat` = `node <kit>/tools/prototype-heartbeat.mjs --kind library
 <run-dir> <codebase>`), `chmod 600`, starts it under `supervise.mjs`,
-waits for `http://localhost:5210/manifest.json`, verifies the public
-address through Cloudflare's edge with `--resolve` as step 5 above
-describes, and prints the public URL, the local URL and the run dir.
+waits for `http://localhost:<port>/manifest.json`, reads cloudflared's
+own log for whether it reached Cloudflare, verifies the public address
+through the edge with `--resolve` as step 5 above describes when it
+did, and prints the public URL, the local URL, the run dir and
+`tunnel: connected` or `tunnel: blocked`. Once the dev server answers
+it succeeds: a blocked tunnel prints the sentence above and returns
+`tunnel: blocked`, because the library is up locally and publishing
+works regardless, and failing here was how an import came to extract
+nothing at all.
 It is idempotent: setup runs it in the background at codebase
 creation, the import runs it again first thing and gets the address,
 and the app's recovery prompt ("serve ~/.proto/<codebase>/library and
@@ -152,6 +181,17 @@ half is down. Then the log for that process in the run dir:
   deprovisioned, re-provision (step 2) and rewrite the spec; connected
   but 502 at the edge → the dev server isn't listening on the spec'd
   port.
+- **tunnel "up" but the address answers Cloudflare 530, and
+  `tunnel.log` says `precheck complete hard_fail=true`**: this network
+  blocks the tunnel. Nothing on this laptop is broken and nothing here
+  can fix it; `supervise status` says "up" because the cloudflared
+  process is alive, which is not the same as connected. Say:
+
+  > This network blocks the connection the tunnel needs (port 7844), so nothing here can go live on it. Publishing still works, and so does everything else this laptop sends to Proto; for a live view use a phone hotspot or another network.
+
+  Leave the run up. When the laptop moves to a network that allows it,
+  cloudflared registers a connection by itself and the next beat says
+  so; nothing needs restarting.
 - **Both up but the page is wrong**: the Frame reads
   `prototype.json` cross-origin; check it parses and its `port`
   matches vite's.
@@ -183,13 +223,24 @@ supervised run dir (`~/.proto/<codebase>/run/courier/`):
   appends each accepted command to `commands.jsonl`. It holds the
   port, so it runs under supervise, never under a Monitor watch.
 - **The session running the listen skill**: the user's own
-  interactive Claude Code session (terminal or the Claude Code
-  desktop app); setup ends by telling them to keep it open. It watches the feed, acts on each command inline, commits
+  interactive session (a Claude Code terminal or desktop window, or a
+  Codex window); setup ends by telling them to keep it open. It
+  watches the feed, acts on each command inline, commits
   `offset.json` after each, and heartbeats so the courier's status
   can report `agentListening`. Fallback: `tools/agent-launch.mjs`
   under the supervisor starts a headless session with the same
   protocol (capturing/resuming `session.json`): recovery and
   nobody-at-the-keyboard mode, not the normal path.
+- **The Codex wake** (`tools/feed-queue.mjs`, Codex only): nothing
+  wakes an idle Codex session, so on Codex a supervised process does
+  the waking. It watches the feed and queues each command into the
+  session the person has open (`codex queue --thread <id>`, the
+  daemon's own managed binary), which is why the work still happens in
+  front of them. The thread id is `courier.json`'s `codexThread`,
+  written by the listen skill through `tools/codex-thread.mjs`. On
+  Codex this process owns `offset.json` and the heartbeat instead of
+  the session. Claude Code doesn't need it: the Monitor tool wakes
+  that session per line.
 - **The feed** (`commands.jsonl` + `offset.json`): the durable,
   at-least-once buffer between them. It's what survives watch
   timeouts, agent restarts, and reboots.
@@ -223,8 +274,12 @@ only on the codebase id, so nothing waits on it):
 6. `spec.json`: the listener
    (`node <kit>/tools/courier.mjs <run-dir>`) and `cloudflared` with
    the courier's connector token from step 3 (plus the fallback agent
-   launcher when running nobody-at-the-keyboard).
-   `supervise.mjs start`.
+   launcher when running nobody-at-the-keyboard). **On Codex, add a
+   third process** `codex-wake`, `node <kit>/tools/feed-queue.mjs
+   <run-dir>`: without it nothing ever wakes the Codex session and
+   commands simply pile up in the feed. It is harmless before a
+   session has identified itself, and it is not part of a Claude Code
+   or Cursor spec. `supervise.mjs start`.
 7. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
    `Authorization: Bearer <secret>` answers with `agentListening`
    and the line lands in `commands.jsonl`; the same POST works
@@ -234,10 +289,16 @@ only on the codebase id, so nothing waits on it):
 `{ kind: "courier", courierId, agentListening }` at the cadence the app
 answers with (fail-soft; `agentListening` from the feed watcher's local
 heartbeat). It is the same tool a prototype's or the library's serving
-run beats, with its own target. A courier whose beats have gone stale
-is offline; the site dispatches each brief to the org's freshest
-listening courier, and registered-but-not-listening falls back to the
-copyable prompt with "your agent isn't running".
+run beats, with its own target. A courier whose beats have gone stale is
+offline; the site dispatches each brief to the team's freshest listening
+courier, and registered-but-not-listening falls back to the copyable
+prompt with "your agent isn't running".
+
+A beat never says anything about the tunnel's own state. The site
+pushes commands through the courier's tunnel, so on a network that
+blocks port 7844 the dispatch fails and the site says so from that
+failure; the question disappears once the courier pulls its own work
+over HTTPS.
 
 The proto MCP server carries the agent's cloud actions (registration,
 tunnels, comments); command payloads arrive inline in the feed: MCP

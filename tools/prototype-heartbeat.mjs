@@ -13,6 +13,15 @@
  * paces itself from that. Failures are logged and beating continues:
  * a beat that cannot be sent is a missed beat, never a crash.
  *
+ * The beat says the laptop is alive and talking to us, and nothing
+ * more (MAA-182). It does not say whether the tunnel is up, and it
+ * must not: a beat goes out over 443 and arrives from any network,
+ * and what a viewer needs to know is whether their own browser can
+ * reach the address, which only their browser can answer. The site
+ * tries the address and falls back to the published build when it
+ * does not answer. So: keep beating while serving, whatever the
+ * network is doing to the tunnel, and let the viewer find out.
+ *
  * Usage: node prototype-heartbeat.mjs --kind prototype <run-dir> <codebase> <slug>
  *        node prototype-heartbeat.mjs --kind library <run-dir> <codebase>
  *   --kind is required and is the heartbeat tool's kind: a
@@ -45,8 +54,7 @@ if (!runDirArg || !codebase || (kind === "prototype" && !slug)) {
   process.exit(1);
 }
 const runDir = resolve(runDirArg);
-let target = { kind, codebase };
-if (kind === "prototype") target = { kind, codebase, slug };
+const target = kind === "prototype" ? { kind, codebase, slug } : { kind, codebase };
 
 const alive = (pid) => {
   try {
@@ -57,11 +65,11 @@ const alive = (pid) => {
   }
 };
 
-// "Live" means reachable from the site, which means through the tunnel.
 // A run spec without a tunnel process (a library served on localhost
 // only) must never beat: the site would load a hostname that does not
 // exist, and the failed lookup is cached as "does not exist" for the
-// zone's negative TTL.
+// zone's negative TTL. A crash-looping dev server must not claim
+// liveness either.
 function siblingsUp() {
   try {
     const state = JSON.parse(readFileSync(join(runDir, "state.json"), "utf8"));

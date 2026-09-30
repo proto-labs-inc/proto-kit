@@ -26,12 +26,26 @@ export type ComponentStatus = "found" | "extracting" | "done" | "skipped" | "que
 export type SkipKind = "could-not-isolate" | "did-not-match" | "not-tried";
 /** One named look of a component: the props that produce it. The first is the default. */
 export type ComponentState = { name: string; props: Record<string, unknown> };
+/** One check of the component against the product: our copy, the
+ *  product's own capture for that check (when the import kept it), and
+ *  the difference (the product's capture with every disagreeing pixel
+ *  painted red). Checks arrive while the component is still being read. */
+/**
+ * What a check found (tools/verify-replica.mjs): identical, a one-pixel
+ * placement, a difference confined to a photo or to something the page
+ * lays over the component, a faint edge, identical where the page shows
+ * it, or different. Older passes carry no verdict.
+ */
+export type Verdict = "match" | "shifted" | "context" | "faint" | "offscreen" | "differs";
+
 export type Pass = {
   at: string;
   activity: string;
   screenshot: string;
+  live?: string;
   diff: string;
   mismatch: number;
+  verdict?: Verdict;
   theme: ThemeId;
 };
 export type Component = {
@@ -48,8 +62,10 @@ export type Component = {
   unverified?: string;
   skipKind?: SkipKind;
   reason?: string;
-  /** The component cropped from the product at 2x; set when skipped and kept from then on. */
+  /** The component cropped from the product at 2x, once the import has read it; kept from then on. */
   screenshot?: string;
+  /** The CSS colour the component sat on in the product: what its frame is painted with. */
+  backdrop?: string;
   history: Pass[];
 };
 
@@ -127,29 +143,25 @@ async function readLibrary(): Promise<Library> {
 type LegacyManifest = Omit<Manifest, "themes" | "components"> & {
   themes?: ThemeTokens;
   tokens?: Token[];
-  components: Array<Omit<Component, "tokens" | "history"> & {
-    tokens: ComponentTokens | string[];
-    history: Array<Omit<Pass, "theme"> & { theme?: ThemeId }>;
+  components?: Array<Omit<Component, "tokens" | "history"> & {
+    tokens?: ComponentTokens | string[];
+    history?: Array<Omit<Pass, "theme"> & { theme?: ThemeId }>;
   }>;
 };
 
-/** One read boundary for pre-theme libraries. New manifests never write the legacy shape. */
+/** One read boundary for libraries created before themed palettes. */
 export function normalizeManifest(value: unknown): Manifest {
   const raw = value as LegacyManifest;
-  const legacyTokens = Array.isArray(raw.tokens) ? raw.tokens : [];
-  const themes = raw.themes ?? { light: legacyTokens, dark: legacyTokens };
+  const legacy = Array.isArray(raw.tokens) ? raw.tokens : [];
+  const themes = raw.themes ?? { light: legacy, dark: legacy };
   const components = (raw.components ?? []).map((component) => {
-    const legacy = Array.isArray(component.tokens) ? component.tokens : null;
-    const tokens = legacy
-      ? { light: legacy, dark: legacy }
-      : component.tokens;
-    const history = component.history.map((pass) => ({
-      ...pass,
-      theme: pass.theme ?? "light",
-    }));
+    const names = Array.isArray(component.tokens) ? component.tokens : null;
+    const tokens = names ? { light: names, dark: names } : component.tokens ?? { light: [], dark: [] };
+    const history = (component.history ?? []).map((pass) => ({ ...pass, theme: pass.theme ?? "light" }));
     return { ...component, tokens, history };
   });
-  return { ...raw, themes, components } as Manifest;
+  const { tokens: _tokens, ...rest } = raw;
+  return { ...rest, themes, components } as Manifest;
 }
 
 export function tokensFor(manifest: Manifest, theme: ThemeId): Token[] {
@@ -242,8 +254,8 @@ export function activityFor(component: Component, { events, requests }: Library)
 
 /** What a component's block or page shows right now. */
 export type ComponentView =
-  /** Found or being read; the product crop shows when the component has one from an earlier skip. */
-  | { kind: "working"; activity: string; screenshot: string | null }
+  /** Found or being read; the product crop shows once the import has one, and the latest check as checks land. */
+  | { kind: "working"; activity: string; screenshot: string | null; latest: Pass | null }
   /** Asked for and not yet built: the one sentence says who builds it and when. */
   | { kind: "pending"; sentence: string; screenshot: string | null; reason: string | null; skipKind: SkipKind | null; withdrawable: boolean }
   | { kind: "skipped"; reason: string; skipKind: SkipKind; screenshot: string | null }
@@ -278,9 +290,9 @@ export function componentView(component: Component, library: Library): Component
     case "queued":
       return { kind: "pending", sentence: NEXT, screenshot, reason: component.reason ?? null, skipKind: component.skipKind ?? null, withdrawable: false };
     case "found":
-      return { kind: "working", activity: activity ?? `Found ${component.name}`, screenshot };
+      return { kind: "working", activity: activity ?? `Found ${component.name}`, screenshot, latest: latestPass(component) };
     case "extracting":
-      return { kind: "working", activity: activity ?? `Reading ${component.name} on the live page`, screenshot };
+      return { kind: "working", activity: activity ?? `Reading ${component.name} on the live page`, screenshot, latest: latestPass(component) };
   }
 }
 
@@ -290,7 +302,7 @@ export function skipHeading(kind: SkipKind): string {
     case "could-not-isolate":
       return "Could not be built on its own";
     case "did-not-match":
-      return "Never matched the product closely enough";
+      return "Not identical to the product yet";
     case "not-tried":
       return "Not tried this run";
   }
@@ -301,9 +313,16 @@ export function skipHeading(kind: SkipKind): string {
  * says so, and says when it came back with fewer states or fewer
  * checks than the components built in the first run.
  */
-export function rebuiltNote(component: Component, all: Component[]): string | null {
-  if (component.status !== "done" || !component.screenshot) return null;
-  const others = all.filter((c) => c.status === "done" && c.slug !== component.slug && !c.screenshot);
+// A component the user asked the import to build again: the writer
+// records that as its "Queued …" line (take-queued), so the stream says
+// it, not the picture (every component has the product's picture now).
+function askedFor(slug: string, events: ActivityEvent[]): boolean {
+  return events.some((e) => e.component === slug && e.activity.startsWith("Queued "));
+}
+
+export function rebuiltNote(component: Component, { manifest, events }: Library): string | null {
+  if (component.status !== "done" || !askedFor(component.slug, events)) return null;
+  const others = manifest.components.filter((c) => c.status === "done" && c.slug !== component.slug && !askedFor(c.slug, events));
   const parts: string[] = [];
   if (others.length > 0) {
     const fewestStates = Math.min(...others.map((c) => c.states.length));
@@ -325,7 +344,15 @@ function times(n: number): string {
   return `${n} times`;
 }
 
-export function pixelsDiffer(mismatch: number): string {
-  if (mismatch === 0) return "Matches the product";
-  return `${mismatch.toLocaleString("en-GB")} pixels differ from the product`;
+/** The last check the import made of a component, or null before the first. */
+export function latestPass(component: Component): Pass | null {
+  if (component.history.length === 0) return null;
+  return component.history[component.history.length - 1];
+}
+
+/** Whether a check found nothing left to fix: the one thing the app reads from its count. */
+/** A check that found the component as the product has it. */
+export function identical(pass: Pass): boolean {
+  if (pass.verdict === undefined) return pass.mismatch === 0;
+  return pass.verdict !== "differs";
 }

@@ -50,3 +50,24 @@ export const FONTS_LOADED = `document.fonts.status`;
 export const VIEWPORT = `[innerWidth, innerHeight]`;
 export const rectOf = (selector) =>
   `(r => [r.x, r.y, r.width, r.height])(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect())`;
+
+/**
+ * stableShot for a tab that is the active one in its browser (the
+ * headless Chrome's): the clip is taken by Chrome itself, so only the
+ * clip's pixels are encoded, sent and written. Never on a background
+ * tab of the visible window (see stableShot).
+ */
+export async function stableClip(page, probeExpr, outPath, clip) {
+  for (let attempt = 0; attempt < 15; attempt++) {
+    const before = await evaluate(page, probeExpr);
+    await new Promise((r) => setTimeout(r, 100));
+    const again = await evaluate(page, probeExpr);
+    if (again !== before) continue;
+    const shot = await page.send("Page.captureScreenshot", { format: "png", fromSurface: true, clip });
+    const after = await evaluate(page, probeExpr);
+    if (after !== before) continue;
+    writeFileSync(outPath, Buffer.from(shot.data, "base64"));
+    return JSON.parse(before);
+  }
+  throw new Error("page never held still across a capture");
+}

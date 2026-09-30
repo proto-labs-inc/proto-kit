@@ -19,19 +19,59 @@
 - Agent roles are TOML in `~/.codex/agents/` (plugins don't ship
   them; setup installs `codex-agents/*.toml`): all four proto roles
   listed by the session for `spawn_agent` after install.
-- MCP: `[mcp_servers.<name>]` in `~/.codex/config.toml` with `url` +
-  `http_headers_helper` (the kit's `tools/mcp-headers.mjs` reads
-  `~/.proto/config.json`). Verified: a Codex session called the
-  proto server's `whoami` through it. Headless `codex exec` denies MCP calls
+- MCP: `[mcp_servers.<name>]` in `~/.codex/config.toml`, either
+  `url` + `http_headers_helper` or, as the kit now uses, a stdio
+  server: `codex mcp add proto -- node <kit>/tools/mcp-stdio.mjs`
+  writes `command = "node"` + `args = [...]` (verified 2026-09-28,
+  codex 0.155.1; `codex mcp list` shows it enabled). The kit moved
+  off `http_headers_helper` because a headers helper is called once
+  per connection, and a laptop linked to several teams needs the
+  credential chosen per call (MAA-195). Verified earlier: a Codex
+  session called the proto server's `whoami` through the header
+  helper. Headless `codex exec` denies MCP calls
   under its default approval policy; `--sandbox
   danger-full-access` (or interactive approval) permits them.
 - NO push wake exists (nothing like the Monitor tool): an idle Codex
-  session cannot be woken by process output. An interactive session
-  running the listen skill polls `feed-tail` in a background terminal (`--once` for
-  spot checks); unattended operation uses `tools/feed-drive.mjs`,
-  which resumes the saved conversation per command
-  (`codex exec resume <session-id>`: verified fresh→resume with
-  offset commits against a stub).
+  session cannot be woken by process output. But a live session can be
+  SPOKEN TO from outside, which is the wake the courier uses
+  (`tools/feed-queue.mjs`); `feed-drive.mjs`, which resumes the saved
+  conversation headlessly per command (`codex exec resume
+  <session-id>`: verified fresh→resume with offset commits against a
+  stub), is now the last resort, because nobody watches it happen.
+
+### Queueing into a live Codex thread (verified live, 2026-09-28)
+
+- The desktop app runs a daemon: `codex app-server daemon version`
+  answers `{"status":"running", "managedCodexPath":…, "socketPath":…}`.
+- `<managedCodexPath> queue --thread <uuid> --message <text>` puts the
+  text into that thread as a **user message**: verified end to end, the
+  session answers it as if the person had typed it. Resolve the binary
+  from `managedCodexPath`, never PATH: PATH is whatever the user's
+  version manager points at.
+- Exit status is honest for a thread that does not exist (1, "no
+  rollout found … code -32603"), and a sub-agent thread is refused
+  outright ("direct app-server input is not allowed for unloaded
+  spawned sub-agents", code -32600).
+- But it is NOT honest about a CLOSED session: queueing into a thread
+  whose window the person shut still exits 0, appends the message to
+  the rollout, and nobody ever reads it. **Liveness is the writer
+  lock**, `~/.codex/thread-writer-locks/<uuid>.lock`, which appears
+  while a thread is live and is gone when it ends. Check it before
+  queueing or commands get swallowed.
+- Delivery waits for the session to be free: a message queued during a
+  running turn lands when that turn ends (verified: queued at
+  23:01:49, appeared in the rollout at 23:03:06, when the turn
+  finished). Queueing never interrupts work in progress.
+- A session cannot learn its own thread id from its environment (only
+  `CODEX_HOME` and `CODEX_APP_TOOLS_PIPE_PATH` are set, and the pipe
+  path is one global socket with no id in it). It identifies itself by
+  a token instead: the token is in the transcript at
+  `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-<ts>-<uuid>.jsonl`, and
+  the id is in the filename. The tool's own command line is written to
+  the rollout BEFORE the tool runs (verified: the `custom_tool_call`
+  record at 22:57:23 precedes its output record at 22:57:25 for a
+  command that ran in between), so one call can mint, print and find.
+  Do not pick the newest lock file: sub-agents hold locks too.
 
 ## Cursor facts (2026-09-22)
 

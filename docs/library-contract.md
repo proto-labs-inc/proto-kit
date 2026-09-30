@@ -28,7 +28,7 @@ library/                          the app, scaffolded from template/library/
 │   ├── <Slug>.tsx                a React component with a typed props interface, default export
 │   ├── <Slug>.module.css         its scoped stylesheet, from the read values; @font-face here
 │   ├── *.woff2                   the product's font files, beside the stylesheet
-│   ├── component.json            its states as prop sets, the default first, and the tokens it uses
+│   ├── component.json            its states as prop sets, the default first, the tokens it uses, its backdrop
 │   └── notes.md                  every value with its source (the unit's working notes)
 ├── public/
 │   ├── manifest.json             everything extracted so far
@@ -36,8 +36,9 @@ library/                          the app, scaffolded from template/library/
 │   ├── queue.json                what the user asked for from the app
 │   ├── product/favicon.<ext>     the product page's icon, when the page has one
 │   └── components/<slug>/
-│       ├── screenshot.png        once skipped: the component cropped from the live page at 2x
-│       └── history/<n>.png, <n>-diff.png   every pass's replica capture and diff
+│       ├── screenshot.png        the product's own picture of the component at 2x (from the inventory on,
+│       │                         or once skipped)
+│       └── history/<n>.png, <n>-diff.png, <n>-live.png   every pass: our copy, the difference, the product
 └── dist/                         the build; what publish uploads
 ```
 
@@ -46,10 +47,12 @@ library/                          the app, scaffolded from template/library/
 ```
 node tools/library.mjs init <library> <codebase> <source> --page-url <url> --page-title "…" [--product-name "…"] [--favicon <file>]
 node tools/library.mjs token <library> <light|dark> '<json>'
+node tools/library.mjs tokens <library> <light|dark> '<json array>'        replace one palette, one write
 node tools/library.mjs type <library> '<json>'
-node tools/library.mjs inventory <library> '<json array>'
+node tools/library.mjs types <library> '<json array>'         many type styles, one write
+node tools/library.mjs inventory <library> '<json array>'     [{ slug, name, screenshot? }]
 node tools/library.mjs component <library> <slug> status <found|extracting|done|skipped|queued> [--kind <skipKind>] [--reason "…"] [--screenshot <png>]
-node tools/library.mjs history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> --mismatch <n> --activity "…"
+node tools/library.mjs history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> [--live <png>] --mismatch <n> --activity "…"
 node tools/library.mjs event <library> [slug] "<activity>"
 node tools/library.mjs take-queued <library>
 node tools/library.mjs complete <library>
@@ -97,16 +100,15 @@ import, never rewritten from scratch mid-run.
     "light": [
       { "name": "surface", "value": "#f8fafc", "group": "gray", "role": "surface" },
       { "name": "text", "value": "#0f172a", "group": "gray", "role": "text" },
-      { "name": "brand", "value": "#4f46e5", "group": "brand" }
+      { "name": "primary", "value": "#4f46e5", "group": "brand" }
     ],
     "dark": [
       { "name": "surface", "value": "#111827", "group": "gray", "role": "surface" },
       { "name": "text", "value": "#f8fafc", "group": "gray", "role": "text" },
-      { "name": "brand", "value": "#818cf8", "group": "brand" }
+      { "name": "primary", "value": "#818cf8", "group": "brand" }
     ]
-    // Both palettes expose the same lowercase, dash-delimited semantic names.
-    // group: freeform bucket the app groups swatches by ("gray", "brand", "semantic", …)
-    // role: at most one "surface" and one "text" inside each theme.
+    // Both palettes have the same stable names; values may differ.
+    // group buckets swatches; role identifies the page surface and text.
   },
   "type": [
     {
@@ -126,10 +128,13 @@ import, never rewritten from scratch mid-run.
         { "name": "Hover", "props": { "hover": true } },
         { "name": "Disabled", "props": { "disabled": true } }
       ],
-      "tokens": {                                         // the manifest tokens the component uses in each theme,
-        "light": ["brand", "surface", "text"],          // from its component.json; empty until done
-        "dark": ["brand", "surface", "text"]
-      },
+      "tokens": {
+        "light": ["primary", "surface", "text"],
+        "dark": ["primary", "surface", "text"]
+      },                                      // stable token names used in each theme; empty until done
+      "backdrop": "oklch(0.215 0.0025 157.5)",  // only when done, from component.json: the colour the component
+                                                //   sat on in the product (its painted ancestors composited);
+                                                //   the app paints it behind the component everywhere
       "unverified": "…",              // only when done with no passes: one sentence on why, from component.json
       "history": [                    // every verification pass, in order; may be empty
         {
@@ -137,14 +142,16 @@ import, never rewritten from scratch mid-run.
           "activity": "Padding is 2px short on the right; widening",
           "screenshot": "components/button/history/2.png",   // the replica as rendered
           "diff": "components/button/history/2-diff.png",    // the pixel diff against the product
-          "mismatch": 388,                                   // differing pixels
-          "theme": "light"                                  // the product theme checked in this pass
+          "live": "components/button/history/2-live.png",    // the product itself for that pass, when the pass has it
+          "mismatch": 388,                                   // differing pixels (data only: the app never prints a count)
+          "theme": "dark"                                   // the product theme checked in this pass
         }
       ],
       "skipKind": "could-not-isolate", // only while skipped or queued: why, one of the kinds below
       "reason": "…",                  // only while skipped or queued: one plain sentence for the user, at most 140 characters
-      "screenshot": "components/date-picker/screenshot.png"  // once skipped: the component cropped from the product at 2x;
-                                                             //   kept through queued and done, since it is the product's own crop
+      "screenshot": "components/date-picker/screenshot.png"  // the component cropped from the product at 2x, from the
+                                                             //   inventory on (so the library shows it before it is built)
+                                                             //   or once skipped; kept through every later status
     }
   ]
 }
@@ -157,7 +164,7 @@ import, never rewritten from scratch mid-run.
 - `found`: listed in the inventory, not started. `states`, `tokens` and `history` are empty.
 - `extracting`: being read, authored and verified. `history` grows as passes land.
 - `done`: `module` names the component, `states` holds one prop set
-  per state and `tokens` the names of the manifest tokens it uses in each theme,
+  per state and `tokens` the names of the manifest tokens it uses,
   all copied from its `component.json`: the default state first, then
   the hover and disabled states where the product has them, then every
   other state the product shows. A component lists as many states as
@@ -264,27 +271,37 @@ a markup dump.
   The app's own base styles sit under the component, so the module sets
   every property the product's base sets differently (box-sizing,
   font, line-height, borders). Webfonts are copied beside it and
-  declared with `@font-face` in the module. Every palette colour is read from
-  `var(--proto-token-<name>)`; the library replaces those root variables when
-  its active light/dark theme changes. Components do not repeat resolved light
-  and dark colour values or use theme selectors for colour alone.
+  declared with `@font-face` in the module. A captured colour that
+  matches the palette is written as `var(--proto-token-<name>)`, so
+  the same generated component resolves to the selected theme's value.
 - `component.json`:
 
   ```jsonc
   {
     "states": [ { "name": "Default", "props": {} }, … ],  // every state the product shows, the default first, each name once
-    "tokens": {                                                // the manifest tokens the component's values come from
-      "light": ["brand", "surface", "text"],
-      "dark": ["brand", "surface", "text"]
-    },
+    "tokens": {
+      "light": ["primary", "surface", "text"],
+      "dark": ["primary", "surface", "text"]
+    },                                                        // stable token names used in each theme
+    "backdrop": "oklch(0.215 0.0025 157.5)",               // optional: the colour it sits on in the product
     "unverified": "…"                                       // only when no pass was made: one sentence on why
   }
   ```
 
-  `status done` copies it into the manifest, and refuses a token its
-  corresponding manifest theme does not hold, so push both palettes before
-  landing the unit. `complete` also refuses palettes with different token-name
-  sets, because one stable CSS variable must resolve in both themes.
+  A state may also carry `"live": { "selector": "<css>", "force"?:
+  "hover" | "focus" | "active" | "focus-visible" }`: the live element
+  it was read from and the pseudo-class held on it. `tools/check.mjs`
+  checks every state that has one; the app ignores it.
+
+  A prop in `props` may be `null`: the state's element has no such
+  attribute in the product (a placeholder only the first look shows),
+  as distinct from leaving the prop out, which takes the component's
+  default. `tools/snapshot.mjs` types those props `string | null`, and
+  presence-only attributes (`disabled`, `checked`) as booleans.
+
+  `status done` copies it into the manifest, and refuses a token the
+  corresponding theme does not hold, so push both palettes before landing
+  the unit. `complete` refuses palettes with different token-name sets.
 - `notes.md`: the unit's working notes; the app never reads it.
 
 The app finds modules by a glob over `src/components/*/`, so a new
@@ -301,6 +318,21 @@ before anything is landed. That route is what the fidelity check
 diffs against the live page. A component that throws
 shows its error in its own block; nothing else on the page is
 affected.
+
+## Published check pictures
+
+A published build carries at most 200 files, and every check makes
+three pictures. `tools/publish-library.mjs` packs each component's
+check pictures into a few sheets in `dist/` only
+(`components/<slug>/history/sheet-<k>.png`) and points the built
+manifest's pass pictures at their regions with a media fragment,
+`components/<slug>/history/sheet-1.png#xywh=x,y,w,h` (the file's own
+pixels). The app shows the region (`Crisp`). The live library keeps one
+file per picture. A pass also carries `verdict` (what the check found:
+`match`, `shifted`, `context`, `faint`, `offscreen` or `differs`); the
+app treats every verdict but `differs` as the product's look.
+Every pass also names its `theme`; the library labels checks so a light
+match cannot be mistaken for a dark one.
 
 ## components/<slug>/history/*.png
 
@@ -320,6 +352,10 @@ experience:
 
 1. Append the first event ("Reading the source") before doing anything slow:
    it is what tells the user the import is alive.
+1a. Passes land while a component is `extracting`, one per check
+   (`tools/check.mjs` lands each as it is made, with the product's
+   capture beside ours): the app shows them streaming in the
+   component's loading state.
 2. Flush `manifest.json` after **every** item (each themed token, each type style,
    each component transition, each verification pass), and append an event
    for it. The library filling in piece by piece is the product.
@@ -335,9 +371,11 @@ experience:
    tools/publish-library.mjs <library>` builds the app and uploads
    `dist/`, so the published library is never more than one component
    behind the one the user is watching. It takes a publish lock of its
-   own, so two units landing at the same moment produce one build after
-   the other and never two into the same `dist/`; the writer's lock is
-   untouched, so a unit's own lines stay instant while a build runs.
+   own; a publish asked for while one runs returns at once and the
+   running one builds again when it finishes, carrying everything
+   landed meanwhile, so landings never queue builds (`--wait` waits
+   instead, for the finish). The writer's lock is untouched, so a
+   unit's own lines stay instant while a build runs.
 7. Finish by running `complete`, which sets `completedAt` and appends
    the coverage line, and publishing once more. Then watch `queue.json`
    for as long as the session lasts.

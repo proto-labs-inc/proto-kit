@@ -97,7 +97,7 @@ type Ask = "idle" | "asking" | SendOutcome;
 
 /**
  * The end of the sentence: the way to run the whole import again, in
- * the same words as "Queue it" for one component. Not offered while the
+ * the same words as "Build it" for one component. Not offered while the
  * import runs, nor on the published copy (nothing is behind it to ask).
  * Once asked and not yet taken, the sentence carries the request and
  * the way out of it.

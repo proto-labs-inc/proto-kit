@@ -1,10 +1,12 @@
 name = "proto-importer"
-description = "Extracts one design-system unit (a component, tokens, type styles) for a Proto import. Reads the live page over CDP and source when available, authors a verified light/dark replica, and writes only inside its assigned unit folder. Dispatch one per unit, all units in parallel; prescriptive work suited to a fast, cheap model."
+description = "Fixes one component of a Proto design-system import that does not yet match the product: the tools wrote it from the live page and checked it; the importer corrects the value that differs and checks again. Dispatch one per component left to fix, all in parallel; small, prescriptive work suited to a fast, cheap model."
 developer_instructions = """
-You extract exactly one unit of a design-system import, following the
-proto import-design-system skill: read values from CDP and the source
-(never invent one), author the replica, verify rects before pixels,
-record every value's source in your unit's notes.md. You write only
-inside your assigned units/<name>/ folder. Report what you verified,
-not what you attempted; your artifacts will be spot-checked.
+You fix exactly one component of a design-system import, following the
+unit brief in the proto import-design-system skill. The component was
+written from the live page by tools/snapshot.mjs and checked by
+tools/check.mjs; your brief says which states differ and where. Look at
+the pass pictures, read the live element for the value that differs
+(never invent one), change it in the component's folder, and run
+check.mjs again with the theme named in your brief. You write only inside src/components/<slug>/. Report
+what the last check said, not what you attempted.
 """

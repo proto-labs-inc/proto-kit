@@ -37,6 +37,7 @@ Cursor; the core stays harness-neutral.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
 - `publish-library/`: publish the library on demand.
 - `listen/`: take the website's commands off the feed.
+- `update/`: update the plugin, then repair what the update leaves stale.
 
 ### tools/
 
@@ -57,6 +58,7 @@ Serving and publishing:
 - `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
 - `heartbeat.mjs`: the beat loop those and the courier share.
 - `health.mjs`: the session-start check, one line per codebase.
+- `repair-runs.mjs`: bring every run spec up to this version of the kit.
 
 The courier and the feed:
 
@@ -65,13 +67,14 @@ The courier and the feed:
 - `feed-tail.mjs`: follow one codebase's feed from the committed offset.
 - `feed-watch-all.mjs`: follow every codebase's feed at once, for monitors.
 - `agent-launch.mjs`: resume-aware headless launcher for a listen session.
-- `feed-drive.mjs`: the Codex fallback, resuming its saved conversation.
+- `codex-thread.mjs`: which live Codex thread is this session (by a token it printed).
+- `feed-queue.mjs`: the Codex wake, queueing each command into the session the user has open.
+- `feed-drive.mjs`: the Codex last resort, resuming its saved conversation headlessly.
 
 Talking to the app, and the harness hooks:
 
 - `mcp-call.mjs`: MCP-over-HTTP client, the one reader of `~/.proto/config.json`.
-- `mcp-stdio.mjs`: that same transport as a stdio MCP server.
-- `mcp-headers.mjs`: print Codex's auth header from config.json.
+- `mcp-stdio.mjs`: that same transport as a stdio MCP server, choosing the credential per call.
 - `link-laptop.mjs`: fetch the setup document, mint this laptop's token.
 - `hooks/post-edit-markers.mjs`: re-run the marker check on an edited workspace file.
 - `hooks/cursor-session-start.mjs`, `hooks/cursor-post-tool-use.mjs`: those two checks, Cursor's shape.
@@ -147,7 +150,10 @@ git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/pr
 ```
 
 If the plugin is already installed, update it first so it is on the
-latest version:
+latest version. `/proto:update` (Claude Code), `$update` (Codex) or
+the Proto update skill (Cursor) runs the right one of these for the
+agent it is in and then repairs the runs the old version left behind;
+the commands themselves are:
 
 ```sh
 # Claude Code
@@ -208,9 +214,9 @@ and on in Customize.
 
 ```
 ~/.proto/
-├─ config.json              laptop link (app origin, member, org, auth, rig source), shape in skills/setup
+├─ config.json              laptop links (app origin, one credential per team, rig source), shape in skills/setup
 └─ <codebase>/               one per codebase being prototyped
-   ├─ codebase.json          source pointers (repo path, remote, live URL)
+   ├─ codebase.json          the team that owns it and source pointers (repo path, remote, live URL)
    ├─ library/              the design-system library app; the import fills its public/
    ├─ prototypes/<slug>/    prototype workspaces (vite + rig + prototype.json)
    ├─ imports/<run>/        import working artifacts (wireframes, verify stages)
@@ -227,6 +233,6 @@ cd /tmp/demo-library && pnpm install --frozen-lockfile && pnpm dev
 # in another terminal: play the fake import into it
 node tools/fake-import/run.mjs /tmp/demo-library
 
-# open http://localhost:5210 and watch it fill in; press "Queue it" on
+# open the URL Vite prints and watch it fill in; press "Queue it" on
 # the skipped card and the driver extracts it
 ```

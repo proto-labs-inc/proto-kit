@@ -4,26 +4,51 @@
  * "text" the foreground when it reads on that surface, otherwise
  * whichever of black and white reads better. Every other shadcn
  * colour is mixed from those two, so the library's own UI stays
- * legible on a light, dark or saturated surface.
+ * legible on a light, dark or saturated surface. Before the surface
+ * token exists the page keeps the stylesheet's own neutral, which
+ * follows the reader's colour scheme and is dark by default
+ * (styles.css), so the library never flashes light inside a dark
+ * setup dialog.
  */
 import type { ThemeId, Token } from "./library";
 
-type Rgb = { r: number; g: number; b: number };
+type Rgba = { r: number; g: number; b: number; a: number };
 
-function parseColor(value: string): Rgb | null {
-  const hex = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (hex) {
-    let digits = hex[1];
-    if (digits.length === 3) digits = digits.split("").map((d) => d + d).join("");
-    const n = parseInt(digits, 16);
-    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-  }
-  const rgb = value.trim().match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
-  if (rgb) return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
-  return null;
+let pixel: CanvasRenderingContext2D | null = null;
+
+/**
+ * The browser resolves the colour, so any syntax it paints (hex, rgb,
+ * hsl, oklch, lab, color(), color-mix(), relative colours) reads the
+ * same here as on the page. The value is painted on one cleared sRGB
+ * pixel and read back, alpha included.
+ */
+function parseColor(value: string): Rgba | null {
+  if (!CSS.supports("color", value)) return null;
+  pixel ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!pixel) return null;
+  pixel.clearRect(0, 0, 1, 1);
+  pixel.fillStyle = value;
+  pixel.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = pixel.getImageData(0, 0, 1, 1).data;
+  return { r, g, b, a };
 }
 
-function luminance({ r, g, b }: Rgb): number {
+const byte = (n: number) => n.toString(16).padStart(2, "0");
+
+/**
+ * A colour as hex, the way the palette shows every value whatever
+ * syntax the product wrote it in: "#1a1a1a", or "#1a1a1a80" when it
+ * is translucent. The value itself when the browser cannot paint it.
+ */
+export function hexOf(value: string): string {
+  const c = parseColor(value);
+  if (!c) return value;
+  const rgb = `#${byte(c.r)}${byte(c.g)}${byte(c.b)}`;
+  if (c.a === 255) return rgb;
+  return `${rgb}${byte(c.a)}`;
+}
+
+function luminance({ r, g, b }: Rgba): number {
   const channel = (c: number) => {
     const s = c / 255;
     if (s <= 0.03928) return s / 12.92;
@@ -50,6 +75,7 @@ const NEUTRAL: Record<ThemeId, Surface> = {
   dark: { background: "#171717", foreground: "#fafafa" },
 };
 
+/** The product's surface, or null while the import has not read one. */
 export function surfaceFromTokens(tokens: Token[], theme: ThemeId = "light"): Surface {
   const surface = tokens.find((t) => t.role === "surface");
   if (!surface || !parseColor(surface.value)) return NEUTRAL[theme];
@@ -62,16 +88,14 @@ export function surfaceFromTokens(tokens: Token[], theme: ThemeId = "light"): Su
   return { background: surface.value, foreground };
 }
 
-/** The stable CSS custom property an imported component uses for a manifest token. */
+/** The stable custom property imported components use in every theme. */
 export function tokenVariable(name: string): string {
   return `--proto-token-${name}`;
 }
 
-export function paintSurface(
-  root: HTMLElement,
-  { background, foreground }: Surface,
-  tokens: Token[] = [],
-): void {
+/** Paint the product's surface over the stylesheet's neutral, or take it off again. */
+export function paintSurface(root: HTMLElement, surface: Surface, tokens: Token[] = []): void {
+  const { background, foreground } = surface;
   const mix = (amount: number, base = "transparent") =>
     `color-mix(in oklab, ${foreground} ${amount}%, ${base})`;
   const vars: Record<string, string> = {
@@ -94,14 +118,8 @@ export function paintSurface(
     "--ring": mix(40),
   };
   for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
-
-  // A theme owns the entire token namespace. Remove the previous theme's
-  // names before applying the next one so a partial import cannot leave a
-  // light value behind after switching to dark (or vice versa).
   for (const name of [...root.style]) {
     if (name.startsWith("--proto-token-")) root.style.removeProperty(name);
   }
-  for (const token of tokens) {
-    root.style.setProperty(tokenVariable(token.name), token.value);
-  }
+  for (const token of tokens) root.style.setProperty(tokenVariable(token.name), token.value);
 }

@@ -21,9 +21,14 @@
  *       --favicon is the page's icon as a file; it is copied to
  *       public/product/favicon.<ext> and named in the manifest, so the
  *       app can show the page the way a browser tab does.
- *   token <library> <light|dark> <json> one { name, value, group, role? }
+ *   token <library> <light|dark> <json>  one { name, value, group, role? }
+ *   tokens <library> <light|dark> <json> replace one palette at once, [{ name, value, group, role? }, …]
  *   type <library> <json>             one { name, family, size, weight, lineHeight, sample }
- *   inventory <library> <json>        every component at once, [{ slug, name }], all "found"
+ *   types <library> <json>            many at once: one write, one line
+ *   inventory <library> <json>        every component at once, [{ slug, name, screenshot? }], all "found";
+ *                                     screenshot is the product's own crop of it (tools/cdp/crop.mjs),
+ *                                     copied to components/<slug>/screenshot.png so the library shows
+ *                                     the component before it is built
  *   component <library> <slug> status <found|extracting|done|skipped|queued>
  *       [--kind <could-not-isolate|did-not-match|not-tried>] [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
  *       done reads the component the unit authored in
@@ -38,9 +43,11 @@
  *       (copied to components/<slug>/screenshot.png). The crop stays
  *       on the entry from then on; the kind and reason stay while
  *       queued and go when the component is read again.
- *   history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
- *       Moves both images into components/<slug>/history/ and appends
- *       the pass. Every pass a component made is kept.
+ *   history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> [--live <png>] [--verdict <v>] --mismatch <n> --activity "<line>"
+ *       Moves the images into components/<slug>/history/ and appends
+ *       the pass. Every pass a component made is kept. tools/check.mjs
+ *       lands each pass the moment it is made, so a component's checks
+ *       stream into the library while it is still being read.
  *   event <library> [slug] <activity>  one activity line, about a component or the whole import
  *   take-queued <library>             pops queue.json: prints the slug it took (now "queued",
  *                                     completedAt cleared), "*" for a request to import
@@ -62,25 +69,28 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { syncLibraryTemplate } from "./library-template.mjs";
 
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
   init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>] [--favicon <file>]
   token <library> <light|dark> <json>
+  tokens <library> <light|dark> <json array>
   type <library> <json>
+  types <library> <json array>
   inventory <library> <json array>
   component <library> <slug> status <found|extracting|done|skipped|queued> [--kind ...] [--reason ...] [--screenshot ...] [--activity ...]
-  history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> --mismatch <n> --activity <line>
+  history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> [--live <png>] [--verdict <v>] --mismatch <n> --activity <line>
   event <library> [slug] <activity>
   take-queued <library>
   complete <library>`;
 const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
-const THEMES = ["light", "dark"];
 // Why a component was skipped, as the app groups them: it could not be
 // lifted out of the page on its own, it was rebuilt but never matched
 // the product closely enough, or the import never got to it.
 const SKIP_KINDS = ["could-not-isolate", "did-not-match", "not-tried"];
 const REASON_CAP = 140;
+// What a check found (tools/verify-replica.mjs).
+const VERDICTS = ["match", "shifted", "context", "faint", "offscreen", "differs"];
+const THEMES = ["light", "dark"];
 // The whole import, asked for again from the app: a request whose slug
 // is this, rather than a component's.
 const EVERYTHING = "*";
@@ -153,9 +163,7 @@ const paths = {
 };
 const now = () => new Date().toISOString();
 
-const emptyThemes = () => ({ light: [], dark: [] });
-const emptyComponentTokens = () => ({ light: [], dark: [] });
-const EMPTY = { codebase: null, source: null, product: null, startedAt: null, completedAt: null, themes: emptyThemes(), type: [], components: [] };
+const EMPTY = { codebase: null, source: null, product: null, startedAt: null, completedAt: null, themes: { light: [], dark: [] }, type: [], components: [] };
 
 function readManifest() {
   try {
@@ -164,16 +172,14 @@ function readManifest() {
       const tokens = Array.isArray(manifest.tokens) ? manifest.tokens : [];
       manifest.themes = { light: tokens, dark: tokens };
       delete manifest.tokens;
-    }
-    for (const component of manifest.components ?? []) {
-      if (Array.isArray(component.tokens)) {
-        component.tokens = { light: component.tokens, dark: component.tokens };
+      for (const component of manifest.components ?? []) {
+        if (Array.isArray(component.tokens)) component.tokens = { light: component.tokens, dark: component.tokens };
+        for (const pass of component.history ?? []) pass.theme ??= "light";
       }
-      for (const pass of component.history ?? []) pass.theme ??= "light";
     }
     return manifest;
   } catch {
-    return { ...EMPTY, themes: emptyThemes() };
+    return { ...EMPTY };
   }
 }
 
@@ -314,7 +320,7 @@ const commands = {
       for (const slug of importedModules()) rmSync(join(paths.modules, slug), { recursive: true, force: true });
       writeFileSync(paths.events, "");
       writeJsonAtomic(paths.queue, { requests: [] });
-      Object.assign(manifest, { ...EMPTY, codebase, source, product, startedAt: now(), themes: emptyThemes(), type: [], components: [] });
+      Object.assign(manifest, { ...EMPTY, themes: { light: [], dark: [] }, codebase, source, product, startedAt: now(), type: [], components: [] });
       return { kind: "fresh", activity: "Reading the source" };
     });
     console.log(`${outcome.kind}: ${libraryDir}`);
@@ -322,37 +328,44 @@ const commands = {
 
   token() {
     const [theme, json] = positional;
-    if (!THEMES.includes(theme)) fail(`token theme must be one of ${THEMES.join(", ")}`);
+    if (!THEMES.includes(theme)) fail("token needs light or dark before its JSON");
     const token = readJsonArg(json);
-    requireString(token.name, "token.name");
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(token.name)) {
-      fail(`token.name "${token.name}" must use lowercase letters, digits and dashes so components can read var(--proto-token-${token.name})`);
-    }
-    requireString(token.value, "token.value");
-    requireString(token.group, "token.group");
-    if (token.role !== undefined && token.role !== "surface" && token.role !== "text") fail("token.role is surface or text");
+    checkToken(token);
     change((manifest) => {
-      const tokens = manifest.themes[theme];
-      const existing = tokens.findIndex((t) => t.name === token.name);
-      if (existing === -1) tokens.push(token);
-      else tokens[existing] = token;
+      putByName(manifest.themes[theme], token);
       return { activity: `Reading ${theme} colours (${token.name})` };
+    });
+  },
+
+  tokens() {
+    const [theme, json] = positional;
+    if (!THEMES.includes(theme)) fail("tokens needs light or dark before its JSON");
+    const list = readJsonArg(json);
+    if (!Array.isArray(list) || list.length === 0) fail("tokens takes a non-empty JSON array of { name, value, group, role? }");
+    list.forEach(checkToken);
+    change((manifest) => {
+      manifest.themes[theme] = [];
+      for (const token of list) putByName(manifest.themes[theme], token);
+      return { activity: `Reading ${theme} colours (${list.length} of them)` };
     });
   },
 
   type() {
     const style = readJsonArg(positional[0]);
-    requireString(style.name, "type.name");
-    requireString(style.family, "type.family");
-    requireString(style.size, "type.size");
-    requireString(style.lineHeight, "type.lineHeight");
-    requireString(style.sample, "type.sample");
-    if (typeof style.weight !== "number") fail("type.weight must be a number");
+    checkType(style);
     change((manifest) => {
-      const existing = manifest.type.findIndex((t) => t.name === style.name);
-      if (existing === -1) manifest.type.push(style);
-      else manifest.type[existing] = style;
+      putByName(manifest.type, style);
       return { activity: `Reading type styles (${style.name})` };
+    });
+  },
+
+  types() {
+    const list = readJsonArg(positional[0]);
+    if (!Array.isArray(list) || list.length === 0) fail("types takes a non-empty JSON array of { name, family, size, weight, lineHeight, sample }");
+    list.forEach(checkType);
+    change((manifest) => {
+      for (const style of list) putByName(manifest.type, style);
+      return { activity: `Reading type styles (${list.length} of them)` };
     });
   },
 
@@ -363,12 +376,18 @@ const commands = {
       requireString(item.slug, "slug");
       requireString(item.name, "name");
       if (!/^[a-z0-9][a-z0-9-]*$/.test(item.slug)) fail(`slug "${item.slug}" must be lowercase letters, digits and dashes`);
+      if (item.screenshot !== undefined && !existsSync(item.screenshot)) fail(`${item.screenshot} does not exist`);
     }
     change((manifest) => {
       for (const item of list) {
         if (manifest.components.some((c) => c.slug === item.slug)) continue;
-        manifest.components.push({ slug: item.slug, name: item.name, status: "found", states: [], tokens: emptyComponentTokens(), history: [] });
+        const entry = { slug: item.slug, name: item.name, status: "found", states: [], tokens: { light: [], dark: [] }, history: [] };
         mkdirSync(folderOf(item.slug), { recursive: true });
+        if (item.screenshot !== undefined) {
+          copyFileSync(item.screenshot, join(folderOf(item.slug), "screenshot.png"));
+          entry.screenshot = relative(item.slug, "screenshot.png");
+        }
+        manifest.components.push(entry);
       }
       return { activity: `Found ${manifest.components.length} components` };
     });
@@ -418,7 +437,8 @@ const commands = {
     const [slug] = positional;
     const mismatch = Number(options.mismatch);
     if (!slug || !THEMES.includes(options.theme) || !options.screenshot || !options.diff || !options.activity || !Number.isInteger(mismatch) || mismatch < 0) fail(USAGE);
-    for (const image of [options.screenshot, options.diff]) if (!existsSync(image)) fail(`${image} does not exist`);
+    for (const image of [options.screenshot, options.diff, options.live].filter(Boolean)) if (!existsSync(image)) fail(`${image} does not exist`);
+    if (options.verdict !== undefined && !VERDICTS.includes(options.verdict)) fail(`--verdict is one of ${VERDICTS.join(", ")}`);
     change((manifest) => {
       const entry = componentIn(manifest, slug);
       const folder = join(folderOf(slug), "history");
@@ -426,15 +446,21 @@ const commands = {
       const n = nextPass(folder);
       renameOrCopy(options.screenshot, join(folder, `${n}.png`));
       renameOrCopy(options.diff, join(folder, `${n}-diff.png`));
-      entry.history.push({
+      const pass = {
         at: now(),
         activity: options.activity,
         screenshot: relative(slug, "history", `${n}.png`),
         diff: relative(slug, "history", `${n}-diff.png`),
         mismatch,
         theme: options.theme,
-      });
-      return { activity: `${options.activity} (${pixelsOff(mismatch)})`, slug };
+      };
+      if (options.live) {
+        renameOrCopy(options.live, join(folder, `${n}-live.png`));
+        pass.live = relative(slug, "history", `${n}-live.png`);
+      }
+      if (options.verdict !== undefined) pass.verdict = options.verdict;
+      entry.history.push(pass);
+      return { activity: options.activity, slug };
     });
   },
 
@@ -475,14 +501,9 @@ const commands = {
       if (moving.length > 0) fail(`still moving: ${moving.map((c) => `${c.slug} (${c.status})`).join(", ")}; finish or skip them first`);
       const light = new Set(manifest.themes.light.map((token) => token.name));
       const dark = new Set(manifest.themes.dark.map((token) => token.name));
-      const missingDark = [...light].filter((name) => !dark.has(name));
-      const missingLight = [...dark].filter((name) => !light.has(name));
-      if (missingDark.length > 0 || missingLight.length > 0) {
-        const details = [];
-        if (missingDark.length > 0) details.push(`missing from dark: ${missingDark.join(", ")}`);
-        if (missingLight.length > 0) details.push(`missing from light: ${missingLight.join(", ")}`);
-        fail(`the light and dark palettes must expose the same semantic token names (${details.join("; ")})`);
-      }
+      const onlyLight = [...light].filter((name) => !dark.has(name));
+      const onlyDark = [...dark].filter((name) => !light.has(name));
+      if (onlyLight.length || onlyDark.length) fail(`light and dark palettes need the same stable token names; only light: ${onlyLight.join(", ") || "none"}; only dark: ${onlyDark.join(", ") || "none"}`);
       manifest.completedAt = now();
       return { activity: `Finished: ${coverage(manifest.components)}` };
     });
@@ -499,9 +520,28 @@ function coverage(components) {
   return parts.join(", ");
 }
 
-function pixelsOff(mismatch) {
-  if (mismatch === 0) return "no difference";
-  return `${mismatch.toLocaleString("en-GB")} pixels differ`;
+function checkToken(token) {
+  requireString(token.name, "token.name");
+  if (!/^[A-Za-z0-9_-]+$/.test(token.name)) fail("token.name may contain only letters, digits, underscores and dashes so it can be a stable CSS variable");
+  requireString(token.value, "token.value");
+  requireString(token.group, "token.group");
+  if (token.role !== undefined && token.role !== "surface" && token.role !== "text") fail("token.role is surface or text");
+}
+
+function checkType(style) {
+  requireString(style.name, "type.name");
+  requireString(style.family, "type.family");
+  requireString(style.size, "type.size");
+  requireString(style.lineHeight, "type.lineHeight");
+  requireString(style.sample, "type.sample");
+  if (typeof style.weight !== "number") fail("type.weight must be a number");
+}
+
+// Replace the entry of the same name, else add it at the end.
+function putByName(list, item) {
+  const existing = list.findIndex((t) => t.name === item.name);
+  if (existing === -1) list.push(item);
+  else list[existing] = item;
 }
 
 // What the unit authored in src/components/<slug>/: the module, its
@@ -515,7 +555,7 @@ function authored(slug, themes) {
   const source = readFileSync(join(folder, modules[0]), "utf8");
   if (!/export default /.test(source)) fail(`${modules[0]} needs a default export: the component`);
   if (!/\.module\.css/.test(source)) fail(`${modules[0]} must style itself from a scoped <Slug>.module.css beside it`);
-  const shape = `{ "states": [{ "name": "Default", "props": {} }, …], "tokens": { "light": ["slate-900"], "dark": ["slate-100"] } }`;
+  const shape = `{ "states": [{ "name": "Default", "props": {} }, …], "tokens": { "light": ["slate-900"], "dark": ["slate-900"] } }`;
   let unit;
   try {
     unit = JSON.parse(readFileSync(join(folder, "component.json"), "utf8"));
@@ -530,25 +570,17 @@ function authored(slug, themes) {
     if (typeof state.props !== "object" || state.props === null || Array.isArray(state.props)) fail(`state "${state.name}" needs a props object`);
   }
   if (new Set(states.map((s) => s.name)).size !== states.length) fail("state names must be unique");
-  const componentTokens = Array.isArray(unit.tokens)
-    ? { light: unit.tokens, dark: unit.tokens }
-    : unit.tokens;
-  if (typeof componentTokens !== "object" || componentTokens === null) fail(`${folder}/component.json must list token names under tokens.light and tokens.dark`);
-  for (const theme of THEMES) {
-    if (!Array.isArray(componentTokens[theme])) fail(`${folder}/component.json must list tokens.${theme} as an array of names`);
-    for (const name of componentTokens[theme]) {
-      requireString(name, `tokens.${theme}[]`);
-      if (!themes[theme].some((t) => t.name === name)) fail(`component.json names the ${theme} token "${name}", which the manifest does not hold; push it with \`token ${theme}\` first`);
-    }
+  const componentTokens = Array.isArray(unit.tokens) ? { light: unit.tokens, dark: unit.tokens } : unit.tokens;
+  if (!componentTokens || !THEMES.every((theme) => Array.isArray(componentTokens[theme]))) fail(`${folder}/component.json must list the manifest tokens the component uses under "tokens.light" and "tokens.dark"`);
+  for (const theme of THEMES) for (const name of componentTokens[theme]) {
+    requireString(name, `tokens.${theme}[]`);
+    if (!themes[theme].some((t) => t.name === name)) fail(`component.json names the ${theme} token "${name}", which the manifest does not hold; push it with \`token ${theme}\` first`);
   }
-  const record = {
-    module: ["src", "components", slug, modules[0]].join("/"),
-    states,
-    tokens: {
-      light: [...new Set(componentTokens.light)],
-      dark: [...new Set(componentTokens.dark)],
-    },
-  };
+  const record = { module: ["src", "components", slug, modules[0]].join("/"), states, tokens: Object.fromEntries(THEMES.map((theme) => [theme, [...new Set(componentTokens[theme])]])) };
+  if (unit.backdrop !== undefined) {
+    requireString(unit.backdrop, "backdrop");
+    record.backdrop = unit.backdrop;
+  }
   if (unit.unverified !== undefined) {
     requireString(unit.unverified, "unverified");
     if (unit.unverified.length > REASON_CAP) fail(`unverified is ${unit.unverified.length} characters; the cap is ${REASON_CAP}: one plain sentence for the user`);
@@ -573,8 +605,9 @@ function importedModules() {
 function unbuild(entry) {
   delete entry.module;
   delete entry.unverified;
+  delete entry.backdrop;
   entry.states = [];
-  entry.tokens = emptyComponentTokens();
+  entry.tokens = { light: [], dark: [] };
 }
 
 // A component being read again, or built, is no longer skipped.
@@ -621,5 +654,4 @@ function renameOrCopy(from, to) {
 
 const run = commands[subcommand];
 if (!run) fail(`unknown subcommand "${subcommand}"\n${USAGE}`);
-if (subcommand === "init") syncLibraryTemplate(libraryDir);
 run();
