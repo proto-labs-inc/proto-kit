@@ -68,6 +68,7 @@ Serving and publishing:
 - `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
 - `heartbeat.mjs`: the beat loop those share.
 - `health.mjs`: the session-start check, one line per codebase.
+- `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 
 The courier and the feed:
