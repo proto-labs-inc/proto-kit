@@ -50,7 +50,7 @@ node tools/import.mjs <codebase> --check-theme <light|dark>   check every built 
 node tools/snapshot.mjs <codebase> <json | @file> --theme <light|dark>  write one component from its live instances
 node tools/check.mjs <codebase> <slug> --theme <light|dark> [--state <name>] [--activity "<line>"]   check it; each pass lands
 node tools/explain-diff.mjs <codebase> <slug> --theme <light|dark> [--state <name>]   why a state differs: the product's value and ours, named
-node tools/tail.mjs decide <codebase> --wait          the tail's decision, from its numbers: waits while thirty more seconds are worth it, then prints one line to relay
+node tools/tail.mjs decide <codebase>                 the tail's numbers now, at once: one line to relay when a unit reports; it never waits
 node tools/courier-up.mjs <codebase>                this laptop's courier, up and answering (idempotent)
 node tools/library.mjs component <codebase> <slug> status done
 node tools/library.mjs component <codebase> <slug> status skipped --kind <kind> --reason "<sentence>" --screenshot <png>
@@ -173,16 +173,19 @@ straight after.
    every command of theirs asks the user; a plain sub-agent runs in
    this session with its mode.
 
-   Then run `node tools/tail.mjs decide <codebase> --wait`. It watches
-   the units' passes and decides, from their numbers, whether thirty
-   more seconds are worth waiting (from two minutes in, while the
-   remainder is forecast to finish within a minute and the last window
-   gained something) or not (a plateau, a regression, minutes to go, a
-   site command waiting); it returns with one line, such as "Moving on:
-   13 of 15 matched; the rest improved 2% in the last minute, about 4
-   more minutes to go. The rest keeps going in the background." Relay
-   that line as it stands and move on: take the queue and any waiting
-   command. Never ask the user whether to wait.
+   Nothing waits on the units. Your next message after the gate is
+   the gate line, in the same turn the runner returned, before you
+   dispatch anything: the user hears "usable now" the moment it is
+   true. From then on `node tools/tail.mjs decide <codebase>` reads the
+   units' numbers as they stand and returns at once with one line
+   ("Fixing in the background: 13 of 15 matched; the rest improved 2%
+   in the last minute, about 4 more minutes to go", or "Moving on: ...,
+   a create-prototype command from the site is waiting"). Run it when a
+   unit reports or when you are asked where things stand, relay its
+   line as it stands, and go on: take the queue and any waiting
+   command. Never wait for a unit, never poll, never ask the user
+   whether to wait; each unit stops on its own budget (three checks or
+   two minutes) and restores its component when it did not match.
 
    As each unit reports, spot-check it (re-run `check.mjs --theme
    <theme>` on one state) and land it: `status done`, or `status

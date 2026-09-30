@@ -17,7 +17,8 @@
  *   4. diminishing returns: two passes in a row each cut the mismatch
  *      by under a fifth, or a pass made it worse;
  *   5. the unit's budget: three checks or two minutes;
- *   6. someone is waiting: a site command is queued.
+ *   6. someone is waiting: a site command is queued (one being handled
+ *      right now is not queued: `handling` marks it).
  * And a phase (the import's tail, a build's copy) is weighed as a
  * whole from two minutes in: P(t), the matched share of the work by
  * weight, sampled at every check pass; every thirty seconds the gain
@@ -25,20 +26,29 @@
  * and the phase moves on when that is little, when it has plateaued,
  * when it regressed, or when the rest is minutes away.
  *
+ * The gate never waits on any of this. The moment the import or the
+ * copy is usable, the agent says so; the tail's units run in the
+ * background on their own budgets (rule 5), and `decide` only reads
+ * the numbers as they stand. It returns at once, always: the forecast
+ * says whether the rest is worth a look later, never whether to hold
+ * the foreground.
+ *
  * Every pass and every decision is recorded in tail.jsonl in the run
  * folder (the codebase's run/, or the build's), so a run says when and
  * why it moved on.
  *
  * Usage:
- *   node tools/tail.mjs decide <codebase> [--build <briefId>] [--wait]
- *       the phase's decision now; --wait polls every window until it
- *       is not "continue", printing the line once. One JSON line on
- *       stdout: { action: continue|move-on|done, line, matched, total,
- *       P, gain, eta }.
+ *   node tools/tail.mjs decide <codebase> [--build <briefId>]
+ *       the phase's decision now, at once. One JSON line on stdout:
+ *       { action: continue|move-on|done, line, matched, total, P,
+ *       gain, eta }; the line is for the user as it stands.
  *   node tools/tail.mjs waiting <codebase>
  *       whether a site command is queued for this codebase (rule 6).
+ *   node tools/tail.mjs handling <codebase> <offset>
+ *       the feed line ending at <offset> is being handled now: it is
+ *       not waiting (the listen skill runs this before acting).
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -141,27 +151,41 @@ export function unitBudget({ checks, startedAt, now = Date.now() }) {
   return { stop: false, reason: null };
 }
 
+/** Where the listen skill records the feed line it is acting on: { offset } like offset.json. */
+export function handlingFile(codebase) {
+  return join(process.env.HOME ?? "", ".proto", codebase, "run", "courier", "handling.json");
+}
+
 /**
  * Rule 6: whether a site command is queued for this codebase: the
- * courier's feed holds a line past the committed offset.
+ * courier's feed holds a line past the committed offset and past the
+ * line being handled. The listen skill commits the offset only after
+ * acting on a line, so the command whose work this is stays in the
+ * feed the whole time; without the handling mark it counted as
+ * waiting on itself, and a build said a site command was waiting
+ * about its own brief.
  */
 export function waiting(codebase) {
   const run = join(process.env.HOME ?? "", ".proto", codebase, "run", "courier");
   const feed = join(run, "commands.jsonl");
   if (!existsSync(feed)) return { waiting: false, what: null };
-  let offset = 0;
-  try {
-    offset = JSON.parse(readFileSync(join(run, "offset.json"), "utf8")).offset ?? 0;
-  } catch {
-    // Nothing committed yet: everything in the feed waits.
-  }
+  const offsetIn = (file) => {
+    try {
+      const value = JSON.parse(readFileSync(file, "utf8")).offset;
+      return Number.isFinite(value) ? value : 0;
+    } catch {
+      return 0;
+    }
+  };
+  // Nothing committed yet: everything in the feed waits, except the line in hand.
+  const offset = Math.max(offsetIn(join(run, "offset.json")), offsetIn(handlingFile(codebase)));
   const size = statSync(feed).size;
   if (size <= offset) return { waiting: false, what: null };
   const pending = readFileSync(feed, "utf8").slice(offset).split("\n").filter(Boolean);
   let what = "a site command";
   try {
     const command = JSON.parse(pending[0]);
-    what = command.run ? `a ${command.run} command from the site` : "a site command";
+    if (command.run) what = `${/^[aeiou]/i.test(command.run) ? "an" : "a"} ${command.run} command from the site`;
   } catch {
     // An unreadable line still waits.
   }
@@ -212,7 +236,7 @@ export function decide(records, codebase, now = Date.now()) {
   const queued = waiting(codebase);
   if (queued.waiting) return { action: "move-on", line: `Moving on: ${of}; ${queued.what} is waiting. The rest keeps going in the background.`, ...numbers(here), rule: "waiting" };
   const elapsed = now - here.phaseAt;
-  if (elapsed < TAIL.CHECKPOINT_MS) return { action: "continue", line: `Fixing: ${of}, ${Math.round((TAIL.CHECKPOINT_MS - elapsed) / 1000)} s to the first checkpoint.`, ...numbers(here) };
+  if (elapsed < TAIL.CHECKPOINT_MS) return { action: "continue", line: `Fixing in the background: ${of}; nothing waits on the rest.`, ...numbers(here) };
   const before = progressAt(records, now - TAIL.WINDOW_MS);
   const earlier = progressAt(records, now - 2 * TAIL.WINDOW_MS);
   const gain = here.P - before.P;
@@ -230,7 +254,7 @@ export function decide(records, codebase, now = Date.now()) {
   const smallest = Math.min(...here.items.filter((item) => !(here.latest.get(item.item) && [...here.latest.get(item.item).values()].every((v) => ACCEPTED.has(v))) && item.matched !== true).map((item) => item.weight));
   const totalWeight = here.items.reduce((a, item) => a + item.weight, 0);
   const meaningful = gain >= TAIL.MEANINGFUL_GAIN * remaining || gain * totalWeight >= smallest;
-  if (meaningful && eta <= TAIL.ETA_CONTINUE_MS) return { action: "continue", rule: "forecast", line: `Fixing: ${of}; ${lastMinute}, ${minutes}; waiting thirty seconds more.`, ...base };
+  if (meaningful && eta <= TAIL.ETA_CONTINUE_MS) return { action: "continue", rule: "forecast", line: `Fixing in the background: ${of}; ${lastMinute}, ${minutes}.`, ...base };
   return { action: "move-on", rule: "little-gain", line: `Moving on: ${of}; ${lastMinute}, ${minutes}. ${tail}`, ...base };
 }
 
@@ -244,38 +268,35 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const positional = [];
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i += 1) {
-    if (args[i] === "--wait") options.wait = true;
-    else if (args[i].startsWith("--")) {
+    if (args[i].startsWith("--")) {
       options[args[i].slice(2)] = args[i + 1];
       i += 1;
     } else positional.push(args[i]);
   }
-  const [command, codebase] = positional;
-  if (!command || !codebase) {
-    console.error("usage: node tools/tail.mjs decide <codebase> [--build <briefId>] [--wait] | waiting <codebase>");
+  const [command, codebase, offsetArg] = positional;
+  const usage = () => {
+    console.error("usage: node tools/tail.mjs decide <codebase> [--build <briefId>] | waiting <codebase> | handling <codebase> <offset>");
     process.exit(1);
-  }
+  };
+  if (!command || !codebase) usage();
   if (command === "waiting") {
     console.log(JSON.stringify(waiting(codebase)));
     process.exit(0);
   }
-  if (command !== "decide") {
-    console.error(`unknown command ${command}`);
-    process.exit(1);
+  if (command === "handling") {
+    const offset = Number(offsetArg);
+    if (!Number.isInteger(offset) || offset < 0) usage();
+    const file = handlingFile(codebase);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ offset, at: new Date().toISOString() }) + "\n");
+    console.log(JSON.stringify({ handling: offset }));
+    process.exit(0);
   }
+  if (command !== "decide") usage();
+  if ("wait" in options) console.error("tail.mjs decide no longer waits: the gate is reported at once and the tail runs in the background; printing the decision now");
   const file = tailFile(codebase, options.build ?? null);
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  for (;;) {
-    const decision = decide(readRecords(file), codebase);
-    if (decision.action !== "continue" || !options.wait) {
-      record(file, { kind: "decision", ...decision });
-      console.error(decision.line);
-      console.log(JSON.stringify(decision));
-      break;
-    }
-    // Sleep to the checkpoint first, then a window at a time.
-    const phaseAt = [...readRecords(file)].reverse().find((r) => r.kind === "phase")?.at ?? Date.now();
-    const untilCheckpoint = phaseAt + TAIL.CHECKPOINT_MS - Date.now();
-    await sleep(untilCheckpoint > 0 ? Math.min(untilCheckpoint, TAIL.WINDOW_MS) : TAIL.WINDOW_MS);
-  }
+  const decision = decide(readRecords(file), codebase);
+  record(file, { kind: "decision", ...decision });
+  console.error(decision.line);
+  console.log(JSON.stringify(decision));
 }

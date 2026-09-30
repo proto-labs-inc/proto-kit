@@ -133,9 +133,9 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    pass a model, and never a `name` (step 6 says why). Mobbin
    references are not gathered in a build: the baseline is the reference.
 9. **Check, as tools.** When the variant units are back (the part
-   fixers are the tail: run `node tools/tail.mjs decide <codebase>
-   --build <briefId> --wait` once here, relay its one line, and never
-   wait for them beyond what it says):
+   fixers are the tail: `node tools/tail.mjs decide <codebase> --build
+   <briefId>` prints where they stand, at once; relay its one line and
+   never wait for them, they stop on their own budget):
    - `pnpm typecheck` in the workspace and `node tools/verify-markers.mjs <workspace>`.
    - `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>`:
      every state and every variant loaded headless; blank renders,
