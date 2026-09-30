@@ -84,6 +84,31 @@ the setup skill does: the text you are following is the old version's,
 and the repair below is defined by the new one. Find the new copy with
 the version commands above, and run the repair from it.
 
+## Move prototypes onto the rig from npm
+
+A prototype scaffolded before the rig was published imports
+`@proto/rig` or `@proto/rig-vue` and resolves it from a proto
+checkout's source. The rig is `@proto-labs-inc/rig` on npm now; one call
+moves every such workspace over, keeping everything the prototype is
+made of:
+
+```
+node <kit>/tools/migrate-rig.mjs --check      # then without --check
+```
+
+Show the user what `--check` printed, then apply it. For each workspace
+it adds the rig to `package.json` at the version the kit pins, runs
+`pnpm install`, renames the imports in `src/`, and drops the rig's
+source paths from `tsconfig.json` and its aliases from
+`vite.config.ts`. A workspace whose install fails is left exactly as it
+was, and the line says why. A dev server that is up restarts itself when
+its `vite.config.ts` changes, so nothing here needs a restart. Relay any
+line that asks for a hand edit. Running it again changes nothing.
+
+Do this before repairing the runs: the repair takes PROTO_PACKAGES out
+of their specs, and a workspace still on the old aliases needs it until
+it has moved.
+
 ## Repair the runs
 
 One call, from the new copy of the kit:
@@ -138,33 +163,13 @@ Then:
    Codex courier for one codebase and a Claude Code courier for
    another; the flag only answers for the ones nothing else does.
 
-## Move prototypes onto the rig from npm
-
-A prototype scaffolded before the rig was published imports
-`@proto/rig` or `@proto/rig-vue` and resolves it from a proto
-checkout's source. The rig is `@proto-labs-inc/rig` on npm now; one call
-moves every such workspace over, keeping everything the prototype is
-made of:
-
-```
-node <kit>/tools/migrate-rig.mjs --check      # then without --check
-```
-
-Show the user what `--check` printed, then apply it. For each workspace
-it adds the rig to `package.json` at the version the kit pins, runs
-`pnpm install`, renames the imports in `src/`, and drops the rig's
-source paths from `tsconfig.json` and its aliases from
-`vite.config.ts`. A workspace whose install fails is left exactly as it
-was, and the line says why. A dev server that is up restarts itself when
-its `vite.config.ts` changes, so nothing here needs a restart. Relay any
-line that asks for a hand edit. Running it again changes nothing.
-
 ## Repair without updating
 
 The repair stands alone. After pulling the kit by hand, or any time a
 run looks like it was built by an older version:
 
 ```
+node <kit>/tools/migrate-rig.mjs --check      # then without --check, first
 node <kit>/tools/repair-runs.mjs --check      # then without --check
 node <kit>/tools/repair-runs.mjs <codebase>   # one codebase, when that's all you mean
 ```
