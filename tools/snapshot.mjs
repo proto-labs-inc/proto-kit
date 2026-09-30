@@ -88,7 +88,7 @@ const DECLARED = [
   "grid-template-columns", "grid-template-rows", "grid-auto-columns", "grid-auto-rows",
   "line-height",
 ];
-const DECLARED_SET = new Set(DECLARED);
+export const DECLARED_SET = new Set(DECLARED);
 // Never copied: logical duplicates of physical properties the computed
 // style also lists, animation machinery with no keyframes behind it,
 // SVG geometry that lives in attributes, and engine internals.
@@ -150,10 +150,24 @@ export const READ_INSTANCE = String.raw`(rootSelector) => {
       rect: [r.x, r.y, r.width, r.height],
     };
   });
-  // The colour the component sits on: its painted ancestors from the
-  // first opaque one up, composited in the display's own gamut.
+  // The colour the component sits on: everything painted under its
+  // centre, from the first opaque layer up, composited in the display's
+  // own gamut. Read from the hit-test stack at that point, so a sibling
+  // laid beneath the component (the highlighted row a gear button sits
+  // over) counts along with its ancestors; a root the pointer cannot
+  // hit (pointer-events: none) is not in the stack, and then everything
+  // hit outside its subtree is beneath it.
+  const rootBox = root.getBoundingClientRect();
+  const centre = [rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2];
+  let under = [];
+  if (centre[0] >= 0 && centre[1] >= 0 && centre[0] < innerWidth && centre[1] < innerHeight) {
+    const stack = document.elementsFromPoint(centre[0], centre[1]);
+    const at = stack.indexOf(root);
+    under = at === -1 ? stack.filter((el) => !root.contains(el)) : stack.slice(at + 1);
+  }
+  if (under.length === 0) for (let el = root.parentElement; el; el = el.parentElement) under.push(el);
   const layers = [];
-  for (let el = root.parentElement; el; el = el.parentElement) {
+  for (const el of under) {
     const bg = getComputedStyle(el).backgroundColor;
     layers.push(bg);
     const probe = document.createElement('canvas').getContext('2d', { colorSpace: 'display-p3' });
@@ -271,23 +285,35 @@ function fractions(tracks, size, st) {
  * size. Returns whether anything was pinned (the component is written
  * again and fitted once more).
  */
-export async function fitSizes(appUrl, slug, looks, states, viewport, display) {
+export async function fitSizes(appUrl, slug, looks, states, viewport, display, unfitted = new Set()) {
   let changed = false;
   for (const inst of looks) {
     const [rx, ry, rw] = inst.nodes[0].rect;
     const url = `${appUrl}/#/render/${encodeURIComponent(slug)}/${encodeURIComponent(inst.state.name)}?x=${rx}&y=${ry}&w=${rw}`;
-    const page = await headlessPage(url, { ...viewport, display });
-    let rendered;
-    try {
-      rendered = await evaluate(
-        page.page,
-        // At most 15 s: a look the route cannot show is left unfitted, never waited on.
-        `new Promise((done) => { const until = Date.now() + 15000; const tick = () => { const root = document.querySelector('[data-render="ok"]'); if (root && !document.querySelector('[data-loading]') && root.firstElementChild) { Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 3000))]).then(() => { const el = root.firstElementChild; done([el, ...el.querySelectorAll('*')].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })); }); } else if (Date.now() > until) done(null); else setTimeout(tick, 50); }; tick(); })`,
-      );
-    } finally {
-      await page.close();
+    // Rendered twice at most: with a dozen lanes writing at once, the
+    // dev server reloads the route mid-mount or answers late, and a look
+    // left unfitted on that account came out the wrong size every time.
+    let rendered = null;
+    for (let attempt = 0; attempt < 2 && (!rendered || rendered.length !== inst.nodes.length); attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 750));
+      const page = await headlessPage(url, { ...viewport, display });
+      try {
+        rendered = await evaluate(
+          page.page,
+          // At most 15 s: a look the route cannot show is left unfitted, never waited on.
+          `new Promise((done) => { const until = Date.now() + 15000; const tick = () => { const root = document.querySelector('[data-render="ok"]'); if (root && !document.querySelector('[data-loading]') && root.firstElementChild) { Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 3000))]).then(() => { const el = root.firstElementChild; done([el, ...el.querySelectorAll('*')].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })); }); } else if (Date.now() > until) done(null); else setTimeout(tick, 50); }; tick(); })`,
+        );
+      } catch {
+        rendered = null;
+      } finally {
+        await page.close();
+      }
     }
-    if (!rendered || rendered.length !== inst.nodes.length) continue;
+    if (!rendered || rendered.length !== inst.nodes.length) {
+      unfitted.add(inst.state.name);
+      continue;
+    }
+    unfitted.delete(inst.state.name);
     inst.nodes.forEach((node, i) => {
       const [, , lw, lh] = node.rect;
       const [, , mw, mh] = rendered[i];
@@ -305,7 +331,8 @@ export async function fitSizes(appUrl, slug, looks, states, viewport, display) {
       // or to the middle.
       const liveX = node.rect[0] - inst.nodes[0].rect[0];
       const mineX = rendered[i][0] - rendered[0][0];
-      if (parent && Math.abs(liveX - mineX) > 0.5 && Math.abs(lw - mw) <= 0.25 && inst.fit[i].margin === undefined) {
+      // Never inside an SVG: its shapes sit where their geometry puts them, and a margin means nothing there.
+      if (parent && !node.svg && Math.abs(liveX - mineX) > 0.5 && Math.abs(lw - mw) <= 0.25 && inst.fit[i].margin === undefined) {
         const auto = autoMargins(node, parent);
         if (auto) {
           inst.fit[i].margin = auto;
@@ -342,7 +369,17 @@ function fills(node, parent, axis) {
 
 // ---- the app's own base ----
 
-/** Computed style of a bare element of each kind inside the library app, the base under every component. */
+/**
+ * Computed style of a bare element of each kind inside the library
+ * app, the base under every component: `style` and `pseudo` as the
+ * app renders the bare tag, and `own`, the inherited properties the
+ * app's stylesheets (the browser's, Tailwind's preflight) set on that
+ * tag itself rather than let it inherit: a <strong> comes out bolder
+ * than its parent, a <kbd> in the monospace face, an <a> with the
+ * pointer cursor. A component's element of that tag must state such a
+ * property outright even where the product's value equals its
+ * parent's, or the app's own rule for the tag shows through.
+ */
 export async function appBaseline(appUrl, kinds, viewport, display, theme = null) {
   const url = new URL(`${appUrl}/`);
   if (theme) url.searchParams.set("__protoTheme", theme);
@@ -351,9 +388,10 @@ export async function appBaseline(appUrl, kinds, viewport, display, theme = null
   try {
     return await evaluate(
       page.page,
-      `(${String.raw`(kinds) => {
+      `(${String.raw`(kinds, inherited) => {
         const host = document.createElement('div');
         document.body.appendChild(host);
+        const hostStyle = getComputedStyle(host);
         const out = {};
         for (const kind of kinds) {
           const [tag, svg, type] = kind.split('|');
@@ -369,17 +407,18 @@ export async function appBaseline(appUrl, kinds, viewport, display, theme = null
           const s = getComputedStyle(el);
           const style = {};
           for (let i = 0; i < s.length; i++) style[s[i]] = s.getPropertyValue(s[i]);
+          const own = inherited.filter((name) => style[name] !== undefined && style[name] !== hostStyle.getPropertyValue(name));
           const pseudo = {};
           for (const which of ['::before', '::placeholder']) {
             const p = getComputedStyle(el, which);
             pseudo[which] = {};
             for (let i = 0; i < p.length; i++) pseudo[which][p[i]] = p.getPropertyValue(p[i]);
           }
-          out[kind] = { style, pseudo };
+          out[kind] = { style, pseudo, own };
         }
         host.remove();
         return out;
-      }`})(${JSON.stringify(kinds)})`,
+      }`})(${JSON.stringify(kinds)}, ${JSON.stringify([...INHERITED, "line-height"])})`,
     );
   } finally {
     await page.close();
@@ -469,6 +508,49 @@ const BOOLEAN_ATTRS = { disabled: "disabled", checked: "defaultChecked" };
 // The product's own wiring between elements (ids and the aria
 // references to them, tab order) means nothing outside its page.
 const PAGE_WIRING = new Set(["id", "tabindex", "aria-describedby", "aria-labelledby", "aria-controls", "aria-owns", "aria-activedescendant", "aria-errormessage", "aria-details", "form"]);
+
+// Attributes that name other elements by id, space separated.
+export const ARIA_REFS = ["aria-labelledby", "aria-describedby", "aria-controls", "aria-owns", "aria-activedescendant", "aria-errormessage", "aria-details"];
+
+// A CSS property name as React's style object spells it: clip-path → clipPath, -webkit-mask → WebkitMask.
+export const styleName = (name) => name.replace(/^-webkit-/, "Webkit-").replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+
+// A readable, stable name for an id the product generated: React's
+// useId prefix (_R_1lassnnalb_-paint0, :r3:-clip) goes, the rest is
+// kept as one dashed word (icon/toggle__a → icon-toggle-a).
+export function stableIdName(id) {
+  const bare = id.replace(/^_?R_[A-Za-z0-9]+_-?/, "").replace(/^:[A-Za-z0-9]+:-?/, "").replace(/^«[A-Za-z0-9]+»-?/, "");
+  return bare.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ref";
+}
+
+/**
+ * The ids defined inside the component that the component itself points
+ * at, by id → the stable name it is written under (unique within the
+ * component). Read across every instance: a look may define what
+ * another refers to.
+ */
+export function keptIdsOf(instances) {
+  const referenced = new Set();
+  const defined = [];
+  for (const inst of instances) {
+    for (const node of inst.nodes) {
+      if (node.attrs.id) defined.push(node.attrs.id);
+      for (const value of Object.values(node.attrs)) for (const id of localRefsIn(value)) referenced.add(id);
+      for (const name of ARIA_REFS) for (const id of (node.attrs[name] ?? "").split(/\s+/).filter(Boolean)) referenced.add(id);
+      for (const value of Object.values(localRefProps(node))) for (const id of localRefsIn(value)) referenced.add(id);
+    }
+  }
+  const kept = new Map();
+  const used = new Set();
+  for (const id of defined) {
+    if (kept.has(id) || !referenced.has(id)) continue;
+    let name = stableIdName(id);
+    for (let n = 2; used.has(name); n++) name = `${stableIdName(id)}-${n}`;
+    used.add(name);
+    kept.set(id, name);
+  }
+  return kept;
+}
 
 export function jsxAttr(name, node) {
   if (PAGE_WIRING.has(name)) return null;
@@ -571,10 +653,39 @@ const PAINTED_BY = {
   "-webkit-text-fill-color": (st) => st["-webkit-text-fill-color"] !== st.color,
 };
 
+// A value that points at an element by id on the same page: a paint
+// server (url(#gradient)), a clip, a mask, a filter, a marker.
+const LOCAL_REF = /url\(\s*["']?#([^"')\s]+)["']?\s*\)/g;
+/** The ids a style or attribute value points at on its own page. */
+export function localRefsIn(value) {
+  if (typeof value !== "string") return [];
+  const ids = [...value.matchAll(LOCAL_REF)].map((m) => m[1]);
+  if (/^#\S+$/.test(value.trim())) ids.push(value.trim().slice(1));
+  return ids;
+}
+const hasLocalRef = (value) => typeof value === "string" && /url\(\s*["']?#/.test(value);
+
+/**
+ * The properties of one element whose value points at an element by
+ * id: written on the element itself (tools/snapshot.mjs puts them in
+ * its style attribute with the component's own ids), never in the
+ * stylesheet, where an id cannot be the instance's own.
+ */
+export function localRefProps(node) {
+  const out = {};
+  for (const [name, value] of Object.entries(node.style)) {
+    if (skipped(name) || !hasLocalRef(value)) continue;
+    out[name] = value;
+  }
+  return out;
+}
+
 /** The properties to write for one element of one instance. */
 export function propsFor(node, nodes, baseline, declared, isRoot, tokenByValue = new Map()) {
   const out = {};
   const base = baseline[kindOf(node)].style;
+  // The inherited properties the app sets on this tag itself (appBaseline).
+  const own = new Set(baseline[kindOf(node)].own ?? []);
   const parent = isRoot ? null : nodes[node.parent];
   for (const [name, value] of Object.entries(node.style)) {
     if (skipped(name)) continue;
@@ -582,10 +693,12 @@ export function propsFor(node, nodes, baseline, declared, isRoot, tokenByValue =
       if (node.style.transform === "none") continue;
     }
     if (PAINTED_BY[name] && !PAINTED_BY[name](node.style, node)) continue;
+    // A reference by id goes on the element (localRefProps), not in the sheet.
+    if (hasLocalRef(value)) continue;
     if (INHERITED.has(name)) {
       if (isRoot) {
         if (ROOT_TYPE.has(name) || base[name] !== value) out[name] = value;
-      } else if (parent.style[name] !== value) out[name] = value;
+      } else if (parent.style[name] !== value || own.has(name)) out[name] = value;
       continue;
     }
     if (base[name] !== value) out[name] = value;
@@ -600,7 +713,7 @@ export function propsFor(node, nodes, baseline, declared, isRoot, tokenByValue =
     if (value === base[name] && node.style[name] === base[name]) continue;
     out[name] = value;
   }
-  if (!("line-height" in out) && (isRoot || !parent || parent.style["line-height"] !== node.style["line-height"])) out["line-height"] = node.style["line-height"];
+  if (!("line-height" in out) && (isRoot || !parent || parent.style["line-height"] !== node.style["line-height"] || own.has("line-height"))) out["line-height"] = node.style["line-height"];
   if (isRoot) {
     if (out.position === "absolute" || out.position === "fixed" || out.position === "sticky") out.position = "relative";
     // An inline root's box is its text; set on its own it would sit in a
@@ -628,6 +741,8 @@ export function pseudoProps(node, which, baseline, tokenByValue = new Map()) {
       continue;
     }
     if (skipped(name) && !["width", "height", "top", "right", "bottom", "left"].includes(name)) continue;
+    // A pseudo-element has no attribute to carry a reference by id; the sheet cannot name the instance's own.
+    if (hasLocalRef(value)) continue;
     if (base[name] !== value) out[name] = value;
   }
   if (which !== "::placeholder" && style.display !== "inline") {
@@ -1114,6 +1229,20 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   // A slot is "string" (a look without the attribute holds null, so it
   // is not given the first look's value) or "boolean" (the attribute's
   // presence is its value: a disabled button, a ticked box).
+  // ---- ids the component points at within itself ----
+  // A gradient, clip, mask, filter or label the product defines inside
+  // the component and refers to by id (url(#id), href="#id",
+  // aria-labelledby) keeps its element and its reference, under an id
+  // that is the rendered instance's own, so two components, or one
+  // rendered twice, never resolve each other's. Every other id is the
+  // page's wiring and goes.
+  const keptIds = keptIdsOf(instances);
+  // A value with the instance's own ids in it, as a JSX expression.
+  const ownIds = (value) => {
+    if (!localRefsIn(value).some((id) => keptIds.has(id))) return JSON.stringify(value);
+    const literal = value.replace(/[`\\]/g, "\\$&").replace(/\$\{/g, "\\${");
+    return `\`${literal.replace(/#([^"')\s]+)/g, (match, id) => (keptIds.has(id) ? `#\${uid}-${keptIds.get(id)}` : match))}\``;
+  };
   const attrSlots = new Map(); // `${id}:${attr}` → { prop, kind, default, byLook }
   const imageChoices = new Map(); // id → { name, byLook: Map(key → ident), fallback }
   tree.nodes.forEach((u, id) => {
@@ -1128,6 +1257,8 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
         return attrIn(inst) ?? null;
       };
       if (new Set(looks.map(valueIn)).size < 2) continue;
+      // A reference by id is the element's own wiring, never a prop.
+      if (name === "id" || ARIA_REFS.includes(name) || looks.some((inst) => localRefsIn(attrIn(inst)).length > 0)) continue;
       if (node0.tag === "img" && name === "src") {
         const byLook = new Map();
         for (const inst of looks) {
@@ -1174,8 +1305,22 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
     const attrNames = new Set([...u.members.entries()].filter(([look]) => variants.includes(look)).flatMap(([look, k]) => Object.keys(look.nodes[k].attrs)));
     for (const name of attrNames) {
       const value = node.attrs[name];
+      // An id the component points at within itself is kept, as this instance's own.
+      if (name === "id") {
+        if (value !== undefined && keptIds.has(value)) attrs.push(`id={\`\${uid}-${keptIds.get(value)}\`}`);
+        continue;
+      }
+      if (ARIA_REFS.includes(name)) {
+        const ids = (value ?? "").split(/\s+/).filter(Boolean);
+        if (ids.length > 0 && ids.every((id) => keptIds.has(id))) attrs.push(`${name}={\`${ids.map((id) => `\${uid}-${keptIds.get(id)}`).join(" ")}\`}`);
+        continue;
+      }
       const jsxName = jsxAttr(name, node);
       if (!jsxName) continue;
+      if (value !== undefined && localRefsIn(value).some((id) => keptIds.has(id))) {
+        attrs.push(`${jsxName}={${ownIds(value)}}`);
+        continue;
+      }
       if (node.tag === "img" && name === "src") {
         const choice = imageChoices.get(id);
         const img = value !== undefined ? imageOf(node, inst) : undefined;
@@ -1207,6 +1352,11 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
     if (id === 0 && valueSlot === 0) attrs.push(`defaultValue={value}`);
     if (id !== 0 && inst === defaultInst && i === valueSlot) attrs.push(`defaultValue={value}`);
     if (node.tag === "input" || node.tag === "textarea") attrs.push("readOnly");
+    // A paint server, clip, mask or filter named by id sits on the
+    // element itself, with this instance's own ids where the component
+    // defines them; the stylesheet cannot name an instance's own id.
+    const refStyle = localRefProps(node);
+    if (Object.keys(refStyle).length > 0) attrs.push(`style={{ ${Object.entries(refStyle).map(([k, v]) => `${styleName(k)}: ${ownIds(v)}`).join(", ")} }}`);
     const open = `<${node.tag} ${attrs.join(" ")}`;
     const kids = u.items.filter((item) => item.u !== undefined || [...item.texts.values()].some((t) => t !== ""));
     if (kids.length === 0) lines.push(`${indent(d)}${open} />`);
@@ -1267,7 +1417,7 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   propDocs.push(`  /** A class for the root, from wherever the component is placed. */\n  className?: string;`);
   destructure.push("className");
 
-  const tsx = `import type { ReactNode } from "react";
+  const tsx = `import ${keptIds.size > 0 ? "{ useId, type ReactNode }" : "type { ReactNode }"} from "react";
 import styles from "./${Name}.module.css";
 ${[...images.values()].map((img) => `import ${img.ident} from "./${img.file}";`).join("\n")}
 
@@ -1287,7 +1437,7 @@ const cx = (...names: (string | undefined)[]) => names.filter(Boolean).join(" ")
 ${[...imageChoices.values()].map((c) => `const ${c.name}: Partial<Record<${Name}Variant, string>> = { ${[...c.byLook].map(([k, ident]) => `${JSON.stringify(k)}: ${ident}`).join(", ")} };`).join("\n")}
 
 export default function ${Name}({ ${destructure.join(", ")} }: ${Name}Props) {
-  return (
+${keptIds.size > 0 ? "  // This instance's own ids for what it defines and points at (a gradient, a clip, a label): two renders never share one.\n  const uid = useId().replace(/\\W/g, \"\");\n" : ""}  return (
 ${lines.join("\n")}
   );
 }
@@ -1313,7 +1463,12 @@ ${lines.join("\n")}
     }
     const live = { selector: inst.state.selector };
     if (inst.state.force) live.force = inst.state.force;
-    return { name: inst.state.name, props, live };
+    const entry = { name: inst.state.name, props, live };
+    // A state sits on what the product painted under its own instance: a
+    // look read from another part of the page (a sidebar row's icon
+    // button beside a form's) can sit on another colour than the default.
+    if (inst.backdrop && inst.backdrop !== defaultInst.backdrop) entry.backdrop = tokenByValue.get(inst.backdrop) ?? inst.backdrop;
+    return entry;
   });
   const unit = { states, tokens: theme ? { light: [], dark: [] } : [], shape: shapeFingerprint(defaultInst.nodes) };
   if (defaultInst.backdrop) unit.backdrop = tokenByValue.get(defaultInst.backdrop) ?? defaultInst.backdrop;
@@ -1324,8 +1479,9 @@ ${lines.join("\n")}
 
   // ---- sizes: fitted against the product, look by look ----
   let { states, defaultInst, variants } = emit();
+  const unfitted = new Set();
   for (let round = 0; round < 3; round++) {
-    const changed = await fitSizes(appUrl, spec.slug, variants, states, viewport, display);
+    const changed = await fitSizes(appUrl, spec.slug, variants, states, viewport, display, unfitted);
     if (!changed) break;
     for (const inst of instances) inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0, inst.room));
     ({ states, defaultInst, variants } = emit());
@@ -1352,6 +1508,7 @@ ${lines.join("\n")}
     "",
     `Fonts: ${[...fontFiles.values()].join(", ") || "none beyond the system's"}, from the page's @font-face rules.`,
     "",
+    ...(unfitted.size > 0 ? [`Not fitted: ${[...unfitted].join(", ")} (the render route did not answer while sizes were fitted, so these looks keep the computed sizes only).`, ""] : []),
   ].join("\n");
   writeFileSync(join(folder, "notes.md"), notes);
 
@@ -1364,6 +1521,7 @@ ${lines.join("\n")}
     nodes: defaultInst.nodes.length,
     fonts: [...fontFiles.values()],
     images: [...images.values()].map((i) => i.file),
+    unfitted: [...unfitted],
   };
 }
 
