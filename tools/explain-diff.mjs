@@ -37,6 +37,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFolder } from "./build-folder.mjs";
+import { keepFolder } from "./unit-restore.mjs";
 import { findPage } from "./cdp/attach.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
@@ -500,6 +501,11 @@ if (options.build) {
   target = { unitPath: join(library, "src", "components", slug, "component.json"), appUrl: `http://localhost:${JSON.parse(readFileSync(tunnel, "utf8")).port}`, liveMatch: liveMatchOf(liveUrl), out: join(home, "run", "explain", slug) };
 }
 if (!existsSync(target.unitPath)) fail(`${target.unitPath} does not exist: write the component before explaining it`);
+// A unit's first step is this read, before any edit: the folder as the
+// tools wrote it is kept here, and the check that stops the unit puts it
+// back when the unit did not get to a match (tools/unit-restore.mjs).
+const kept = keepFolder({ folder: dirname(target.unitPath), slug, runDir: options.build ? buildFolder(codebase, options.build) : join(home, "run") });
+if (kept.kept) console.error(`… kept a copy of the folder as it is now at ${kept.path}; a check that stops the unit restores it`);
 const unit = JSON.parse(readFileSync(target.unitPath, "utf8"));
 let states = unit.states.filter((s) => s.live);
 if (options.state) states = states.filter((s) => s.name === options.state);

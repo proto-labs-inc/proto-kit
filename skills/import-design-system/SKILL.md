@@ -254,10 +254,16 @@ its hover look.
 > stylesheet, then run `node <kit>/tools/check.mjs <codebase> <slug>
 > --theme <theme> --activity "<what you changed, in the product's
 > words>"`. Budget: three checks or two minutes from your start,
-> whichever comes first; then stop and report. If a state's live
-> element is the wrong one, correct the plan entry and run `node
-> <kit>/tools/snapshot.mjs <codebase> <spec> --theme <theme>` again
-> instead (that counts as a check). Never write a script against the
+> whichever comes first; then stop and report. Done is `matched: true`
+> from the check and no type error of yours in its `typecheck`; `stop:
+> true` on a state that still differs is not done, whatever the
+> number. Never remove an element, a text or a list item the product
+> has to quiet a diff: a difference is fixed by a value. A check that
+> stops you without a match restores the folder to how the import
+> wrote it (from the copy explain-diff kept); report `restored`. If a
+> state's live element is the wrong one, correct the plan entry and
+> run `node <kit>/tools/snapshot.mjs <codebase> <spec> --theme
+> <theme>` again instead (that counts as a check). Never write a script against the
 > Proto window or the headless Chrome (no attach.mjs, cdp.mjs, ws,
 > port 9333 or 9444 from your own code): explain-diff is your one read
 > of the page. Write only in the component's folder; never touch

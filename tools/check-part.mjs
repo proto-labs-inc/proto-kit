@@ -11,13 +11,21 @@
  * Usage: node tools/check-part.mjs <briefId> --codebase <id> <part-slug> [--no-send] [--port 9333]
  *
  * Prints one JSON line: { slug, matched, states: [{ state, verdict,
- * mismatch, clusters, tail }], stop, pictures } where pictures is the
- * folder with <n>-live.png (the product), <n>.png (ours) and
- * <n>-diff.png. Every pass is recorded in the build's tail.jsonl
- * (tools/tail.mjs); `tail` says when the unit should stop on a state
- * and why (a small share of the page, passes that no longer help, the
- * budget spent), `stop` when that holds for every differing state.
+ * mismatch, clusters, tail }], typecheck: { ok, errors }, stop,
+ * restored, pictures } where pictures is the folder with <n>-live.png
+ * (the product), <n>.png (ours) and <n>-diff.png. `typecheck` lists
+ * the type errors inside the part's folder (the workspace's tsc); a
+ * part with errors of its own is not done, whatever the pixels say.
+ * Every pass is recorded in the build's tail.jsonl (tools/tail.mjs);
+ * `tail` says when the unit should stop on a state and why (a small
+ * share of the page, passes that no longer help, the budget spent),
+ * `stop` when that holds for every differing state. A stop without a
+ * match puts the part back as replicate wrote it, from the copy
+ * explain-diff kept (tools/unit-restore.mjs), and `restored` says so:
+ * a unit that could not get to a match leaves nothing of its own
+ * behind.
  */
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildFolder, nextPassFor } from "./build-folder.mjs";
@@ -25,6 +33,7 @@ import { createReporter } from "./build-report.mjs";
 import { ACCEPTED, checkComponent, liveMatchOf } from "./check.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
 import { classifyPart, passTrend, readRecords, record, tailFile, unitBudget } from "./tail.mjs";
+import { restoreFolder } from "./unit-restore.mjs";
 
 const USAGE = "usage: node tools/check-part.mjs <briefId> --codebase <id> <part-slug> [--no-send] [--port 9333]";
 const options = { port: "9333" };
@@ -109,14 +118,35 @@ const states = outcome.states.map((s) => {
   return { state: s.state, verdict, mismatch, clusters: s.result?.clusters?.slice(0, 3) ?? [], error: s.error, tail: stop };
 });
 const differing = states.filter((s) => s.verdict && !ACCEPTED.includes(s.verdict));
+const typecheck = typecheckPart(workspace.path, `src/parts/${slug}/`);
+if (!typecheck.ok) console.error(`${slug}: ${typecheck.errors.length} type error${typecheck.errors.length === 1 ? "" : "s"} in the part's own files; the part is not done until they are gone`);
+// The budget spent without a match: the part goes back to how replicate
+// wrote it, so nothing a unit tried stays in the copy.
+const stop = differing.length > 0 && differing.every((s) => s.tail.stop);
+let restored = false;
+if (stop && !outcome.matched) {
+  const back = restoreFolder({ folder, slug, runDir: buildDir });
+  restored = back.restored;
+  if (restored) console.error(`${slug}: restored ${folder} to how replicate wrote it (from ${back.path})`);
+}
 console.log(
   JSON.stringify({
     slug,
     node: part.id,
     matched: outcome.matched,
     states,
-    stop: differing.length > 0 && differing.every((s) => s.tail.stop),
+    typecheck,
+    stop,
+    restored,
     pictures: out,
   }),
 );
 process.exit(0);
+
+/** The workspace's tsc, kept to the errors inside `prefix` (the part's folder, workspace-relative). */
+function typecheckPart(workspacePath, prefix) {
+  const result = spawnSync("pnpm", ["-s", "typecheck"], { cwd: workspacePath, encoding: "utf8" });
+  if (result.error) return { ok: false, errors: [`typecheck could not run: ${result.error.message}`] };
+  const errors = `${result.stdout}\n${result.stderr}`.split("\n").filter((line) => line.startsWith(prefix) && /error TS\d+/.test(line));
+  return { ok: errors.length === 0, errors: errors.slice(0, 12) };
+}

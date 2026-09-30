@@ -177,9 +177,15 @@ Blocked at any step: `build-stream.mjs question <briefId> --codebase
 > it names in the module or stylesheet, then run `node
 > <kit>/tools/check-part.mjs <briefId> --codebase <codebase> <slug>`.
 > Budget: three checks or two minutes from your start, whichever comes
-> first; then stop and report. `<build>/read.json` holds the page's
-> computed styles (`tree.json` names the element index) when you need
-> a value explain-diff did not print. Never write a script against the
+> first; then stop and report. Done is `matched: true` from the check
+> and no type error of yours in its `typecheck`; `stop: true` on a
+> state that still differs or failed is not done, whatever the number.
+> Never remove an element, a list item or a text the page has to quiet
+> a diff: a difference is fixed by a value. A check that stops you
+> without a match restores the part to how replicate wrote it (from
+> the copy explain-diff kept); report `restored`. `<build>/read.json`
+> holds the page's computed styles (`tree.json` names the element
+> index) when you need a value explain-diff did not print. Never write a script against the
 > Proto window or the headless Chrome (no attach.mjs, cdp.mjs, ws, port
 > 9333 or 9444 from your own code). Write only in the part's folder.
 > Report what explain-diff named, what you changed, and the last

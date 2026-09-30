@@ -32,21 +32,24 @@
  * out. --activity replaces the pass's line (a unit saying what it changed).
  *
  * Prints one JSON line: { slug, states: [{ state, verdict, mismatch,
- * area, shifted, clusters, activity, tail }], matched, stop } where
- * matched is true when every checked state's verdict is match,
- * shifted, context, faint or offscreen (tools/verify-replica.mjs says
- * what each means). Every pass is recorded in the run's tail.jsonl
- * (tools/tail.mjs); a state's `tail` says when a unit should stop on
- * it and why (its difference is small, the last passes did not help,
- * the unit's budget is spent), and `stop` when that holds for every
- * state that still differs: the unit reports then, instead of another
- * pass.
+ * area, shifted, clusters, activity, tail }], matched, typecheck,
+ * stop, restored } where matched is true when every checked state's
+ * verdict is match, shifted, context, faint or offscreen
+ * (tools/verify-replica.mjs says what each means); `stop` is not a
+ * match. `typecheck` lists the component's own type errors. Every pass
+ * is recorded in the run's tail.jsonl (tools/tail.mjs); a state's
+ * `tail` says when a unit should stop on it and why (its difference is
+ * small, the last passes did not help, the unit's budget is spent),
+ * and `stop` when that holds for every state that still differs: the
+ * unit reports then, instead of another pass, and the component is put
+ * back as the import wrote it (`restored`, tools/unit-restore.mjs).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyState, passTrend, readRecords, record, tailFile, unitBudget } from "./tail.mjs";
+import { restoreFolder } from "./unit-restore.mjs";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -192,7 +195,27 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const differing = summary.filter((s) => s.tail && !ACCEPTED.includes(s.verdict));
   const stop = differing.length > 0 && differing.every((s) => s.tail.stop);
   for (const s of differing) if (s.tail.stop) console.error(`${slug} ${s.state}: stop here, ${s.tail.reason}`);
-  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched, stop }));
+  // A library component's own type errors, from the library's tsc; a
+  // component with errors of its own is not done, whatever the pixels say.
+  const typecheck = target.land ? typecheckFolder(library, `src/components/${slug}/`) : { ok: true, errors: [] };
+  if (!typecheck.ok) console.error(`${slug}: ${typecheck.errors.length} type error${typecheck.errors.length === 1 ? "" : "s"} in the component's own files; the component is not done until they are gone`);
+  // The budget spent without a match: the component goes back to how the
+  // import wrote it, from the copy explain-diff kept (tools/unit-restore.mjs).
+  let restored = false;
+  if (stop && !checked.matched && target.land) {
+    const back = restoreFolder({ folder: dirname(target.unitPath), slug, runDir: join(home, "run") });
+    restored = back.restored;
+    if (restored) console.error(`${slug}: restored ${dirname(target.unitPath)} to how the import wrote it (from ${back.path})`);
+  }
+  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched, typecheck, stop, restored }));
+}
+
+/** A folder's tsc errors, from the app's own typecheck script, kept to the files under `prefix`. */
+function typecheckFolder(app, prefix) {
+  const result = spawnSync("pnpm", ["-s", "typecheck"], { cwd: app, encoding: "utf8" });
+  if (result.error) return { ok: false, errors: [`typecheck could not run: ${result.error.message}`] };
+  const errors = `${result.stdout}\n${result.stderr}`.split("\n").filter((line) => line.startsWith(prefix) && /error TS\d+/.test(line));
+  return { ok: errors.length === 0, errors: errors.slice(0, 12) };
 }
 
 /**

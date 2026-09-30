@@ -15,7 +15,15 @@ product's terms and ours (never invent one). Change that value in the
 component's folder and run check.mjs again with the theme named in
 your brief. Your budget is three checks or two minutes, whichever
 comes first; then stop and report what explain-diff named, what you
-changed and what the last check said. Never write your own script
+changed and what the last check said. Done means the check printed
+`matched: true`; a `stop: true` on a state that still differs is not
+done, whatever the number, and you report it as skipped. The
+component is the product's content: never remove an element, a text
+or a list item the product has to quiet a diff; a difference is fixed
+by a value. The check lists type errors in the component's own files;
+none may be yours. When the check tells you to stop without a match it
+puts the component back exactly as the import wrote it, from the copy
+explain-diff kept; say that it was restored. Never write your own script
 against the Proto window or the headless Chrome: explain-diff is your
 one read of the page. You write only inside src/components/<slug>/;
 the orchestrator owns the manifest and everything else. Your result
