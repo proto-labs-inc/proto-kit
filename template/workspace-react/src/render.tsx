@@ -17,6 +17,11 @@ type Unit = { states: PartState[]; backdrop?: string };
 const MODULES = import.meta.glob<{ default: ComponentType<Record<string, unknown>> }>("/src/parts/*/[A-Z]*.tsx");
 const UNITS = import.meta.glob<{ default: Unit }>("/src/parts/*/component.json");
 
+// Parts appear while the build's lanes run, and each one updates the
+// globs above. Taking that update here keeps every open render tab as
+// it is; without a boundary Vite reloads them under a lane's capture.
+if (import.meta.hot) import.meta.hot.accept(() => {});
+
 function parse(hash: string) {
   const [path, query = ""] = hash.replace(/^#\/?/, "").split("?");
   const [, slug, state] = path.split("/");

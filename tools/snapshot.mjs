@@ -1109,7 +1109,7 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
     if (condition) lines.push(`${indent(depth)}{(${condition}) && (`);
     const attrs = [];
     if (id === 0) {
-      attrs.push("className={cx(styles.root, styles[`variant-${variant}`], interaction === \"rest\" ? undefined : styles[`interaction-${interaction}`])}");
+      attrs.push("className={cx(styles.root, styles[`variant-${variant}`], interaction === \"rest\" ? undefined : styles[`interaction-${interaction}`], className)}");
       // The part's marker: what the Frame's comment mode hit-tests in a prototype.
       if (marker) attrs.push(`data-proto-id=${JSON.stringify(marker)}`);
     } else attrs.push(`className={styles[${JSON.stringify(names[id])}]}`);
@@ -1204,6 +1204,10 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   destructure.push(`variant = "default"`);
   propDocs.push(`  /** A pointer or focus look, held without a pointer; "rest" is neither. */\n  interaction?: ${Name}Interaction;`);
   destructure.push(`interaction = "rest"`);
+  // Where the component is placed says how it sits there (its margins in
+  // a page); the class lands on the root beside the component's own.
+  propDocs.push(`  /** A class for the root, from wherever the component is placed. */\n  className?: string;`);
+  destructure.push("className");
 
   const tsx = `import type { ReactNode } from "react";
 import styles from "./${Name}.module.css";

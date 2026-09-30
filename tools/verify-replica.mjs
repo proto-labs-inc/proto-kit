@@ -304,7 +304,9 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
   const url = `${appUrl.replace(/\/+$/, "")}/#/render/${encodeURIComponent(slug)}/${encodeURIComponent(state)}?x=${rect.x}&y=${rect.y}&w=${rect.w}`;
   const replica = await headlessPage(url, { width, height, display });
   try {
-    await evaluate(replica.page, "new Promise((done) => { const tick = () => document.querySelector('[data-render]') && !document.querySelector('[data-loading]') ? done() : setTimeout(tick, 50); tick(); })");
+    // At most 15 s: a route that never mounts (the app failed to load) is this pass's failure, not a hang.
+    const mounted = await evaluate(replica.page, "new Promise((done) => { const until = Date.now() + 15000; const tick = () => { if (document.querySelector('[data-render]') && !document.querySelector('[data-loading]')) done(true); else if (Date.now() > until) done(false); else setTimeout(tick, 50); }; tick(); })");
+    if (!mounted) throw new Error(`the render route did not mount ${slug}/${state} within 15 s`);
     const outcome = await evaluate(replica.page, "document.querySelector('[data-render]').dataset.render");
     if (outcome !== "ok") throw new Error(`the render route could not show ${slug}/${state}: ${outcome}`);
     await evaluate(replica.page, "document.fonts.ready.then(() => document.fonts.status)");

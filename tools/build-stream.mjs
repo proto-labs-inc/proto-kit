@@ -39,12 +39,11 @@ import { join } from "node:path";
 import { findPage } from "./cdp/attach.mjs";
 import { connect } from "./cdp/cdp.mjs";
 import { takeFrame } from "./cdp/live.mjs";
+import { createReporter } from "./build-report.mjs";
 import { draftCuration } from "./curate.mjs";
-import { callTool } from "./mcp-call.mjs";
 import { captureAssets, readPage } from "./read-page.mjs";
 
 const PHASES = ["attaching", "reading", "curating", "replicating", "composing", "serving", "ready", "needs-input", "failed"];
-const BATCH = 150;
 
 function fail(message) {
   console.error(message);
@@ -77,45 +76,13 @@ const readPath = join(runDir, "read.json");
 const curationPath = join(runDir, "curation.json");
 const sink = flags.noSend ? "file" : "site";
 
-/** Sends events to the build's stream, in batches the tool accepts. */
+const reporter = createReporter({ codebase, briefId, runDir, sink });
+/** Sends events to the build's stream and waits for them to leave. */
 async function report(events) {
-  if (sink === "file") {
-    mkdirSync(runDir, { recursive: true });
-    const lines = events.map((event) => JSON.stringify({ at: new Date().toISOString(), event })).join("\n");
-    writeFileSync(join(runDir, "events.jsonl"), lines + "\n", { flag: "a" });
-    return events.length;
-  }
-  let lastSeq = 0;
-  for (let i = 0; i < events.length; i += BATCH) {
-    const result = await callTool("report_build_events", { codebase, briefId, events: events.slice(i, i + BATCH) });
-    const text = result?.content?.[0]?.text ?? "";
-    if (result?.isError) fail(`report_build_events: ${text}`);
-    lastSeq = JSON.parse(text).lastSeq ?? lastSeq;
-  }
-  return lastSeq;
+  reporter.send(events);
+  await reporter.flush();
 }
-
-/** Uploads one image for the build and returns the address events use. */
-async function uploadCapture(bytes, contentType = "image/png") {
-  if (sink === "file") {
-    const dir = join(runDir, "captures");
-    mkdirSync(dir, { recursive: true });
-    const path = join(dir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`);
-    writeFileSync(path, bytes);
-    return `file://${path}`;
-  }
-  const result = await callTool("begin_build_capture", { codebase, briefId, contentType, size: bytes.length });
-  const text = result?.content?.[0]?.text ?? "";
-  if (result?.isError) fail(`begin_build_capture: ${text}`);
-  const { uploadUrl, url } = JSON.parse(text);
-  const res = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType, "Content-Length": String(bytes.length) },
-    body: bytes,
-  });
-  if (!res.ok) fail(`the capture upload answered ${res.status}`);
-  return url;
-}
+const uploadCapture = (bytes) => reporter.upload(bytes);
 
 function readTree() {
   if (!existsSync(treePath)) fail(`no tree for this build yet: run \`read\` first (${treePath})`);
