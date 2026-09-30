@@ -56,14 +56,15 @@ Serving and publishing:
 - `publish.mjs`: upload a built folder over presigned PUTs.
 - `publish-library.mjs`: build and publish the library in one serialised call.
 - `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
-- `heartbeat.mjs`: the beat loop those and the courier share.
+- `heartbeat.mjs`: the beat loop those share.
 - `health.mjs`: the session-start check, one line per codebase.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 
 The courier and the feed:
 
 - `courier.mjs`: validate the website's commands onto a durable feed.
-- `courier-http.mjs`: the courier's HTTP transport, one swappable file.
+- `courier-relay.mjs`: the courier's transport, one WebSocket to the site's relay.
+- `courier-http.mjs`: the courier's local-only port, for this laptop's own checks.
 - `feed-tail.mjs`: follow one codebase's feed from the committed offset.
 - `feed-watch-all.mjs`: follow every codebase's feed at once, for monitors.
 - `agent-launch.mjs`: resume-aware headless launcher for a listen session.

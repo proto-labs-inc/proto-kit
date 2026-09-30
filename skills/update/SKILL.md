@@ -93,8 +93,10 @@ node <kit>/tools/repair-runs.mjs --check
 ```
 
 It reads every run dir under `~/.proto/<codebase>/run/` and says what
-does not match this version: a courier missing the Codex wake, a spec
-still pointing at a copy of the kit the update replaced. Its header
+does not match this version: a courier missing the Codex wake, a
+courier still running a tunnel (it removes it, because the site's
+commands arrive through the relay now), a spec still pointing at a copy
+of the kit the update replaced. Its header
 names the rules it applies and, just as importantly, what it leaves
 alone: it never provisions a tunnel, never registers anything, and
 never invents a process it has no token for. Running it twice changes
@@ -116,7 +118,9 @@ Then:
    interrupts, under two headings, and they are not the same problem:
    - **Waiting on a restart**: a process this version needs is not
      running there at all. A courier without the Codex wake takes no
-     commands, and will not until it restarts.
+     commands, and will not until it restarts. A courier whose tunnel
+     was just removed is still on it until it restarts; restarting it
+     puts it on the relay.
    - **Still running an older copy of the kit**: its processes are up,
      but they were started from the copy this update replaced and go
      on running that version's code, including how it talks to the

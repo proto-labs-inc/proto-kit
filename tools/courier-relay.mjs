@@ -15,11 +15,16 @@
  *
  * Shapes and numbers are packages/relay/src/protocol.ts's; change both
  * together.
+ *
+ * The WebSocket is Node's own, which Node 22 is the first to ship. On an
+ * older Node the courier says so once and stays "unsupported" instead of
+ * retrying a connection it can never make.
  */
 
 export const PING_EVERY_MS = 10_000;
 export const DEAD_AFTER_MS = 30_000;
 const LISTENING_CHECK_MS = 2_000;
+export const NEEDS_NODE_22 = "Proto's courier needs Node 22 or newer for WebSocket";
 
 /** One second doubling to thirty, with plus or minus a quarter of jitter. */
 export function nextDelay(attempt, random = Math.random) {
@@ -47,6 +52,10 @@ export function connectRelay({
   every = (fn, ms) => setInterval(fn, ms),
   stopEvery = (id) => clearInterval(id),
 }) {
+  if (typeof WebSocketImpl !== "function") {
+    log(`relay: ${NEEDS_NODE_22}; this is Node ${process.versions.node}, so the site's commands cannot reach this laptop until the courier runs on a newer one`);
+    return { state: () => "unsupported", close() {} };
+  }
   const address = `${url.replace(/^http/, "ws").replace(/\/+$/, "")}/couriers/${courierId}/connect?token=${encodeURIComponent(token)}`;
   let state = "connecting";
   let socket = null;

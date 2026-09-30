@@ -20,8 +20,9 @@
  *
  * Prints one JSON line: { courierId, local: bool, relay, agentListening }.
  * relay is the courier's own word on its connection: "connected",
- * "connecting" or "waiting" (between attempts), or "none" when it has no
- * relay address yet.
+ * "connecting" or "waiting" (between attempts), "unsupported" on a Node
+ * without WebSocket (older than 22), or "none" when it has no relay
+ * address yet.
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -30,6 +31,7 @@ import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callTool, targetFor, readConfig } from "./mcp-call.mjs";
+import { NEEDS_NODE_22 } from "./courier-relay.mjs";
 import { alive, courierHarness, describeChange, readJson, readableSpec, repairProcesses, restartRun } from "./run-repair.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -162,9 +164,13 @@ if (local && local.relay === undefined && !restarted) {
 // status command in the feed, so a listener that still answers without
 // a relay is asked once and not twenty times.
 let relay = local?.relay ?? "none";
-for (let i = 0; local?.relay !== undefined && i < 20 && relay !== "connected"; i++) {
+for (let i = 0; local?.relay !== undefined && i < 20 && relay !== "connected" && relay !== "unsupported"; i++) {
   await new Promise((r) => setTimeout(r, 500));
   relay = (await ask(`http://127.0.0.1:${courier.port}`))?.relay ?? relay;
+}
+if (relay === "unsupported") {
+  const node = readJson(specPath)?.processes?.find((p) => p.name === "listener")?.command?.[0] ?? "node";
+  console.error(`${NEEDS_NODE_22}, and it runs on ${node}, which has none. Point the listener in ${specPath} at Node 22 or newer, then run this again.`);
 }
 console.log(JSON.stringify({ courierId: courier.courierId, local: Boolean(local), relay, agentListening: local?.agentListening ?? false }));
 process.exit(local ? 0 : 1);

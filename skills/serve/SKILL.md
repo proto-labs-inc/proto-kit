@@ -285,7 +285,8 @@ does all of it, idempotently; the steps are what it does:
 6. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
    `Authorization: Bearer <secret>` answers with `agentListening`
    and `relay` (`connected`, `connecting`, `waiting` between attempts,
-   or `none` before it has a relay address), and the line lands in
+   `unsupported` on a Node older than 22, which has no WebSocket, or
+   `none` before it has a relay address), and the line lands in
    `commands.jsonl`.
 
 **Heartbeat.** The connection is the courier's heartbeat: the listener

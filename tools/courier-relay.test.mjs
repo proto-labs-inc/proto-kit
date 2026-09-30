@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { connectRelay, nextDelay, relayConfig, PING_EVERY_MS, DEAD_AFTER_MS } from "./courier-relay.mjs";
+import { connectRelay, nextDelay, relayConfig, NEEDS_NODE_22, PING_EVERY_MS, DEAD_AFTER_MS } from "./courier-relay.mjs";
 
 class FakeSocket {
   static made = [];
@@ -224,5 +224,17 @@ test("a reply goes only on the socket its command came in on", async () => {
   const replies = (socket) => socket.sent.filter((s) => s.includes('"reply"')).length;
   assert.equal(replies(first), 0);
   assert.equal(replies(second), 0);
+  line.close();
+});
+
+test("a Node without WebSocket says so once and does not retry", async () => {
+  const lines = [];
+  let delays = 0;
+  const line = connectRelay(base({ WebSocketImpl: null, log: (text) => lines.push(text), delay: () => (delays++, 1) }));
+  await tick();
+  assert.equal(line.state(), "unsupported");
+  assert.equal(lines.length, 1);
+  assert.ok(lines[0].startsWith(`relay: ${NEEDS_NODE_22}; this is Node `));
+  assert.equal(delays, 0);
   line.close();
 });
