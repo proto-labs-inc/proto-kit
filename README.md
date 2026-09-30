@@ -46,6 +46,7 @@ The library and the import:
 - `library.mjs`: the one writer of the library contract, atomic and locked.
 - `host-library.mjs`: scaffold, install, tunnel and supervised run, one call.
 - `verify-replica.mjs`: capture the live element, render the replica, diff them.
+- `pictures.mjs`: logos, icons, charts and background images taken from the page as files, never redrawn.
 - `verify-markers.mjs`: check a workspace's `data-proto-id` coverage.
 - `fake-import/run.mjs`: play a recorded import into a library app.
 

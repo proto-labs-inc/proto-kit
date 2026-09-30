@@ -32,6 +32,16 @@ grid tracks, its own @font-face files, its own images. A component
 that does not match the product is fixed by reading what differs,
 never by nudging numbers until the diff goes quiet.
 
+**Pictures are taken, never redrawn.** A logo, an icon, an
+illustration, a chart: whatever the product draws as an `<img>` or
+`<picture>`, an inline `<svg>`, a `<canvas>` or a background image is
+copied from the page as its own file and set into the component as it
+is (`snapshot.mjs` does it). It matches on the first check. Never edit,
+redraw or restyle a picture file to chase a difference: that is a
+long tail with no end. A difference inside a picture is its size or
+what is around it; if the file itself is wrong, the state read the
+wrong element: correct the plan and run `snapshot.mjs` again.
+
 ## Tools
 
 All paths from the kit root (the installed plugin root the host
@@ -210,7 +220,8 @@ its hover look.
 > the live element for the value that differs (the Proto window, port
 > 9333, read only: `tools/cdp/attach.mjs` findPage and
 > `tools/cdp/cdp.mjs` evaluate); fix that value in the module or its
-> stylesheet; run `node <kit>/tools/check.mjs <codebase> <slug> --theme <theme>
+> stylesheet, never in a picture file (`picture*`, `image*`,
+> `background*`: the product's own, set in as it is); run `node <kit>/tools/check.mjs <codebase> <slug> --theme <theme>
 > --activity "<what you changed, in the product's words>"`. If a
 > state's live element is the wrong one, correct the plan entry and
 > run `node <kit>/tools/snapshot.mjs <codebase> <spec> --theme <theme>` again instead.
@@ -236,8 +247,16 @@ its hover look.
   the product's @font-face files beside it. Palette colours are stable
   `var(--proto-token-<name>)` references whose values change with the
   library's light/dark switch.
+- Pictures, the product's own files beside the module: `image<n>` for
+  an `<img>` (the file the browser picked), `picture<n>.svg` for an
+  inline `<svg>` (its markup with the product's paints written on,
+  set inside the component's `<svg>` as it is; a paint equal to the
+  text colour is `currentColor`, so a hover colour still reaches it),
+  `picture<n>.png` for a `<canvas>` (its pixels, shown as an `<img>`),
+  `background<n>` for a background, mask or list image.
 - `component.json`: the states as prop sets with the live element each
-  was read from, the palette colours it uses, and `backdrop`, the
+  was read from and the width the product gave it, the palette colours
+  it uses, and `backdrop`, the
   colour it sits on in the product, which the library paints behind it.
 
 Sharpen it where the tool could not know better: a prop name the

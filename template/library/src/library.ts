@@ -24,8 +24,12 @@ export type TypeStyle = {
 export type ComponentStatus = "found" | "extracting" | "done" | "skipped" | "queued";
 /** Why a component was skipped: what the not-built strip groups by. */
 export type SkipKind = "could-not-isolate" | "did-not-match" | "not-tried";
-/** One named look of a component: the props that produce it. The first is the default. */
-export type ComponentState = { name: string; props: Record<string, unknown> };
+/**
+ * One named look of a component: the props that produce it, and the
+ * width the product gave it in CSS px, which the library shows it at
+ * (scaled down to fit a narrower frame). The first is the default.
+ */
+export type ComponentState = { name: string; props: Record<string, unknown>; width?: number };
 /** One check of the component against the product: our copy, the
  *  product's own capture for that check (when the import kept it), and
  *  the difference (the product's capture with every disagreeing pixel
