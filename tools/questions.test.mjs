@@ -79,7 +79,7 @@ test("await-answer returns the answer that arrives, and commits it when nothing 
   markAsked("cb1", { briefId: "b1", questionId: "q-1", recommended: "finish", defaultAfterSeconds: 30 }, time.now());
   time.at(2_000, () => feed("cb1", { id: "c2", run: "answer", briefId: "b1", questionId: "q-1", option: "build" }));
   const sent = [];
-  const answer = await awaitAnswer({ codebase: "cb1", briefId: "b1", questionId: "q-1", sendDefault: async (option) => (sent.push(option), "sent"), now: time.now, sleep: time.sleep });
+  const answer = await awaitAnswer({ codebase: "cb1", briefId: "b1", questionId: "q-1", sendDefault: async (option) => (sent.push(option), { kind: "sent" }), now: time.now, sleep: time.sleep });
   assert.deepEqual(answer, { by: "option", option: "build" });
   assert.deepEqual(sent, [], "an answer from the site is never repeated to it");
   assert.equal(committedOffset("cb1"), readFileSync(join(courier("cb1"), "commands.jsonl")).length);
@@ -101,7 +101,7 @@ test("with no answer and no hold, the recommended option is taken when the count
   const time = clock();
   markAsked("cb3", { briefId: "b3", questionId: "q-1", recommended: "finish", defaultAfterSeconds: 30 }, time.now());
   const sent = [];
-  const answer = await awaitAnswer({ codebase: "cb3", briefId: "b3", questionId: "q-1", sendDefault: async (option) => (sent.push({ option, at: time.now() }), "sent"), now: time.now, sleep: time.sleep });
+  const answer = await awaitAnswer({ codebase: "cb3", briefId: "b3", questionId: "q-1", sendDefault: async (option) => (sent.push({ option, at: time.now() }), { kind: "sent" }), now: time.now, sleep: time.sleep });
   assert.deepEqual(answer, { by: "default", option: "finish" });
   assert.equal(sent.length, 1);
   assert.ok(sent[0].at >= 1_000_000 + 30_000 && sent[0].at < 1_000_000 + 31_000);
@@ -111,8 +111,19 @@ test("a default the site refuses waits for the answer that beat it", async () =>
   const time = clock();
   markAsked("cb4", { briefId: "b4", questionId: "q-1", recommended: "finish", defaultAfterSeconds: 30 }, time.now());
   time.at(31_000, () => feed("cb4", { id: "c1", run: "answer", briefId: "b4", questionId: "q-1", option: "build" }));
-  const answer = await awaitAnswer({ codebase: "cb4", briefId: "b4", questionId: "q-1", sendDefault: async () => "already-answered", now: time.now, sleep: time.sleep });
+  const answer = await awaitAnswer({ codebase: "cb4", briefId: "b4", questionId: "q-1", sendDefault: async () => ({ kind: "already-answered", winner: null }), now: time.now, sleep: time.sleep });
   assert.deepEqual(answer, { by: "option", option: "build" });
+});
+
+test("a default the site refuses with the winning answer goes with that answer, and its command is taken quietly", async () => {
+  const time = clock();
+  markAsked("cb8", { briefId: "b8", questionId: "q-1", recommended: "finish", defaultAfterSeconds: 30 }, time.now());
+  const answer = await awaitAnswer({ codebase: "cb8", briefId: "b8", questionId: "q-1", sendDefault: async () => ({ kind: "already-answered", winner: { by: "reply", text: "Skip it" } }), now: time.now, sleep: time.sleep });
+  assert.deepEqual(answer, { by: "reply", text: "Skip it" });
+  const late = feed("cb8", { id: "c1", run: "answer", briefId: "b8", questionId: "q-1", text: "Skip it" });
+  const routed = routeAnswer("cb8", late);
+  assert.equal(routed.route, "taken");
+  assert.equal(committedOffset("cb8"), late);
 });
 
 test("answers to other questions stay in the feed for the listen skill", async () => {
@@ -120,7 +131,7 @@ test("answers to other questions stay in the feed for the listen skill", async (
   const other = feed("cb5", { id: "c1", run: "answer", briefId: "b5", questionId: "q-other", option: "build" });
   markAsked("cb5", { briefId: "b5", questionId: "q-1" }, time.now());
   time.at(1_000, () => feed("cb5", { id: "c2", run: "answer", briefId: "b5", questionId: "q-1", option: "finish" }));
-  const answer = await awaitAnswer({ codebase: "cb5", briefId: "b5", questionId: "q-1", sendDefault: async () => "sent", now: time.now, sleep: time.sleep });
+  const answer = await awaitAnswer({ codebase: "cb5", briefId: "b5", questionId: "q-1", sendDefault: async () => ({ kind: "sent" }), now: time.now, sleep: time.sleep });
   assert.deepEqual(answer, { by: "option", option: "finish" });
   assert.equal(takenLines("cb5").has(other), false);
   assert.equal(committedOffset("cb5"), 0, "the line before the taken one is still the listen skill's");

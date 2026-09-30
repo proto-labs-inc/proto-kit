@@ -262,10 +262,11 @@ export function isAwaited(codebase, questionId, now = Date.now()) {
  * Waits for the answer to one question and returns it:
  *   { by: "option", option } | { by: "reply", text } | { by: "default", option }
  * `sendDefault(option)` tells the site the laptop went with the
- * recommended option and resolves "sent", or "already-answered" when
- * the site says someone answered first; then that answer's command is
- * on its way (the site keeps an answer only once the courier took it),
- * and the wait goes on for it.
+ * recommended option and resolves { kind: "sent" }, or
+ * { kind: "already-answered", winner } when the site says someone
+ * answered first. With the winner known it is the answer; without, its
+ * command is on its way (the site keeps an answer only once the courier
+ * took it) and the wait goes on for it.
  */
 export async function awaitAnswer({ codebase, briefId, questionId, sendDefault, log = () => {}, pollMs = 250, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const asked = askedQuestion(codebase, questionId) ?? { briefId, questionId, recommended: null, defaultAfterSeconds: null, askedAt: now() };
@@ -273,6 +274,8 @@ export async function awaitAnswer({ codebase, briefId, questionId, sendDefault, 
   const deadline = asked.recommended && asked.defaultAfterSeconds ? asked.askedAt + asked.defaultAfterSeconds * 1000 : null;
   /** Where the default stands: counting down, stopped by a hold, or refused because the site had an answer. */
   let countdown = deadline === null ? "none" : "running";
+  /** The site's answer, when it beat the default and said what it was. */
+  let settled = null;
   try {
     for (;;) {
       const taken = takenLines(codebase);
@@ -293,14 +296,20 @@ export async function awaitAnswer({ codebase, briefId, questionId, sendDefault, 
       }
       if (countdown === "running" && now() >= deadline) {
         const outcome = await sendDefault(asked.recommended);
-        if (outcome === "sent") return { by: "default", option: asked.recommended };
+        if (outcome.kind === "sent") return { by: "default", option: asked.recommended };
+        if (outcome.winner) {
+          // Its command is still on its way: the listen skill takes it quietly when it lands.
+          settled = outcome.winner;
+          return outcome.winner;
+        }
         log("The site already has an answer to this question: waiting for it to arrive.");
         countdown = "refused";
       }
       await sleep(pollMs);
     }
   } finally {
-    clearAsked(codebase, questionId);
+    if (settled) writeFileSync(awaitingPath(codebase, questionId), JSON.stringify({ ...asked, pid: null, settled }) + "\n");
+    else clearAsked(codebase, questionId);
   }
 }
 
@@ -321,6 +330,11 @@ export function routeAnswer(codebase, offset) {
   const taken = takenLines(codebase).get(offset);
   if (taken?.by === "dropped") return { route: "dropped", line: `The answer to question ${answer.questionId} was already dropped.` };
   if (taken) return { route: "taken", line: `The build that asked question ${answer.questionId} took its answer.` };
+  if (askedQuestion(codebase, answer.questionId)?.settled) {
+    take(codebase, { offset, questionId: answer.questionId, by: "build" });
+    commitTaken(codebase);
+    return { route: "taken", line: `The build that asked question ${answer.questionId} already went with this answer.` };
+  }
   if (isAwaited(codebase, answer.questionId)) return { route: "awaited", line: `The build that asked question ${answer.questionId} takes its answer.` };
   take(codebase, { offset, questionId: answer.questionId, by: "dropped" });
   commitTaken(codebase);

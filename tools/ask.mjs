@@ -73,15 +73,39 @@ export async function ask(build, fields) {
 export async function waitForAnswer(build, questionId, { log = (line) => console.error(`… ${line}`) } = {}) {
   const sendDefault = async (option) => {
     const sent = await sendAlone(build, { kind: "answered", questionId, by: "default", option });
-    if (sent.kind === "refused" && /already answered/i.test(sent.reason)) return "already-answered";
+    if (sent.kind === "refused" && /already answered/i.test(sent.reason)) {
+      const winner = winnerIn(sent.reason);
+      if (winner) log(`Someone answered on the site first: going with that.`);
+      return { kind: "already-answered", winner };
+    }
     if (sent.kind === "refused") log(`the site did not take the default (${sent.reason}); going with it anyway`);
     log(`Nobody answered in time: going with "${option}".`);
-    return "sent";
+    return { kind: "sent" };
   };
   const answer = await awaitAnswer({ codebase: build.codebase, briefId: build.briefId, questionId, sendDefault, log });
   // An answer from the site already put the brief back to building.
   if (answer.by === "default") await reportProgress(build, "building");
   return answer;
+}
+
+/**
+ * The answer that won, from the site's refusal ("… already answered:
+ * {the answered event}"), as await-answer returns answers; null when
+ * the refusal does not carry it.
+ */
+export function winnerIn(reason) {
+  const at = reason.indexOf("{");
+  if (at === -1) return null;
+  let event;
+  try {
+    event = JSON.parse(reason.slice(at));
+  } catch {
+    return null;
+  }
+  if (event?.kind !== "answered") return null;
+  if (event.by === "reply" && typeof event.text === "string") return { by: "reply", text: event.text };
+  if ((event.by === "option" || event.by === "default") && typeof event.option === "string") return { by: event.by, option: event.option };
+  return null;
 }
 
 /** The person answered in the terminal: the site hears it as their reply, and nobody waits any more. */
