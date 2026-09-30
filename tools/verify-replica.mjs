@@ -21,8 +21,8 @@
  *
  * Writes <out>/<n>-live.png, <out>/<n>.png (the replica) and
  * <out>/<n>-diff.png and prints one JSON line:
- *   { pass, verdict, mismatch, shifted, maxDelta, clusters, activity,
- *     rect, screenshot, diff, live, viewport, display }
+ *   { pass, verdict, mismatch, shifted, maxDelta, clusters, differences?,
+ *     activity, rect, screenshot, diff, live, viewport, display }
  * verdict is "match" (no pixel differs), "shifted" (every difference
  * goes away with the replica moved one device pixel: a placement, not
  * a look), "context" (every difference lies in a photo the replica
@@ -35,6 +35,13 @@
  * of the resting page (tools/cdp/live.mjs); every read of the live page
  * holds the window's lock, so lanes never see each other's held states. `activity` is
  * the verdict in the product's words, ready for the library.
+ * A "differs" pass also carries `differences`: for each of its largest
+ * clusters, the element the live page paints there and the element the
+ * replica paints there (tag, class, own text), with every look
+ * property whose computed value differs, and the same for their
+ * parents up to the component's root; a cluster where one side paints
+ * nothing of the component says so. Read from both pages in the same
+ * pass, so the unit fixing the state reads the value here.
  *
  * tools/check.mjs runs this for every state of a component and lands
  * each pass in the library; units use that, not this, directly.
@@ -238,6 +245,121 @@ function third(point, size, names) {
   return names[1];
 }
 
+// The computed properties that decide a look and a box, compared
+// between the live element and the replica's at a differing cluster.
+// The full computed style is hundreds of properties; these are the
+// ones a component gets wrong, and they keep the read under
+// evaluate's payload limit.
+const LOOK_PROPERTIES = [
+  "font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "text-transform",
+  "text-decoration-line", "text-decoration-color", "text-align", "vertical-align", "white-space", "-webkit-font-smoothing",
+  "color", "background-color", "background-image", "background-size", "background-position", "opacity", "box-shadow",
+  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+  "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
+  "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+  "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius",
+  "outline-width", "outline-style", "outline-color", "outline-offset",
+  "padding-top", "padding-right", "padding-bottom", "padding-left", "margin-top", "margin-right", "margin-bottom", "margin-left",
+  "width", "height", "min-width", "min-height", "max-width", "max-height", "box-sizing",
+  "display", "flex-direction", "align-items", "justify-content", "row-gap", "column-gap", "flex-grow", "flex-shrink", "flex-basis",
+  "position", "top", "right", "bottom", "left", "overflow-x", "overflow-y", "transform", "fill", "stroke", "stroke-width",
+];
+const LEVELS = 3;
+const CLUSTERS_READ = 3;
+const PROPERTIES_LISTED = 12;
+// A colour that only paints with its line: listed when either side
+// draws that line, else it is currentColor echoing `color`.
+const PAINTS_WITH = {
+  "text-decoration-color": "text-decoration-line",
+  "outline-color": "outline-style",
+  "border-top-color": "border-top-style",
+  "border-right-color": "border-right-style",
+  "border-bottom-color": "border-bottom-style",
+  "border-left-color": "border-left-style",
+};
+
+// The look properties whose computed values differ between two
+// elements, `theirs` (the product) and `ours` (the copy), skipping
+// colours of lines neither draws and, above the element, every pair
+// the level below already lists (a value inherited straight through).
+function differing(theirs, ours, below = {}) {
+  const differs = {};
+  for (const name of LOOK_PROPERTIES) {
+    const pair = [theirs.style[name], ours.style[name]];
+    if (pair[0] === pair[1]) continue;
+    const line = PAINTS_WITH[name];
+    if (line && theirs.style[line] === "none" && ours.style[line] === "none") continue;
+    if (below[name] && below[name][0] === pair[0] && below[name][1] === pair[1]) continue;
+    differs[name] = pair;
+    if (Object.keys(differs).length >= PROPERTIES_LISTED) break;
+  }
+  return differs;
+}
+
+// Page-side: at each point, the element painted there and its
+// ancestors up to the root (at most LEVELS), each with its tag, class,
+// own text and the look properties. Points outside the root read null.
+const ELEMENTS_AT = String.raw`(points, rootSelector, properties, levels) => {
+  const root = rootSelector ? document.querySelector(rootSelector) : null;
+  return points.map(([x, y]) => {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || (root && !root.contains(hit))) return null;
+    const chain = [];
+    for (let el = hit; el && chain.length < levels; el = el.parentElement) {
+      const s = getComputedStyle(el);
+      const style = {};
+      for (const name of properties) style[name] = s.getPropertyValue(name);
+      const text = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join(' ').trim();
+      chain.push({ tag: el.tagName.toLowerCase(), className: String(el.getAttribute('class') ?? '').slice(0, 80), text: text.slice(0, 40), style });
+      if (el === root) break;
+    }
+    return chain;
+  });
+}`;
+
+/**
+ * What differs at each cluster, in the page's own terms: the element
+ * the live page paints there and the element the replica paints there,
+ * with every look property whose computed value differs between them,
+ * then the same for their parents up to the component's root. A
+ * cluster where the replica paints nothing of the component says so.
+ * `live` and `replica` are connected pages; the live element is read
+ * under its held state, the replica's at the same viewport point.
+ */
+export async function whatDiffers({ live, replica, selector, force, rect, clusters }) {
+  const read = clusters.slice(0, CLUSTERS_READ);
+  const points = read.map(({ cssRect: [cx, cy, cw, ch] }) => [rect.x + cx + cw / 2, rect.y + cy + ch / 2]);
+  const probe = (root) => `(${ELEMENTS_AT})(${JSON.stringify(points)}, ${JSON.stringify(root)}, ${JSON.stringify(LOOK_PROPERTIES)}, ${LEVELS})`;
+  const [onLive, onMine] = await Promise.all([
+    withForcedState(live, selector, force, () => evaluate(live, probe(selector))),
+    evaluate(replica, probe("[data-render] > *")),
+  ]);
+  return read.map((cluster, k) => {
+    const entry = { at: cluster.cssRect, live: null, mine: null, differs: {} };
+    const theirs = onLive[k];
+    const ours = onMine[k];
+    if (theirs) entry.live = describe(theirs[0]);
+    if (ours) entry.mine = describe(ours[0]);
+    if (!theirs || !ours) {
+      entry.note = !ours ? "the copy paints nothing of the component here" : "the product paints nothing of the component here";
+      return entry;
+    }
+    let below = {};
+    for (let level = 0; level < Math.min(theirs.length, ours.length); level++) {
+      const differs = differing(theirs[level], ours[level], below);
+      below = { ...below, ...differs };
+      if (Object.keys(differs).length === 0) continue;
+      if (level === 0) entry.differs = differs;
+      else (entry.ancestors ??= []).push({ up: level, live: describe(theirs[level]), mine: describe(ours[level]), differs });
+    }
+    return entry;
+  });
+}
+
+function describe({ tag, className, text }) {
+  return { tag, ...(className ? { className } : {}), ...(text ? { text } : {}) };
+}
+
 function activityFor(verdict, clusters, rect, photos) {
   switch (verdict) {
     case "context":
@@ -325,41 +447,56 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     // clipped capture is safe: only the component's pixels come back, not
     // a whole viewport to decode and cut in node.
     await stableClip(replica.page, probe, files.screenshot, { x: rect.x, y: rect.y, width: rect.w, height: rect.h, scale: 1 });
+
+    const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr });
+    let verdict = "match";
+    let shifted = null;
+    let photos = [];
+    if (result.diffPixels > 0) {
+      shifted = bestShift(files.live, files.screenshot);
+      // A move uncovers a one-pixel rim; a residue no bigger than that rim is a placement.
+      const rim = Math.round((rect.w + rect.h) * display.dpr);
+      // A few stray edge pixels (under 0.3% of the component) are antialiasing
+      // the page's own layers decide, not a look the component gets wrong.
+      const faint = Math.max(12, Math.round(0.003 * rect.w * rect.h * display.dpr * display.dpr));
+      photos = photosAsContext(context.images, replicaImages, files.live, files.screenshot, display.dpr);
+      if (shifted.mismatch <= rim && shifted.mismatch < result.diffPixels / 4) verdict = "shifted";
+      else if (within(result.clusters, [...photos, ...context.covers])) verdict = "context";
+      else if (result.diffPixels <= faint) verdict = "faint";
+      else verdict = "differs";
+    }
+    if (rect.cut && verdict !== "differs") verdict = "offscreen";
+    // A state that differs says what differs while both pages are still
+    // open: the unit fixing it reads the value here instead of writing a
+    // page probe of its own for every round.
+    let differences;
+    if (verdict === "differs" && target.selector && result.clusters.length > 0) {
+      const again = await connect(tab.webSocketDebuggerUrl);
+      try {
+        differences = await whatDiffers({ live: again, replica: replica.page, selector: target.selector, force, rect, clusters: result.clusters });
+      } catch (error) {
+        differences = [{ note: `the elements could not be read: ${error.message}` }];
+      } finally {
+        again.close();
+      }
+    }
+    return {
+      pass: n,
+      verdict,
+      mismatch: result.diffPixels,
+      shifted,
+      maxDelta: result.maxDelta,
+      clusters: result.clusters,
+      ...(differences ? { differences } : {}),
+      activity: activityFor(verdict, result.clusters, rect, photos),
+      rect: [rect.x, rect.y, rect.w, rect.h],
+      ...files,
+      viewport: [width, height],
+      display,
+    };
   } finally {
     await replica.close();
   }
-
-  const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr });
-  let verdict = "match";
-  let shifted = null;
-  let photos = [];
-  if (result.diffPixels > 0) {
-    shifted = bestShift(files.live, files.screenshot);
-    // A move uncovers a one-pixel rim; a residue no bigger than that rim is a placement.
-    const rim = Math.round((rect.w + rect.h) * display.dpr);
-    // A few stray edge pixels (under 0.3% of the component) are antialiasing
-    // the page's own layers decide, not a look the component gets wrong.
-    const faint = Math.max(12, Math.round(0.003 * rect.w * rect.h * display.dpr * display.dpr));
-    photos = photosAsContext(context.images, replicaImages, files.live, files.screenshot, display.dpr);
-    if (shifted.mismatch <= rim && shifted.mismatch < result.diffPixels / 4) verdict = "shifted";
-    else if (within(result.clusters, [...photos, ...context.covers])) verdict = "context";
-    else if (result.diffPixels <= faint) verdict = "faint";
-    else verdict = "differs";
-  }
-  if (rect.cut && verdict !== "differs") verdict = "offscreen";
-  return {
-    pass: n,
-    verdict,
-    mismatch: result.diffPixels,
-    shifted,
-    maxDelta: result.maxDelta,
-    clusters: result.clusters,
-    activity: activityFor(verdict, result.clusters, rect, photos),
-    rect: [rect.x, rect.y, rect.w, rect.h],
-    ...files,
-    viewport: [width, height],
-    display,
-  };
 }
 
 export function nextPass(dir) {

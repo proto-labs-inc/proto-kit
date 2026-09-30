@@ -140,7 +140,7 @@ straight after.
 4. **Run it.** `node tools/import.mjs <codebase> --theme light` (it reads the plan
    `plan.mjs` wrote).
    It writes the palette, the type styles and the inventory with each
-   component's picture, then writes and checks every component, eight
+   component's picture, then writes and checks every component, twelve
    at a time; each check lands in the library as it is made (the user
    sees the product, the copy and the difference stream in), each
    component that matches in every state lands as built, and the
@@ -167,11 +167,18 @@ straight after.
    **Fix what is left, in parallel.** For every component in `toFix`
    or `failed`, dispatch one `importer` sub-agent, **all in one turn**,
    with the brief below. Never pass a model: the importer role runs on
-   the fast model by design, and the work is small. While they run,
+   the fast model by design, and the work is small. Never pass a name:
+   a named spawn is a teammate, and a teammate's first tool call waits
+   on a permission prompt the user is not watching for (one import's
+   units began eleven minutes after they were spawned). While they run,
    check the queue. As each reports, spot-check it (re-run
    `check.mjs --theme <theme>` on one state) and land it: `status done`,
    or `status skipped` with
-   its kind, reason and picture. Publish after each landing.
+   its kind, reason and picture. Publish after each landing. A unit that
+   has not reported five minutes after its spawn is stopped and its
+   component landed `skipped` (`did-not-match`, the last verdict's line):
+   a fix that has not converged by then is guessing, and the import's
+   time is the user's.
 
 6. **Finish**, per the checklist below.
 
@@ -197,8 +204,18 @@ the same in the product's words. These count as matching:
   the rest off.
 
 `differs` is the one to fix: `clusters` say where (CSS px inside the
-component) and the pass pictures show what. Never spend a unit on a
-verdict that counts as matching.
+component), `differences` say what: at each cluster, the element the
+product paints there and the element our copy paints there, with
+every computed property that differs between them (`"font-weight":
+["450", "600"]` is the product's value first, ours second), then the
+same for their parents up to the root; a cluster where the copy
+paints nothing of the component says so. The pass pictures show the
+same by eye. Never spend a unit on a verdict that counts as matching.
+
+`check.mjs` also prints `budget`: the passes the component has had
+since the tools wrote it, against six checks after the import's own.
+Past it (`spent`), the check still runs and says so on stderr; the
+unit reports the component skipped instead of checking again.
 
 A resting state is compared with one frame of the resting page, taken
 when the run starts; a state held with a pseudo-class is captured live,
@@ -214,18 +231,25 @@ its hover look.
 > written from the live page by `tools/snapshot.mjs`; `component.json`
 > names each state's live element. What differs: `<the toFix entry>`.
 > Kit root `<kit>`; do not read the tools' source.
-> Loop, at most six times: look at the latest pass pictures in
+> Loop, at most six times: read `differences` in the last check's
+> output (each differing state's entry names, at each cluster, the
+> product's element and ours and every computed property that differs,
+> the product's value first); the value to write is the product's,
+> never a number between the two. Look at the pass pictures in
 > `~/.proto/<codebase>/run/checks/<slug>/` (`<n>-live.png` is the
-> product, `<n>.png` our copy, `<n>-diff.png` the difference); read
-> the live element for the value that differs (the Proto window, port
-> 9333, read only: `tools/cdp/attach.mjs` findPage and
-> `tools/cdp/cdp.mjs` evaluate); fix that value in the module or its
+> product, `<n>.png` our copy, `<n>-diff.png` the difference) when the
+> list is empty or names no property (a missing element, a wrong
+> element); only then read the live page yourself (the Proto window,
+> port 9333, read only: `tools/cdp/attach.mjs` findPage and
+> `tools/cdp/cdp.mjs` evaluate). Fix that value in the module or its
 > stylesheet, never in a picture file (`picture*`, `image*`,
 > `background*`: the product's own, set in as it is); run `node <kit>/tools/check.mjs <codebase> <slug> --theme <theme>
-> --activity "<what you changed, in the product's words>"`. If a
+> --activity "<what you changed, in the product's words>"`; its output
+> carries the next `differences`. If a
 > state's live element is the wrong one, correct the plan entry and
 > run `node <kit>/tools/snapshot.mjs <codebase> <spec> --theme <theme>` again instead.
-> Write only in the component's folder; never touch `public/` or run
+> When the check says its `budget` is spent, stop and report. Write only
+> in the component's folder; never touch `public/` or run
 > `library.mjs`. Report as data: done or skipped, each state's last
 > verdict, and for a skip the kind (`did-not-match` or
 > `could-not-isolate`), one sentence of at most 140 characters in the

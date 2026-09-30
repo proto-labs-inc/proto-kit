@@ -32,12 +32,18 @@
  * out. --activity replaces the pass's line (a unit saying what it changed).
  *
  * Prints one JSON line: { slug, states: [{ state, verdict, mismatch,
- * shifted, clusters, activity }], matched } where matched is true when
- * every checked state's verdict is match, shifted, context, faint or
- * offscreen (tools/verify-replica.mjs says what each means).
+ * shifted, clusters, differences?, activity }], matched, budget } where
+ * matched is true when every checked state's verdict is match, shifted,
+ * context, faint or offscreen (tools/verify-replica.mjs says what each
+ * means). A state that differs carries `differences`: at each cluster,
+ * the element the product paints there and the element our copy paints
+ * there, with the computed properties that differ (verify-replica.mjs
+ * reads both pages in the same pass). `budget` counts the passes since
+ * the component was written against six checks after the import's
+ * own; past it the check still runs and says so on stderr.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
@@ -46,6 +52,8 @@ const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 // Verdicts that count as the product's look: identical, a one-pixel
 // placement, or identical where the page shows it.
 export const ACCEPTED = ["match", "shifted", "context", "faint", "offscreen"];
+// Checks a component gets after the import's own: six fixes.
+const CHECKS_ALLOWED = 7;
 const USAGE = 'usage: node tools/check.mjs <codebase> <slug> [--theme <light|dark>] [--state <name>] [--no-land] [--activity "<line>"] [--app <url> --unit <component.json> --live <page-url> --out <dir>]';
 
 /** The part of a page address a tab is found by: its host and path. */
@@ -144,11 +152,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const states = unit.states.filter((s) => s.live && (!options.state || s.name === options.state));
   // A minute per state: a pass waits for the window's lock behind other
   // lanes, and a state that differs is checked twice.
-  const budget = 60_000 * Math.max(1, states.length) * 2;
+  const patience = 60_000 * Math.max(1, states.length) * 2;
   setTimeout(() => {
-    console.error(`check gave up after ${budget / 1000}s: a capture never completed; check the live tab is still open and try again`);
+    console.error(`check gave up after ${patience / 1000}s: a capture never completed; check the live tab is still open and try again`);
     process.exit(2);
-  }, budget).unref();
+  }, patience).unref();
+  // The passes this component has had since the tools wrote it: the
+  // import's own check and the fixes after it. A fix loop that has not
+  // converged in six rounds is nudging numbers, not reading the page;
+  // past the limit the check still runs, and says so.
+  const written = statSync(target.unitPath).mtimeMs;
+  const limit = CHECKS_ALLOWED * 2 * unit.states.filter((s) => s.live).length;
 
   let checked;
   try {
@@ -166,9 +180,26 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const summary = checked.states.map((entry) => {
     if (!entry.result) return entry;
     const { result, activity } = entry;
-    return { state: entry.state, verdict: result.verdict, mismatch: result.mismatch, shifted: result.shifted, clusters: result.clusters.slice(0, 4), activity };
+    return {
+      state: entry.state,
+      verdict: result.verdict,
+      mismatch: result.mismatch,
+      shifted: result.shifted,
+      clusters: result.clusters.slice(0, 4),
+      ...(result.differences ? { differences: result.differences } : {}),
+      activity,
+    };
   });
-  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched }));
+  const passes = passesSince(target.out, written);
+  const budget = { passes, limit, spent: passes > limit };
+  if (budget.spent) console.error(`${slug} has had its ${CHECKS_ALLOWED} checks since it was written (${passes} passes): report it skipped with the last verdicts, or write it again with tools/snapshot.mjs`);
+  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched, budget }));
+}
+
+// Pass pictures made since the component was written (a state that
+// differs makes two a check).
+function passesSince(out, written) {
+  return readdirSync(out).filter((name) => /^\d+\.png$/.test(name) && statSync(join(out, name)).mtimeMs >= written).length;
 }
 
 // The pass's line names the state when the component has more than one.
