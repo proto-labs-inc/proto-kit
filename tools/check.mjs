@@ -154,12 +154,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const states = unit.states.filter((s) => s.live && (!options.state || s.name === options.state));
   // A minute per state: a pass waits for the window's lock behind other
   // lanes, and a state that differs is checked twice.
-  const budget = 60_000 * Math.max(1, states.length) * 2;
+  const patience = 60_000 * Math.max(1, states.length) * 2;
   setTimeout(() => {
-    console.error(`check gave up after ${budget / 1000}s: a capture never completed; check the live tab is still open and try again`);
+    console.error(`check gave up after ${patience / 1000}s: a capture never completed; check the live tab is still open and try again`);
     process.exit(2);
-  }, budget).unref();
-
+  }, patience).unref();
   let checked;
   try {
     checked = await checkComponent({ unit, slug, appUrl: target.appUrl, liveMatch: liveMatchOf(target.liveUrl), out: target.out, codebase, only: options.state ?? null, theme: options.theme });

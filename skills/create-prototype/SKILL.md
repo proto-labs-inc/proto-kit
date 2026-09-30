@@ -71,6 +71,10 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    the site needs (phases, queued, pass, matched, composing) is sent by
    the tools; you send none of them yourself. `--accept-curation` skips
    the stop when the draft names are already right.
+   Pictures (logos, icons, illustrations, charts: `<img>`, inline
+   `<svg>`, `<canvas>` and stylesheet images) are copied as the page's
+   own files and set in as they are, never redrawn; nobody edits one to
+   make a check pass.
 5. **Serve early.** The dev server the copy used has stopped; start the
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
@@ -103,7 +107,7 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
      (tabs and steps, empty/loading/error branches, overlays, toggles)
      is a state in `public/prototype.json` (id, title, one-line
      description, `parent` for branches) and a branch in the code via
-     `usePreviewState` from `@proto/rig`; the ids in both must match.
+     `usePreviewState` from `@proto-labs-inc/rig`; the ids in both must match.
      When the read said a dialog covers the page (`tree.json` carries
      `overlay` with the backdrop's and the dialog's node ids, and the
      read printed one line about it), the dialog is a state of its
@@ -181,7 +185,10 @@ Blocked at any step: `build-stream.mjs question <briefId> --codebase
 > at the differing spots and names each difference (a computed value,
 > a box, a text, a reference that points at nothing, an image or a
 > face that did not load, the colour behind the part). Apply the fix
-> it names in the module or stylesheet, then run `node
+> it names in the module or stylesheet, never in a picture file
+> (`picture*`, `image*`, `background*`: the page's own, set in as it
+> is; a difference inside one is its size or what is around it). Then
+> run `node
 > <kit>/tools/check-part.mjs <briefId> --codebase <codebase> <slug>`.
 > Budget: three checks or two minutes from your start, whichever comes
 > first; then stop and report. Done is `matched: true` from the check
@@ -245,12 +252,14 @@ and `public/prototype.json`; a port free on this laptop that no other
 prototype or library under `~/.proto` claims, in `vite.config.ts` and
 `prototype.json` (they must agree), with the workspace's own token in
 `public/__proto-workspace.json`, which every tool reads back from the
-port before rendering in it; the rig's source paths in
-`tsconfig.json` (pre-npm, via `PROTO_PACKAGES` from `~/.proto/config.json`);
-the page's tokens, fonts and body base in `src/`; Tailwind when the
-source uses it; `pnpm install` from the shared store. Never vendor the
-rig or add it to `package.json`; `modern-screenshot` stays a dependency
-of every workspace (the rig lazy-imports it for comment capture).
+port before rendering in it; the page's tokens, fonts and body base in
+`src/`; Tailwind when the source uses it; `pnpm install` from the
+shared store. The rig is a dependency the template pins to one exact
+version: `@proto-labs-inc/rig` (React) or `@proto-labs-inc/rig-vue`
+(Vue), with `@proto-labs-inc/wire` for the manifest's types, all from
+npm. Never vendor the rig or change its version by hand;
+`modern-screenshot` stays a dependency of every workspace (the rig
+lazy-imports it for comment capture).
 `docs/build-read.md` describes the build folder.
 
 ## Rebuilding one section

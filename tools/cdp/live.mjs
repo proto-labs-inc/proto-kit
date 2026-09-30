@@ -18,24 +18,47 @@ import { evaluate } from "./cdp.mjs";
 import { decodePng, encodePng } from "./png.mjs";
 
 const LOCK = join(process.env.HOME ?? "", ".proto", ".live-lock");
-// A read takes well under a second, a held state's capture a few; only
-// a lock this old belongs to a process that died holding it.
+// The lock folder names its holder, so a lock whose process is gone
+// (a lane import.mjs stopped after two minutes, a crashed tool) is
+// taken over at once instead of holding every other lane behind it.
+const HOLDER = join(LOCK, "pid");
+// A read takes well under a second, a held state's capture a few; a
+// lock this old with a live holder belongs to a process that hung.
 const STALE_MS = 30_000;
 // The resting page is trusted this long; after it, captures go live again.
 const FRAME_MAX_AGE_MS = 10 * 60_000;
+
+// Whether the process that took the lock is still running. A lock
+// without its pid yet was taken a moment ago and is treated as held.
+function holderAlive() {
+  let pid;
+  try {
+    pid = Number(readFileSync(HOLDER, "utf8"));
+  } catch {
+    return true;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code !== "ESRCH";
+  }
+}
 
 /** Run `work` while holding the Proto window's read lock. */
 export async function withLive(work) {
   for (;;) {
     try {
       mkdirSync(LOCK);
+      writeFileSync(HOLDER, String(process.pid));
       break;
     } catch {
       let age = 0;
       try {
         age = Date.now() - statSync(LOCK).mtimeMs;
       } catch {}
-      if (age > STALE_MS) rmSync(LOCK, { recursive: true, force: true });
+      if (!holderAlive() || age > STALE_MS) rmSync(LOCK, { recursive: true, force: true });
       else await new Promise((r) => setTimeout(r, 40));
     }
   }

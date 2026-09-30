@@ -13,7 +13,8 @@ import { CheckStrip, Checks } from "@/components/Checks";
 import { NotBuilt, type Ask } from "@/components/NotBuilt";
 import { Stage } from "@/components/Stage";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { ProductCrop } from "@/components/ProductCrop";
+import { Fit } from "@/components/Fit";
+import { ProductCrop, usePictureWidth } from "@/components/ProductCrop";
 import { Rendered } from "@/components/Rendered";
 import { componentView, rebuiltNote, tokensFor, type Component, type ComponentView, type Courier, type Library, type ThemeId, type Token } from "@/library";
 import { href } from "@/route";
@@ -86,6 +87,7 @@ type StatesProps = { component: Component; view: ComponentView; state: string | 
 function States({ component, view, state, courier }: StatesProps) {
   const [comparing, setComparing] = useState(false);
   const [ask, setAsk] = useState<Ask>("idle");
+  const productWidth = usePictureWidth(component.screenshot ?? null);
   const send = async (call: Courier["ask"]) => {
     setAsk("asking");
     setAsk(await call(component.slug));
@@ -123,9 +125,9 @@ function States({ component, view, state, courier }: StatesProps) {
         {component.states.map((look) => (
           <TabsContent key={look.name} value={look.name}>
             <Stage holds="component" backdrop={look.backdrop ?? component.backdrop}>
-              <div className="p-5">
+              <Fit width={look.width ?? productWidth ?? undefined} className="p-5">
                 <Rendered name={component.name} module={component.module} state={look} />
-              </div>
+              </Fit>
             </Stage>
           </TabsContent>
         ))}

@@ -53,7 +53,8 @@ import { framePaths } from "./cdp/live.mjs";
 import { ACCEPTED, checkComponent, liveMatchOf } from "./check.mjs";
 import { TAIL, classifyPart, record, tailFile } from "./tail.mjs";
 import { instanceFromRead, styleOf } from "./read-page.mjs";
-import { appBaseline, cssBlock, instanceOf, jsxAttr, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
+import { INSIDE, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
+import { appBaseline, cssBlock, download, instanceOf, jsxAttr, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
@@ -457,6 +458,7 @@ async function composePage(builtParts) {
       pseudo: Object.fromEntries(Object.entries(el.pseudo).map(([which, values]) => [which, styleOf(read, values)])),
       value: el.value,
       rect: [...el.rect],
+      picture: el.picture ?? null,
       part: partByElement.get(i) ?? null,
       treeId: treeNode?.id ?? null,
       marker: treeNode && roleOf.get(treeNode.id)?.role === "section" ? roleOf.get(treeNode.id).marker : null,
@@ -492,6 +494,11 @@ async function composePage(builtParts) {
     images.set(absolute, { ident, file });
   }
   const imageOf = (node) => images.get(new URL(node.attrs.src, read.page.url).toString());
+  // Pictures outside every part, the product's own files as they are (tools/pictures.mjs).
+  const own = nodes.filter((node) => !node.part);
+  const pictures = writePictures(pageDir, [{ nodes: own }]);
+  const styleImages = await writeStyleImages(pageDir, [{ nodes: own }], read.assets, download);
+  const pageFile = (file) => file.replace(/^\.\//, "./page/");
   const kindsHere = [...new Set(nodes.filter((n) => !n.part).map(kindOf))].filter((kind) => !baseline[kind]);
   if (kindsHere.length > 0) Object.assign(baseline, await appBaseline(appUrl, kindsHere, viewport, display));
 
@@ -520,6 +527,7 @@ async function composePage(builtParts) {
         css.push(cssBlock(`.page .${names[k]}`, slot));
         continue;
       }
+      if (inSvgPicture(nodes, k)) continue;
       css.push(cssBlock(`.${names[k]}`, propsFor(node, nodes, baseline, declared[k], k === 0)));
       for (const which of Object.keys(node.pseudo)) css.push(cssBlock(`.${names[k]}${which}`, pseudoProps(node, which, baseline)));
     }
@@ -551,6 +559,15 @@ async function composePage(builtParts) {
       }
       if (node.tag === "button") attrs.push(`type="button"`);
       if (node.tag === "input" || node.tag === "textarea") attrs.push("readOnly");
+      if (node.picture?.kind === "svg") {
+        lines.push(`${indent(depth)}<${node.tag} ${attrs.join(" ")} dangerouslySetInnerHTML={{ __html: inside(${pictures.svgs.get(node.picture.markup).ident}) }} />`);
+        return;
+      }
+      const canvas = node.picture?.kind === "canvas" ? pictures.canvases.get(node.picture.data) : undefined;
+      if (canvas) {
+        lines.push(`${indent(depth)}<img ${attrs.filter((a) => !/^(width|height)=/.test(a)).join(" ")} src={${canvas.ident}} alt="" />`);
+        return;
+      }
       const open = `<${node.tag} ${attrs.join(" ")}`;
       const kids = node.children.filter((child) => child.node !== undefined || child.text !== "");
       if (kids.length === 0) {
@@ -576,6 +593,9 @@ async function composePage(builtParts) {
     const tsx = `import styles from "./App.module.css";
 ${imports.join("\n")}
 ${[...images.values()].map((img) => `import ${img.ident} from "./page/${img.file}";`).join("\n")}
+${[...pictures.svgs.values()].map((svg) => `import ${svg.ident} from "./page/${svg.file}?raw";`).join("\n")}
+${[...pictures.canvases.values()].map((png) => `import ${png.ident} from "./page/${png.file}";`).join("\n")}
+${pictures.svgs.size > 0 ? INSIDE : ""}
 
 /**
  * ${read.page.title || "The page"}, as the product renders it
@@ -591,7 +611,8 @@ ${lines.join("\n")}
 }
 `;
     writeFileSync(join(workspace.path, "src", "App.tsx"), tsx.replace(/\n\n\n+/g, "\n\n"));
-    writeFileSync(join(workspace.path, "src", "App.module.css"), css.filter(Boolean).join("\n"));
+    const pageFiles = new Map([...styleImages].map(([url, file]) => [url, pageFile(file)]));
+    writeFileSync(join(workspace.path, "src", "App.module.css"), localStyleImages(css.filter(Boolean).join("\n"), pageFiles));
   };
   emit();
   const manifestPath = join(workspace.path, "public", "prototype.json");

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Rendered, moduleOf } from "@/components/Rendered";
+import { Rendered } from "@/components/Rendered";
 import type { ComponentState, Library } from "@/library";
+import { moduleOf, unitOf } from "@/modules";
 import type { Placement } from "@/route";
 
 type Props = { slug: string; state: string; placement: Placement; library: Library };
@@ -9,25 +10,6 @@ type Lookup =
   | { kind: "loading" }
   | { kind: "missing"; why: string }
   | { kind: "ready"; module: string; look: ComponentState; backdrop: string | null };
-
-// The unit's own component.json: its states, each with the colour it
-// sat on in the product where that differs from the component's own
-// (a look read from another part of the page), and that backdrop, when
-// the product painted one. Read from the folder, not the manifest, so
-// a unit verifies before anything is landed; fetched as a file rather
-// than imported as a module, so the import rewriting it while render
-// tabs are open (the writer fits sizes in rounds) never reloads them.
-type Unit = { states: ComponentState[]; backdrop?: string };
-
-async function unitOf(slug: string): Promise<Unit | null> {
-  const response = await fetch(`/src/components/${encodeURIComponent(slug)}/component.json?t=${Date.now()}`);
-  if (!response.ok) return null;
-  try {
-    return (await response.json()) as Unit;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * One component in one state, alone on the product's surface, at the

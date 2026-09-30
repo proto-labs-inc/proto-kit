@@ -21,8 +21,8 @@
  *
  * Writes <out>/<n>-live.png, <out>/<n>.png (the replica) and
  * <out>/<n>-diff.png and prints one JSON line:
- *   { pass, verdict, mismatch, shifted, maxDelta, clusters, activity,
- *     rect, screenshot, diff, live, viewport, display }
+ *   { pass, verdict, mismatch, shifted, maxDelta, clusters,
+ *     activity, rect, screenshot, diff, live, viewport, display }
  * verdict is "match" (no pixel differs), "shifted" (every difference
  * goes away with the replica moved one device pixel: a placement, not
  * a look), "context" (every difference lies in a photo the replica
@@ -35,7 +35,6 @@
  * of the resting page (tools/cdp/live.mjs); every read of the live page
  * holds the window's lock, so lanes never see each other's held states. `activity` is
  * the verdict in the product's words, ready for the library.
- *
  * A dialog over the page (tools/read-page.mjs liveOverlay) shades every
  * element under its backdrop in the live capture. Our capture of such
  * an element is shaded with the backdrop's colour before the diff, so
@@ -437,58 +436,58 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     // clipped capture is safe: only the component's pixels come back, not
     // a whole viewport to decode and cut in node.
     await stableClip(replica.page, probe, files.screenshot, { x: rect.x, y: rect.y, width: rect.w, height: rect.h, scale: 1 });
+
+    // Under a dialog's backdrop the live capture is the element shaded by
+    // the backdrop's colour: our capture is shaded the same before the
+    // diff, so the comparison is of the element itself. A backdrop that
+    // blurs cannot be applied here; then any difference is the page's.
+    const shade = overlay && !overlay.targetInside ? shadeOf(overlay.backdrop) : null;
+    let under = null;
+    if (overlay && !overlay.targetInside) {
+      under = { reason: "a dialog covers the live page", shaded: shade.applicable ? overlay.backdrop.color : null, blur: overlay.backdrop.blur };
+      if (shade.applicable) shadePng(files.screenshot, shade);
+    }
+    // Outside the element's rounded corners the page shows through: those pixels are not compared.
+    const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr, ignore: outsideCorners(rect, display.dpr) });
+    let verdict = "match";
+    let shifted = null;
+    let photos = [];
+    if (result.diffPixels > 0 && under && !shade.applicable) {
+      // The backdrop blurs or its colour cannot be read: the pixels under it are the page's.
+      verdict = "context";
+    } else if (result.diffPixels > 0) {
+      shifted = bestShift(files.live, files.screenshot);
+      // A move uncovers a one-pixel rim; a residue no bigger than that rim is a placement.
+      const rim = Math.round((rect.w + rect.h) * display.dpr);
+      // A few stray edge pixels (under 0.3% of the component) are antialiasing
+      // the page's own layers decide, not a look the component gets wrong.
+      const faint = Math.max(12, Math.round(0.003 * rect.w * rect.h * display.dpr * display.dpr));
+      photos = photosAsContext(context.images, replicaImages, files.live, files.screenshot, display.dpr);
+      if (shifted.mismatch <= rim && shifted.mismatch < result.diffPixels / 4) verdict = "shifted";
+      else if (outsideBoxes(result.bad, result.width, result.height, [...photos, ...context.covers], display.dpr) === 0) verdict = "context";
+      else if (result.diffPixels <= faint) verdict = "faint";
+      else verdict = "differs";
+    }
+    if (rect.cut && verdict !== "differs") verdict = "offscreen";
+    let activity = activityFor(verdict, result.clusters, rect, photos);
+    if (under && verdict === "context" && !shade.applicable) activity = "Matches the product where its dialog does not shade it; a dialog covers the live page";
+    return {
+      pass: n,
+      verdict,
+      mismatch: result.diffPixels,
+      shifted,
+      maxDelta: result.maxDelta,
+      clusters: result.clusters,
+      activity,
+      overlay: under,
+      rect: [rect.x, rect.y, rect.w, rect.h],
+      ...files,
+      viewport: [width, height],
+      display,
+    };
   } finally {
     await replica.close();
   }
-
-  // Under a dialog's backdrop the live capture is the element shaded by
-  // the backdrop's colour: our capture is shaded the same before the
-  // diff, so the comparison is of the element itself. A backdrop that
-  // blurs cannot be applied here; then any difference is the page's.
-  const shade = overlay && !overlay.targetInside ? shadeOf(overlay.backdrop) : null;
-  let under = null;
-  if (overlay && !overlay.targetInside) {
-    under = { reason: "a dialog covers the live page", shaded: shade.applicable ? overlay.backdrop.color : null, blur: overlay.backdrop.blur };
-    if (shade.applicable) shadePng(files.screenshot, shade);
-  }
-  // Outside the element's rounded corners the page shows through: those pixels are not compared.
-  const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr, ignore: outsideCorners(rect, display.dpr) });
-  let verdict = "match";
-  let shifted = null;
-  let photos = [];
-  if (result.diffPixels > 0 && under && !shade.applicable) {
-    // The backdrop blurs or its colour cannot be read: the pixels under it are the page's.
-    verdict = "context";
-  } else if (result.diffPixels > 0) {
-    shifted = bestShift(files.live, files.screenshot);
-    // A move uncovers a one-pixel rim; a residue no bigger than that rim is a placement.
-    const rim = Math.round((rect.w + rect.h) * display.dpr);
-    // A few stray edge pixels (under 0.3% of the component) are antialiasing
-    // the page's own layers decide, not a look the component gets wrong.
-    const faint = Math.max(12, Math.round(0.003 * rect.w * rect.h * display.dpr * display.dpr));
-    photos = photosAsContext(context.images, replicaImages, files.live, files.screenshot, display.dpr);
-    if (shifted.mismatch <= rim && shifted.mismatch < result.diffPixels / 4) verdict = "shifted";
-    else if (outsideBoxes(result.bad, result.width, result.height, [...photos, ...context.covers], display.dpr) === 0) verdict = "context";
-    else if (result.diffPixels <= faint) verdict = "faint";
-    else verdict = "differs";
-  }
-  if (rect.cut && verdict !== "differs") verdict = "offscreen";
-  let activity = activityFor(verdict, result.clusters, rect, photos);
-  if (under && verdict === "context" && !shade.applicable) activity = "Matches the product where its dialog does not shade it; a dialog covers the live page";
-  return {
-    pass: n,
-    verdict,
-    mismatch: result.diffPixels,
-    shifted,
-    maxDelta: result.maxDelta,
-    clusters: result.clusters,
-    activity,
-    overlay: under,
-    rect: [rect.x, rect.y, rect.w, rect.h],
-    ...files,
-    viewport: [width, height],
-    display,
-  };
 }
 
 /**

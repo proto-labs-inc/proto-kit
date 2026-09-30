@@ -5,7 +5,8 @@ description: >-
   prompt copied from the Proto site, two lines whose second is a one-time link
   to the setup document: it links this laptop, finds your codebase folder,
   creates the codebase in Proto, opens your product page in a Proto browser
-  window, and hands over to the design-system import. Use when a message starts
+  window, attaches the prepared onboarding design system, and starts the
+  courier. Use when a message starts
   "Set up Proto for", when installing Proto or connecting a new
   codebase, or when other Proto skills find no config.json or codebase.json.
 ---
@@ -14,7 +15,7 @@ description: >-
 
 Two scopes, both idempotent: the **machine** (once: config.json,
 prerequisites) and a **codebase** (once per codebase being prototyped:
-source link, library scaffold). Re-running setup repairs; it never
+source link, onboarding library attachment). Re-running setup repairs; it never
 clobbers working state. **Setup is resumable**: every step below
 leaves its result in a file, so if it parks mid-way (waiting on an
 engineer, a login, anything), a later "continue setting up Proto"
@@ -81,7 +82,7 @@ again and wait for the new prompt. The printed setup document is JSON:
   "productUrl": "https://...",                 // the product page to parse, or absent
   "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" },  // New prototype prompts only
   "prototype": { "slug": "...", "title": "..." },  // Edit prompts only
-  "summary": "Linked as ooj@prototypes.fun in Proojto; still linked as ooj@ooj.foo in ooj.foo.",
+  "summary": "Linked as ada@example.com in Acme; still linked as ada@acme.dev in Acme Labs.",
   "added":   { "user", "team", "laptop", "linkedAt" },  // null when the token it held still works
   "replaced": { … },                           // the same team's previous credential, when there was one
   "kept":    [ { … } ]                         // the other teams this laptop works in, untouched
@@ -167,7 +168,6 @@ teams holds two, side by side.
       "linkedAt": "2026-09-28T…"
     }
   ],
-  "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
 }
 ```
@@ -324,27 +324,12 @@ system it extracts."**
 }
 ```
 
-### Host the library, in the background
+### Leave the local library stopped
 
-The moment `codebase.json` exists, start the library coming up and
-move on:
-
-```
-node tools/host-library.mjs <codebase> > ~/.proto/<codebase>/run/host-library.log 2>&1 &
-```
-
-(`mkdir -p` the run dir first.) One call scaffolds `template/library/`
-into `~/.proto/<codebase>/library/`, installs its dependencies (the
-library is a Vite React app, ADR 0003; the install is paid once per
-codebase), provisions the library tunnel through the site, starts the
-supervised run and verifies it through Cloudflare's edge. It runs
-while the Proto window and icon steps below proceed, so the first
-thing the import does, running the same call again, returns at once
-with the address. Never look the library's hostname up yourself
-meanwhile; the serve skill says why. Its last line is `tunnel:
-connected` or `tunnel: blocked`; on `blocked` the library is still up
-locally and the import still runs and publishes, so read the
-prerequisites' sentence to the user and go on.
+Do not scaffold, host, publish, or import a local library during setup. The
+prepared onboarding library is attached by the cloud only after the real
+codebase and courier are ready. An explicit later design-system import owns
+starting the local library host.
 
 ### The reference page (the Proto window)
 
@@ -389,9 +374,12 @@ Proto window step, while the product's live page is open there:
    candidates over CDP and take the largest png/svg.
 2. Else scan the repo: `public/favicon.*`, `app/icon.*`,
    `src/app/icon.*`.
-3. Convert to a data URL (png/svg/ico, ≤ 256 KB: pick a size that
-   fits) and call the `set_codebase_icon` MCP tool with
-   `{ codebase, image }`. The laptop token supplies the member and team.
+3. Run `node <kit>/tools/codebase-icon.mjs <codebase> <file or icon
+   url>`. It uploads the bytes straight to Proto's storage and sets
+   the codebase's icon; the laptop token supplies the member and team.
+   It takes png, svg or ico up to 256 KB. When it refuses the format or
+   the size, convert once (`sips -s format png -Z 128 <in> --out
+   <tmp>.png`) and run it again with that file.
 4. **Fail soft.** Nothing usable found → skip silently and move on;
    the site shows a letter fallback. No icon is ever worth a
    question or an error sentence.
@@ -416,9 +404,8 @@ without stopping anything.
   why confirmation beat validation above).
 - The `whoami` MCP tool answers with the expected team and grants.
 - `cloudflared --version` runs.
-- `~/.proto/<codebase>/run/host-library.log` ends in `tunnel:
-  connected`, or in `tunnel: blocked` and you have told the user the
-  prerequisites' sentence.
+- The courier can start after the codebase exists. Its relay connection and
+  agent-listening state are verified in the handoff below.
 
 Report what you set up, leading with the link `summary`: which member
 and team this laptop now works as, and which teams it already worked in
@@ -452,19 +439,19 @@ codebase id is in the document), then:
 Setup ends by continuing, not by stopping (an Edit prompt ends at
 "Editing a prototype" above instead):
 
-0. Start listening, before anything slow. Start `node
-   tools/courier-up.mjs <codebase>` in the background (`--codex` on
-   Codex; it needs only the codebase id, which the steps above just
-   made), then arm the listen skill's watch (its step 1) and keep it
-   armed for the rest of this session.
-   Both are light: the watch costs nothing until a command lands. From
-   here on the site shows this laptop as listening, so the user can
-   press Build while the import below is still running; a command
-   that arrives mid-import waits its turn (the listen skill's "Busy
-   when a command lands").
-1. Run **import-design-system** against the found source + the Proto
-   window's live page: the library filling in is the first thing the
-   user watches.
+0. Start listening before attaching the library. Start `node
+   tools/courier-up.mjs <codebase>` (`--codex` on Codex; it needs only
+   the codebase id, which the steps above just made), then arm the listen
+   skill's watch (its step 1) and keep it armed for the rest of this
+   session. Wait for `courier-up.mjs` to report `local: true`,
+   `relay: "connected"`, and `agentListening: true`. If it does not, remain
+   in setup and repair the courier. Do not continue without all three.
+1. Call `attach_onboarding_library { codebase }`. The call is idempotent, so
+   retry it once if it is interrupted or reports a transient failure. Do not
+   run **import-design-system** during setup. If attachment still fails,
+   remain in setup, tell the user in one plain sentence that Proto could not
+   finish the design system, and offer to retry. Never continue to success or
+   create a prototype until attachment succeeds.
 2. If the document carried a `brief`, hand it to **create-prototype**
    verbatim: title, description, the brief document URL, the
    reference page (`productUrl`), the reference HTML (structure
@@ -472,7 +459,7 @@ Setup ends by continuing, not by stopping (an Edit prompt ends at
    Registration there uses the laptop token's member as creator.
 3. End by telling the user, plainly: **keep this session open, it's
    your codebase's agent.** And one more sentence once the first
-   import has finished: the library is published, so it stays
+   attachment has finished: the library is published, so it stays
    viewable after this laptop closes. This very session (in the terminal, the
    Claude Code desktop app, the Codex app, or Cursor's chat) is what receives the site's commands,
    and it has been listening since step 0: carry on with the listen

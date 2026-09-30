@@ -86,8 +86,9 @@ export function kitScript(arg, kit) {
  * version needs not running at all (`missing`), and `unsure` when a
  * courier's harness could not be told.
  *
- * Changes are { kind: "add-wake" | "remove-wake" | "remove-tunnel" }
- * or { kind: "repoint", names, gone }; describeChange words them.
+ * Changes are { kind: "add-wake" | "remove-wake" | "remove-tunnel" },
+ * { kind: "repoint", names, gone } or { kind: "drop-packages-env", names };
+ * describeChange words them.
  */
 export function repairProcesses({ name, spec, kit, runDir, harness }) {
   const processes = spec.processes.map((proc) => ({ ...proc, command: [...proc.command] }));
@@ -135,6 +136,16 @@ export function repairProcesses({ name, spec, kit, runDir, harness }) {
     if (gone) missing = true; // that process is already dead or dying into nothing
   }
 
+  // Rule 3: the rig comes from npm, so no process needs PROTO_PACKAGES.
+  const unpacked = [];
+  for (const proc of processes) {
+    if (!proc.env || !("PROTO_PACKAGES" in proc.env)) continue;
+    const { PROTO_PACKAGES: _, ...env } = proc.env;
+    proc.env = env;
+    unpacked.push(proc.name);
+  }
+  if (unpacked.length > 0) changes.push({ kind: "drop-packages-env", names: unpacked });
+
   return { processes, changes, missing, unsure };
 }
 
@@ -143,6 +154,7 @@ export function describeChange(change, did) {
   if (change.kind === "add-wake") return `${did("add", "added")} the Codex wake`;
   if (change.kind === "remove-wake") return `${did("remove", "removed")} the Codex wake, which belongs only to a Codex courier`;
   if (change.kind === "remove-tunnel") return `${did("remove", "removed")} the courier's tunnel, which the relay replaces`;
+  if (change.kind === "drop-packages-env") return `${did("drop", "dropped")} PROTO_PACKAGES from ${list(change.names)}, since the rig comes from npm`;
   const whose = change.gone ? ", whose own copy is gone" : "";
   return `${did("point", "pointed")} ${list(change.names)} at this copy of the kit${whose}`;
 }

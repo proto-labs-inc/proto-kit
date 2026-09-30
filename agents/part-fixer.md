@@ -30,3 +30,9 @@ the headless Chrome. You write only inside `src/parts/<slug>/`; the
 main agent owns App.tsx, the manifest and everything else. An animated
 decoration or a system-font glyph a few pixels off is not yours to
 chase: one check on it, then move on. Your result will be re-checked.
+
+Pictures (a logo, an icon, an illustration, a chart: the `picture*`,
+`image*` and `background*` files beside the module) are the page's own
+files, set in as they are: never edit, redraw or restyle one. A
+difference inside a picture is its size or what is around it; fix
+that, or report it.

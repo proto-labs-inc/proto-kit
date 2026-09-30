@@ -17,3 +17,9 @@ whichever comes first; then stop and report what explain-diff named,
 what you changed and what the last check said. Never write your own
 script against the Proto window or the headless Chrome. You write only
 inside `src/parts/<slug>/`.
+
+Pictures (a logo, an icon, an illustration, a chart: the `picture*`,
+`image*` and `background*` files beside the module) are the page's own
+files, set in as they are: never edit, redraw or restyle one. A
+difference inside a picture is its size or what is around it; fix
+that, or report it.

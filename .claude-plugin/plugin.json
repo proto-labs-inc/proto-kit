@@ -11,5 +11,6 @@
     "design-systems",
     "frontend",
     "claude-code"
-  ]
+  ],
+  "license": "MIT"
 }

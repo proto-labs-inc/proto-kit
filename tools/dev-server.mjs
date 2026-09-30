@@ -21,7 +21,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, openSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONFIG_PATH } from "./mcp-call.mjs";
 
 export const IDENTITY_FILE = "__proto-workspace.json";
 
@@ -105,11 +104,9 @@ export async function ensureDevServer({ workspace, logPath, keep = false, timeou
   if (before.who === "other") {
     throw new Error(`port ${manifest.port} is serving ${before.found}, not ${workspace}: stop that server or give this workspace another port (public/prototype.json and vite.config.ts must agree)`);
   }
-  const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
   const log = openSync(logPath, "a");
   const child = spawn("pnpm", ["dev"], {
     cwd: workspace,
-    env: { ...process.env, PROTO_PACKAGES: config.packages },
     stdio: ["ignore", log, log],
     detached: true,
   });

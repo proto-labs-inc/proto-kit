@@ -28,6 +28,7 @@
  * touching the cloud.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, resolve, relative, extname, sep } from "node:path";
 import { callTool, readConfig } from "./mcp-call.mjs";
 
@@ -216,9 +217,9 @@ const unwrap = (result) => {
   }
 };
 
-let config;
+// A laptop that is not linked fails here, before anything is uploaded.
 try {
-  config = readConfig();
+  readConfig();
 } catch (e) {
   fail(e.message);
 }
@@ -229,17 +230,10 @@ if (kind === "prototype") target = { kind, codebase, slug };
 else target = { kind, codebase };
 
 // A prototype publish records which rig it was built with, so the app
-// knows which message contract the published build speaks. Pre-npm the
-// rig ships as source from the proto checkout named in config.packages;
-// its package version is the rig version.
+// knows which message contract the published build speaks: the version
+// of the @proto-labs-inc/rig-core the workspace's adapter resolves.
 let rigVersion = null;
-if (kind === "prototype") {
-  if (!config.packages) fail("config.json has no packages path; setup records it (pre-npm, the rig's source)");
-  const rigPackage = join(config.packages, "rig-core", "package.json");
-  if (!existsSync(rigPackage)) fail(`${rigPackage} not found; config.packages must point at a proto checkout's packages folder`);
-  rigVersion = JSON.parse(readFileSync(rigPackage, "utf8")).version;
-  if (!rigVersion) fail(`${rigPackage} has no version`);
-}
+if (kind === "prototype") rigVersion = resolvedRigVersion(workspace);
 const opened = unwrap(
   await callTool("begin_publish", { ...target, files: manifest }).catch((e) => ({
     content: [{ text: e.message }],
@@ -300,5 +294,20 @@ if (kind === "prototype") {
     const reporter = createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: "site" });
     reporter.send([{ kind: "phase", phase: "ready", line: `Published: ${finished.publishedUrl}` }]);
     await reporter.flush().catch((error) => console.error(`the site did not take the published line: ${error.message}`));
+  }
+}
+// The adapter is the workspace's own dependency; rig-core is the
+// adapter's, so it is resolved from there, wherever the package
+// manager put it.
+function resolvedRigVersion(workspace) {
+  const own = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8")).dependencies ?? {};
+  const adapter = ["@proto-labs-inc/rig", "@proto-labs-inc/rig-vue"].find((name) => name in own);
+  if (!adapter) fail(`${workspace}/package.json depends on neither @proto-labs-inc/rig nor @proto-labs-inc/rig-vue`);
+  try {
+    const adapterPackage = createRequire(join(workspace, "package.json")).resolve(`${adapter}/package.json`);
+    const corePackage = createRequire(adapterPackage).resolve("@proto-labs-inc/rig-core/package.json");
+    return JSON.parse(readFileSync(corePackage, "utf8")).version;
+  } catch {
+    fail(`@proto-labs-inc/rig-core does not resolve from ${workspace}; run pnpm install there first`);
   }
 }

@@ -4,11 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Design system</title>
-    <meta name="color-scheme" content="dark light" />
-    <!-- The canvas wears the page's surface: before the stylesheet loads, the same neutral styles.css keeps until the import reads the product's surface. -->
+    <!-- The page's theme before anything paints: the embedding site's (?__protoTheme=, the Design system page and the setup dialog pass their own), otherwise the reader's colour scheme; src/theme.tsx reads the same. The canvas wears that theme's neutral until the import reads the product's surface. -->
+    <script>
+      (() => {
+        const asked = new URLSearchParams(location.search).get("__protoTheme");
+        let theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        if (asked === "light" || asked === "dark") theme = asked;
+        const root = document.documentElement;
+        root.dataset.protoTheme = theme;
+        root.classList.toggle("dark", theme === "dark");
+        root.style.colorScheme = theme;
+      })();
+    </script>
     <style>
       html { background: var(--background, oklch(0.145 0 0)); }
-      @media (prefers-color-scheme: light) { html { background: var(--background, oklch(1 0 0)); } }
+      html[data-proto-theme="light"] { background: var(--background, oklch(1 0 0)); }
     </style>
     <!-- The product's own icon replaces this once the manifest is read (src/App.tsx). -->
     <link rel="icon" href="data:," />
