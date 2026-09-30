@@ -16,7 +16,9 @@
  * --slot names the part's slot class in App.tsx (`className={styles["part42"]}`):
  * replicate pinned the copied part's height on that slot in App.module.css,
  * and a variant of another height needs it freed, so the pin is removed
- * (the copy keeps its height from its own content).
+ * (the copy keeps its height from its own content). A slot with no pin
+ * has nothing to free; the set is written the same and `slot.heightFreed`
+ * is false.
  *
  * <component> is the data-proto-id of the part the set varies: every
  * variant's root carries it, so the Frame's picker, the set and the
@@ -130,14 +132,21 @@ ${cases}
 );
 
 // ---- the slot: no pinned height for a part that will change size ----
+// A slot replicate did not pin (the part came out at its own height)
+// has nothing to free: the set is written all the same, and `slot`
+// says so. Stopping here left the manifest unwritten and the set half
+// made for a part that happened to fit.
 let slot = null;
 if (options.slot) {
   const cssPath = join(workspace, "src", "App.module.css");
   const css = readFileSync(cssPath, "utf8");
   const block = new RegExp(`(\\.page \\.${options.slot} \\{[^}]*?)\\n  height: [^;]+;`, "m");
-  if (!block.test(css)) fail(`no pinned height on .page .${options.slot} in src/App.module.css`);
-  writeFileSync(cssPath, css.replace(block, "$1"));
-  slot = { class: options.slot, heightFreed: true };
+  if (block.test(css)) {
+    writeFileSync(cssPath, css.replace(block, "$1"));
+    slot = { class: options.slot, heightFreed: true };
+  } else {
+    slot = { class: options.slot, heightFreed: false, note: `no pinned height on .page .${options.slot} in src/App.module.css; nothing to free` };
+  }
 }
 
 // ---- the manifest ----
