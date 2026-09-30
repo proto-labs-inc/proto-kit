@@ -17,8 +17,8 @@ offset after acting, keep a watch armed at all times.
 In an interactive session the plugin's `courier-feed` monitor starts
 with you and delivers feed lines as notifications (envelopes carry a
 `codebase` field: act only on your codebase's). In a headless session
-there is no plugin monitor: arm the Monitor tool on `feed-tail.mjs`
-yourself, exactly as the skill says.
+there is no plugin monitor: arm the Monitor tool on `feed-tail.mjs
+<run-dir> --harness claude` yourself, exactly as the skill says.
 
 Dispatch scoped work to your subagents: `importer` for
 design-system extraction units, `builder` for prototype workspace

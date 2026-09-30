@@ -33,7 +33,7 @@ const base = (overrides = {}) => ({
   courierId: "abc",
   token: "abc.sig",
   handle: async () => ({ status: 202 }),
-  listening: () => false,
+  listening: () => ({ agentListening: false, harness: null }),
   log: quiet,
   WebSocketImpl: FakeSocket,
   delay: () => 1,
@@ -61,12 +61,12 @@ test("relay settings come from courier.json, or nothing", () => {
 test("connects with its token, says whether it listens, and replies to a command once handled", async () => {
   FakeSocket.made = [];
   const handled = [];
-  const line = connectRelay(base({ listening: () => true, handle: async (c) => (handled.push(c), { status: 202 }) }));
+  const line = connectRelay(base({ listening: () => ({ agentListening: true, harness: "claude" }), handle: async (c) => (handled.push(c), { status: 202 }) }));
   const socket = FakeSocket.made[0];
   assert.equal(socket.url, "wss://relay.example/couriers/abc/connect?token=abc.sig");
   socket.emit("open");
   assert.equal(line.state(), "connected");
-  assert.deepEqual(JSON.parse(socket.sent[0]), { type: "state", agentListening: true });
+  assert.deepEqual(JSON.parse(socket.sent[0]), { type: "state", agentListening: true, harness: "claude" });
   socket.emit("message", { data: JSON.stringify({ type: "command", id: "c1", command: { run: "create-prototype" } }) });
   await tick();
   assert.deepEqual(handled, [{ run: "create-prototype" }]);

@@ -11,8 +11,9 @@
  * as feed-tail. Picks up codebases created while running. Runs until
  * killed.
  */
-import { openSync, readSync, readFileSync, statSync, closeSync, readdirSync, writeFileSync } from "node:fs";
+import { openSync, readSync, readFileSync, statSync, closeSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { writeWatchStamp } from "./watch-stamp.mjs";
 
 const root = join(process.env.HOME ?? "", ".proto");
 const feeds = new Map(); // codebase -> {offset, carry}
@@ -58,17 +59,18 @@ function drainCodebase(codebase) {
   state.offset = consumed;
 }
 
-// Heartbeat per codebase: the courier's status reports agentListening
-// from this file's freshness — a live watch means a live consumer.
+// Heartbeat per codebase: the courier reports agentListening from the
+// stamp's freshness (a live watch means a live consumer). This watcher
+// is Claude Code's plugin monitor and nothing else's, so the stamp
+// names that harness.
 let lastBeat = 0;
 function beat(codebases) {
   if (Date.now() - lastBeat < 5000) return;
   lastBeat = Date.now();
-  const stamp = JSON.stringify({ at: new Date().toISOString() });
   for (const p of codebases) {
     try {
       statSync(join(root, p, "run", "courier"));
-      writeFileSync(join(root, p, "run", "courier", "watch-heartbeat.json"), stamp);
+      writeWatchStamp(join(root, p, "run", "courier"), "claude");
     } catch {}
   }
 }

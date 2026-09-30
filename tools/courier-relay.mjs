@@ -3,7 +3,8 @@
  * site's relay (docs/research/2026-09-29-command-relay.md in the proto
  * repo). Each command the relay sends goes to courier.mjs's handle(), and
  * is answered with a reply once it is in the feed. Whether a session is
- * listening is reported on connect and whenever it changes.
+ * listening, and in which harness, is reported on connect and whenever
+ * either changes.
  *
  * The heartbeat lives here now, on the connection: a ping every
  * PING_EVERY_MS, which the relay answers without waking. A laptop that
@@ -75,11 +76,15 @@ export function connectRelay({
     for (const id of timers) stopEvery(id);
     timers = [];
   };
+  // `listening()` answers { agentListening, harness }: whether a session
+  // consumes the feed, and the coding agent it runs in (null when the
+  // stamp names none; the site then says "your agent").
   const reportListening = () => {
-    const current = Boolean(listening());
+    const { agentListening, harness } = listening();
+    const current = `${agentListening}:${harness}`;
     if (current === lastListening) return;
     lastListening = current;
-    send({ type: "state", agentListening: current });
+    send({ type: "state", agentListening, harness });
   };
   // One command at a time, in the order they arrive. A reply goes back only
   // on the socket the command came in on; if that socket has been replaced,
