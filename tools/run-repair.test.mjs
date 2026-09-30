@@ -97,3 +97,21 @@ test("courierHarness reads the courier's own files before the caller's word", ()
   assert.equal(courierHarness(plain.runDir, spec, "cursor"), "cursor");
   assert.equal(courierHarness(plain.runDir, spec), null);
 });
+
+test("a prototype's dev process loses PROTO_PACKAGES and keeps the rest of its env", () => {
+  const { kit, runDir } = fixture();
+  const spec = {
+    processes: [
+      { name: "dev", cwd: "/w", command: ["pnpm", "dev"], env: { PROTO_TUNNEL: "1", PROTO_PACKAGES: "/old/proto/packages" } },
+      { name: "tunnel", command: ["cloudflared", "tunnel", "run", "--token", "t"] },
+    ],
+  };
+  const repair = repairProcesses({ name: "my-proto", spec, kit, runDir, harness: null });
+  assert.deepEqual(repair.processes[0].env, { PROTO_TUNNEL: "1" });
+  assert.equal(repair.missing, false);
+  assert.deepEqual(
+    repair.changes.map((c) => describeChange(c, pastTense)),
+    ["dropped PROTO_PACKAGES from dev, since the rig comes from npm"],
+  );
+  assert.equal(spec.processes[0].env.PROTO_PACKAGES, "/old/proto/packages", "the spec passed in is left as it was");
+});

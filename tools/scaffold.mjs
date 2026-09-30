@@ -11,14 +11,14 @@
  *   - names it: package.json name, index.html title, prototype.json name;
  *   - picks a free port no other workspace of the codebase uses and
  *     writes it into vite.config.ts and prototype.json, which must agree;
- *   - writes the rig's source paths into tsconfig.json (the rig resolves
- *     through PROTO_PACKAGES until it publishes to npm, MAA-216);
  *   - writes the page's tokens (the custom properties the read captured
  *     on :root and body) to src/tokens.css, its @font-face rules to
  *     src/fonts.css with the files in src/fonts/, and the body's own face
  *     and colours into src/styles.css;
  *   - wires Tailwind (the plugin and the import) when the source uses it;
- *   - installs with pnpm from the shared store, offline first.
+ *   - installs with pnpm from the shared store, offline first; the rig
+ *     (@proto-labs-inc/rig or rig-vue, and the wire) is a dependency the
+ *     template pins, fetched from npm the first time.
  * Idempotent: a workspace that exists keeps its port and its files;
  * only the derived tokens and fonts are written again, and the install
  * runs only when node_modules is missing or the lockfile changed.
@@ -61,9 +61,6 @@ const readPath = join(buildDir, "read.json");
 if (!existsSync(readPath)) fail(`${readPath} does not exist: run build-stream.mjs read first`);
 const read = JSON.parse(readFileSync(readPath, "utf8"));
 const codebaseRecord = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8"));
-const config = JSON.parse(readFileSync(join(homeDir, ".proto", "config.json"), "utf8"));
-const packages = config.packages;
-if (!packages) fail("~/.proto/config.json names no packages folder: the rig cannot resolve (setup writes it)");
 
 // ---- which template, and whether the source uses Tailwind ----
 const sourcePath = codebaseRecord.source?.path;
@@ -101,20 +98,6 @@ editJson(join(workspace, "package.json"), (pkg) => ({ ...pkg, name: slug }));
 editJson(join(workspace, "public", "prototype.json"), (manifest) => ({ ...manifest, name: slug, port }));
 edit(join(workspace, "index.html"), (html) => html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`));
 edit(join(workspace, "vite.config.ts"), (source) => source.replace(/port: \d+,/, `port: ${port},`));
-
-// ---- the rig's source paths, until it publishes to npm ----
-const adapter = framework === "vue" ? ["@proto/rig-vue", `${packages}/rig-vue/src/index.ts`] : ["@proto/rig", `${packages}/rig/src/index.tsx`];
-editJson(join(workspace, "tsconfig.json"), (tsconfig) => ({
-  ...tsconfig,
-  compilerOptions: {
-    ...tsconfig.compilerOptions,
-    paths: {
-      [adapter[0]]: [adapter[1]],
-      "@proto/rig-core": [`${packages}/rig-core/src/index.ts`],
-      "@proto/wire": [`${packages}/wire/src/index.ts`],
-    },
-  },
-}));
 
 // ---- the page's tokens, fonts and face ----
 const src = join(workspace, "src");
@@ -188,6 +171,8 @@ if (tailwind) {
 }
 
 // ---- install, from the shared store ----
+// Not --frozen-lockfile: the template's lockfile pins everything but
+// the rig, which pnpm resolves at the exact version package.json names.
 let install = 0;
 const lock = join(workspace, "pnpm-lock.yaml");
 const stamp = join(workspace, "node_modules", ".proto-lock");
@@ -195,9 +180,9 @@ const lockText = existsSync(lock) ? readFileSync(lock, "utf8") : "";
 const installed = existsSync(join(workspace, "node_modules")) && existsSync(stamp) && readFileSync(stamp, "utf8") === lockText;
 if (!installed) {
   const began = Date.now();
-  const result = spawnSync("pnpm", ["install", "--prefer-offline", ...(lockText ? ["--frozen-lockfile"] : [])], { cwd: workspace, encoding: "utf8" });
+  const result = spawnSync("pnpm", ["install", "--prefer-offline", "--no-frozen-lockfile"], { cwd: workspace, encoding: "utf8" });
   if (result.status !== 0) fail(`pnpm install failed in ${workspace}:\n${result.stderr}`);
-  writeFileSync(stamp, lockText);
+  writeFileSync(stamp, readFileSync(lock, "utf8"));
   install = Math.round((Date.now() - began) / 100) / 10;
 }
 

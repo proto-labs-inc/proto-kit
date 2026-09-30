@@ -13,7 +13,7 @@
  * over them the site's commands reach a Codex session never: they
  * pile up in the feed with nothing to deliver them.
  *
- * Two rules, over every run dir under `~/.proto/<codebase>/run/`:
+ * Three rules, over every run dir under `~/.proto/<codebase>/run/`:
  *
  *   1. A courier's processes. A courier runs the listener, and no
  *      tunnel: the site's commands reach it through the relay, over a
@@ -31,6 +31,9 @@
  *      harness sweeps away sooner or later; the process then dies at
  *      its next restart and the supervisor restarts it into the same
  *      nothing.
+ *   3. PROTO_PACKAGES. A prototype's dev process was once given the
+ *      path of a proto checkout, where its rig came from; the rig
+ *      comes from npm now, and the variable goes.
  *
  * Nothing else. Ports, tunnels and connector tokens belong to
  * `host-library.mjs` and the serve skill: this never provisions,
@@ -118,7 +121,7 @@ for (const codebase of codebases) {
 
     // The rules themselves live in run-repair.mjs, shared with
     // courier-up.mjs: rule 1 for a courier's processes, rule 2 for the
-    // copy of the kit each process runs from.
+    // copy of the kit each process runs from, rule 3 for PROTO_PACKAGES.
     const harness = name === "courier" ? courierHarness(runDir, spec, told) : null;
     const repair = repairProcesses({ name, spec, kit, runDir, harness });
     const { processes } = repair;

@@ -1,12 +1,6 @@
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
-// Pre-npm: the rig ships as source. PROTO_PACKAGES points at a proto
-// checkout's packages/ dir (the scaffolder writes it into .env or the dev
-// script from ~/.proto/config.json). Once @proto/rig-vue publishes to npm
-// it becomes a plain dependency and this whole block goes away.
-const packages = process.env.PROTO_PACKAGES;
 const tunnel = process.env.PROTO_TUNNEL === "1";
 
 export default defineConfig({
@@ -14,20 +8,6 @@ export default defineConfig({
   // relative paths work at any of them.
   base: "./",
   plugins: [vue()],
-  ...(packages && {
-    resolve: {
-      alias: {
-        "@proto/rig-vue": `${packages}/rig-vue/src/index.ts`,
-        "@proto/rig-core": `${packages}/rig-core/src/index.ts`,
-        "@proto/wire": `${packages}/wire/src/index.ts`,
-        // The rig lazy-imports this from the prototype's own deps; with the
-        // rig aliased from outside the root, vite needs the resolution pinned.
-        "modern-screenshot": fileURLToPath(
-          new URL("./node_modules/modern-screenshot/dist/index.mjs", import.meta.url),
-        ),
-      },
-    },
-  }),
   server: {
     port: 5173, // keep in sync with public/prototype.json
     strictPort: true,

@@ -105,7 +105,7 @@ const cases = written.map((v) => `    case "${v.id}":\n      return <${v.Name} c
 writeFileSync(
   join(dir, "index.tsx"),
   `import type { ReactNode } from "react";
-import { useVariant } from "@proto/rig";
+import { useVariant } from "@proto-labs-inc/rig";
 ${written.map((v) => `import ${v.Name} from "./${v.id}";`).join("\n")}
 
 export const ${SwitchName.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_IDS = ${JSON.stringify(ids)} as const;
