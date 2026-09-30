@@ -13,7 +13,7 @@
      stock images, so scaffolds ship license-clean.
 -->
 <script setup lang="ts">
-import { usePreviewState } from "@proto/rig-vue";
+import { usePreviewState } from "@proto-labs-inc/rig-vue";
 
 const [state] = usePreviewState("default", ["default", "empty"]);
 </script>

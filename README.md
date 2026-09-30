@@ -71,6 +71,7 @@ Serving and publishing:
 - `health.mjs`: the session-start check, one line per codebase.
 - `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
+- `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
 
 The courier and the feed:
 
@@ -251,3 +252,7 @@ node tools/fake-import/run.mjs /tmp/demo-library
 # open the URL Vite prints and watch it fill in; press "Queue it" on
 # the skipped card and the driver extracts it
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

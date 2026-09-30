@@ -59,6 +59,8 @@ node tools/import.mjs <codebase> --theme <light|dark>  run the plan: colours, ty
 node tools/import.mjs <codebase> --check-theme <light|dark>   check every built component in the visible theme
 node tools/snapshot.mjs <codebase> <json | @file> --theme <light|dark>  write one component from its live instances
 node tools/check.mjs <codebase> <slug> --theme <light|dark> [--state <name>] [--activity "<line>"]   check it; each pass lands
+node tools/explain-diff.mjs <codebase> <slug> --theme <light|dark> [--state <name>]   why a state differs: the product's value and ours, named
+node tools/tail.mjs decide <codebase>                 the tail's numbers now, at once: one line to relay when a unit reports; it never waits
 node tools/courier-up.mjs <codebase>                this laptop's courier, up and answering (idempotent)
 node tools/library.mjs component <codebase> <slug> status done
 node tools/library.mjs component <codebase> <slug> status skipped --kind <kind> --reason "<sentence>" --screenshot <png>
@@ -86,7 +88,9 @@ straight after.
    the source": the user sees the import is alive in seconds. On
    `tunnel: blocked` the import runs exactly the same (checks use the
    local address, publishing goes over 443); say the serve skill's
-   sentence once and carry on.
+   sentence once and carry on. On `tunnel: none` (the site could not be
+   reached) the same: the library is up on its local port, every check
+   uses it, and `host-library.mjs` shares it when run again later.
 
    **Listen from here on.** In the same turn, start `node
    tools/courier-up.mjs <codebase>` in the background (`--codex` on
@@ -140,13 +144,16 @@ straight after.
 4. **Run it.** `node tools/import.mjs <codebase> --theme light` (it reads the plan
    `plan.mjs` wrote).
    It writes the palette, the type styles and the inventory with each
-   component's picture, then writes and checks every component, eight
+   component's picture, then writes and checks every component, twelve
    at a time; each check lands in the library as it is made (the user
    sees the product, the copy and the difference stream in), each
    component that matches in every state lands as built, and the
-   library publishes as they land. It prints what is built and what
-   is left to fix, with each failing state's verdict and where the
-   difference sits. Matching captured colours are written as stable
+   library publishes as they land. A component that does not match,
+   or could not be written, stays in the library as skipped with the
+   product's picture and where it differs, so the library completes
+   now; the unit that fixes it lands it as built. It prints what is
+   built and what is left to fix, with each failing state's verdict
+   and where the difference sits. Matching captured colours are written as stable
    `--proto-token-<name>` variables rather than literals, so the same
    generated component can resolve another theme's values.
 
@@ -159,21 +166,48 @@ straight after.
    names. Fix every dark `toFix` result just like a light result; a pass
    records its theme and the library labels it.
 
-5. **Nothing left to fix? Finish at once.** When the runner lists no
-   `toFix` and no `failed`, go straight to the Finish: `complete` and the
-   final publish come before anything else, so the import's time is the
-   import's. Otherwise:
+5. **The gate, then the tail.** The runner's return is the gate: it
+   completed the library itself (`gate.complete`) and left every
+   component it could not finish as skipped, with the product's
+   picture and its reason (`toFix[].reason`, one line each, printed as
+   "<slug> left for later: ..."). Relay the runner's `gate.line` to the
+   user as it stands, in one line, then go to the Finish below. The
+   import's time is the import's: nothing waits on a unit, you never
+   fix a component yourself (not one, not even a small one), and a
+   site brief that arrived meanwhile starts right after the Finish.
 
-   **Fix what is left, in parallel.** For every component in `toFix`
-   or `failed`, dispatch one `importer` sub-agent, **all in one turn**,
-   with the brief below. Never pass a model: the importer role runs on
-   the fast model by design, and the work is small. While they run,
-   check the queue. As each reports, spot-check it (re-run
-   `check.mjs --theme <theme>` on one state) and land it: `status done`,
-   or `status skipped` with
-   its kind, reason and picture. Publish after each landing.
+   Then, for every component in `toFix` or `failed`, dispatch one
+   `importer` sub-agent, **all in one turn, in the background**, with
+   the brief below. Never pass a model: the importer role runs on the
+   fast model by design, and the work is small. Never pass a `name`:
+   a named agent becomes a teammate in its own session (under agent
+   teams), which does not keep this session's permission mode, so
+   every command of theirs asks the user; a plain sub-agent runs in
+   this session with its mode.
 
-6. **Finish**, per the checklist below.
+   Nothing waits on the units. Your next message after the gate is
+   the gate line, in the same turn the runner returned, before you
+   dispatch anything: the user hears "usable now" the moment it is
+   true. From then on `node tools/tail.mjs decide <codebase>` reads the
+   units' numbers as they stand and returns at once with one line
+   ("Fixing in the background: 13 of 15 matched; the rest improved 2%
+   in the last minute, about 4 more minutes to go", or "Moving on: ...,
+   a create-prototype command from the site is waiting"). Run it when a
+   unit reports or when you are asked where things stand, relay its
+   line as it stands, and go on: take the queue and any waiting
+   command. Never wait for a unit, never poll, never ask the user
+   whether to wait; each unit stops on its own budget (three checks or
+   two minutes) and restores its component when it did not match.
+
+   As each unit reports, spot-check it (re-run `check.mjs --theme
+   <theme>` on one state) and land it: `status done`, or `status
+   skipped` again with its kind, the unit's reason and picture. Publish
+   after each landing (the run stays complete; the publish carries the
+   change), and say one short line when a component lands this way
+   ("Badge now matches the product; the library is republished").
+
+6. **Finish**, per the checklist below, right after step 5's gate;
+   every landing after it publishes again.
 
 If anything interrupts you (a question, a crash, a resumed session):
 do that, then come back here. `init` resumes an open run without
@@ -197,8 +231,15 @@ the same in the product's words. These count as matching:
   the rest off.
 
 `differs` is the one to fix: `clusters` say where (CSS px inside the
-component) and the pass pictures show what. Never spend a unit on a
-verdict that counts as matching.
+component), the pass pictures show what, and `explain-diff.mjs` says
+which value: it reads the product's element and ours at the differing
+spots and names each difference (a computed value, a box, a text, a
+reference to an id that no longer exists, an image or a face that did
+not load, the colour behind the component). Never spend a unit on a
+verdict that counts as matching. `context` also covers what the page
+lays over a component without the pointer reaching it (a placeholder
+painted over a field) and what shows through outside its rounded
+corners (an icon under a badge): those pixels are the page's.
 
 A resting state is compared with one frame of the resting page, taken
 when the run starts; a state held with a pseudo-class is captured live,
@@ -214,22 +255,36 @@ its hover look.
 > written from the live page by `tools/snapshot.mjs`; `component.json`
 > names each state's live element. What differs: `<the toFix entry>`.
 > Kit root `<kit>`; do not read the tools' source.
-> Loop, at most six times: look at the latest pass pictures in
-> `~/.proto/<codebase>/run/checks/<slug>/` (`<n>-live.png` is the
-> product, `<n>.png` our copy, `<n>-diff.png` the difference); read
-> the live element for the value that differs (the Proto window, port
-> 9333, read only: `tools/cdp/attach.mjs` findPage and
-> `tools/cdp/cdp.mjs` evaluate); fix that value in the module or its
-> stylesheet, never in a picture file (`picture*`, `image*`,
-> `background*`: the product's own, set in as it is); run `node <kit>/tools/check.mjs <codebase> <slug> --theme <theme>
-> --activity "<what you changed, in the product's words>"`. If a
+> First run `node <kit>/tools/explain-diff.mjs <codebase> <slug>
+> --theme <theme>`: it reads the product's element and our copy at the
+> differing spots and names each difference (a computed value, a box,
+> a text, a reference that points at nothing, an image or a face that
+> did not load, the colour behind the component); its plain lines come
+> first, its JSON last. Apply the fix it names in the module or its
+> stylesheet: the value to write is the product's, never a number
+> between the two, and never in a picture file (`picture*`, `image*`,
+> `background*`: the product's own, set in as it is; a difference
+> inside one is its size or what is around it). Then run `node <kit>/tools/check.mjs <codebase> <slug>
+> --theme <theme> --activity "<what you changed, in the product's
+> words>"`. Budget: three checks or two minutes from your start,
+> whichever comes first; then stop and report. Done is `matched: true`
+> from the check and no type error of yours in its `typecheck`; `stop:
+> true` on a state that still differs is not done, whatever the
+> number. Never remove an element, a text or a list item the product
+> has to quiet a diff: a difference is fixed by a value. A check that
+> stops you without a match restores the folder to how the import
+> wrote it (from the copy explain-diff kept); report `restored`. If a
 > state's live element is the wrong one, correct the plan entry and
-> run `node <kit>/tools/snapshot.mjs <codebase> <spec> --theme <theme>` again instead.
-> Write only in the component's folder; never touch `public/` or run
-> `library.mjs`. Report as data: done or skipped, each state's last
-> verdict, and for a skip the kind (`did-not-match` or
-> `could-not-isolate`), one sentence of at most 140 characters in the
-> product's terms, and the survey picture's path.
+> run `node <kit>/tools/snapshot.mjs <codebase> <spec> --theme
+> <theme>` again instead (that counts as a check). Never write a script against the
+> Proto window or the headless Chrome (no attach.mjs, cdp.mjs, ws,
+> port 9333 or 9444 from your own code): explain-diff is your one read
+> of the page. Write only in the component's folder; never touch
+> `public/` or run `library.mjs`. Report as data: done or skipped, each
+> state's last verdict, what explain-diff named and what you changed,
+> and for a skip the kind (`did-not-match` or `could-not-isolate`),
+> one sentence of at most 140 characters in the product's terms, and
+> the survey picture's path.
 
 ## Components, as the tools write them
 
@@ -280,7 +335,9 @@ the finish, and on every wake while you listen.
 Every line, in order, before you say the import is done:
 
 - every component in the manifest is `done` or `skipped`, none
-  `found`, `extracting` or `queued`;
+  `found`, `extracting` or `queued` (the runner leaves what it could
+  not finish as skipped, with the product's picture and where it
+  differs, so this holds the moment it returns);
 - `node tools/library.mjs complete <codebase>` (it refuses otherwise);
 - `node tools/publish-library.mjs <codebase> --wait`: this last publish
   carries `completedAt`, so the published copy says the import finished;
@@ -289,7 +346,8 @@ Every line, in order, before you say the import is done:
   say plainly that the site cannot reach this laptop yet, and carry on:
   the import itself does not need it;
 - one sentence to the user: the library is published and stays
-  viewable after this laptop closes;
+  viewable after this laptop closes, and how many components are still
+  being fixed in the background (each lands and publishes on its own);
 - keep listening: take any command that queued up during the import
   (oldest first), then continue into the next thing setup asked for
   (a prototype brief), and keep taking the queue.

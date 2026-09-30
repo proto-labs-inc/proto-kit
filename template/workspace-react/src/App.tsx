@@ -1,4 +1,4 @@
-import { usePreviewState } from "@proto/rig";
+import { usePreviewState } from "@proto-labs-inc/rig";
 
 /**
  * Starter page. Replace everything inside <div className="app"> with the

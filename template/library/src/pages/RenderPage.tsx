@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Rendered, moduleOf } from "@/components/Rendered";
+import { Rendered } from "@/components/Rendered";
 import type { ComponentState, Library } from "@/library";
+import { moduleOf, unitOf } from "@/modules";
 import type { Placement } from "@/route";
 
 type Props = { slug: string; state: string; placement: Placement; library: Library };
@@ -9,19 +10,6 @@ type Lookup =
   | { kind: "loading" }
   | { kind: "missing"; why: string }
   | { kind: "ready"; module: string; look: ComponentState; backdrop: string | null };
-
-// The unit's own component.json: its states, and the colour it sat on
-// in the product (its nearest painted ancestor), when the product
-// painted one. Read from the folder, not the manifest, so a unit
-// verifies before anything is landed.
-type Unit = { states: ComponentState[]; backdrop?: string };
-const UNITS = import.meta.glob<{ default: Unit }>("/src/components/*/component.json");
-
-async function unitOf(slug: string): Promise<Unit | null> {
-  const load = UNITS[`/src/components/${slug}/component.json`];
-  if (!load) return null;
-  return (await load()).default;
-}
 
 /**
  * One component in one state, alone on the product's surface, at the
@@ -47,7 +35,7 @@ export function RenderPage({ slug, state, placement, library }: Props) {
       if (!current) return;
       const look = unit?.states.find((s) => s.name === state);
       if (!look) setLookup({ kind: "missing", why: `no state "${state}" in src/components/${slug}/component.json` });
-      else setLookup({ kind: "ready", module, look, backdrop: unit?.backdrop ?? null });
+      else setLookup({ kind: "ready", module, look, backdrop: look.backdrop ?? unit?.backdrop ?? null });
     });
     return () => {
       current = false;

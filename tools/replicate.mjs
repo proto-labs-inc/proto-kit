@@ -16,12 +16,27 @@
  * Needs, in ~/.proto/<codebase>/run/builds/<briefId>/: tree.json and
  * read.json (build-stream.mjs read), curation.json (curate, reviewed,
  * and named), workspace.json (scaffold.mjs). Starts the workspace's dev
- * server when it is not up, and stops it again unless --keep-dev.
+ * server when it is not up (and checks that what answers on the port
+ * is this workspace), and stops it again unless --keep-dev.
+ *
+ * Nothing in it waits without end: each part has three minutes, the
+ * parts stage fifteen, composing five, the page check two, the run
+ * thirty; a part out of time is recorded as failed with that reason
+ * and closes one lane (down to two), and every CDP command is bounded
+ * (tools/cdp/cdp.mjs).
  *
  * Prints one JSON line: { seconds, parts: [{ id, slug, marker, reused,
- * status }], matched: [id], toFix: [{ id, slug, states }], failed: [{ id,
- * slug, error }], reused: [id], page: { verdict, mismatch, pct }, learned,
- * fitted, timings }, where a part's status is matched, differs or failed.
+ * status }], matched: [id], toFix: [{ id, slug, states, reason, rule }],
+ * failed: [{ id, slug, error }], reused: [id], page: { verdict, mismatch,
+ * pct }, learned, fitted, timings, gate: { proceed, line } }, where a
+ * part's status is matched, differs or failed.
+ *
+ * The composed page is the copy's gate (tools/tail.mjs rule 1): the
+ * build goes on to the change from here, whatever is left, and every
+ * part left is the long tail with its reason (a small share of the
+ * page, or simply not matched at the gate) for a background unit.
+ * `gate.proceed` is false only when the copy is unusable: the page did
+ * not mount, or its difference is beyond TAIL.PAGE_PROCEED_PCT.
  */
 import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -36,9 +51,10 @@ import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { framePaths } from "./cdp/live.mjs";
 import { ACCEPTED, checkComponent, liveMatchOf } from "./check.mjs";
+import { TAIL, classifyPart, record, tailFile } from "./tail.mjs";
 import { instanceFromRead, styleOf } from "./read-page.mjs";
 import { INSIDE, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
-import { appBaseline, cssBlock, download, instanceOf, jsxAttr, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
+import { appBaseline, cssBlock, download, instanceOf, jsxAttr, jsxValue, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
@@ -49,6 +65,7 @@ const stage = (name, began) => {
   timings[name] = Math.round((Date.now() - began) / 100) / 10;
 };
 const step = (message) => console.error(`… ${message}`);
+let stopDev = () => {};
 
 const options = { lanes: "12", port: "9333" };
 const positional = [];
@@ -68,6 +85,19 @@ const fail = (message) => {
   process.exit(1);
 };
 if (!briefId || !codebase) fail("usage: node tools/replicate.mjs <briefId> --codebase <id> [--lanes 12] [--no-send] [--keep-dev]");
+
+// The whole run's outer bound: past it, whatever is still open is
+// abandoned with a line saying so, and the exit code says the copy is
+// not done. Every stage below is bounded on its own; this catches what
+// none of them foresaw.
+const RUN_MS = 30 * 60_000;
+setTimeout(() => {
+  console.error(`replicate gave up after ${RUN_MS / 60_000} minutes: a stage never finished (timings so far: ${JSON.stringify(timings)}); the dev server is stopped and the build folder keeps what was written`);
+  try {
+    stopDev();
+  } catch {}
+  process.exit(2);
+}, RUN_MS).unref();
 
 const homeDir = process.env.HOME ?? "";
 const home = join(homeDir, ".proto", codebase);
@@ -96,7 +126,7 @@ if (leaves.length === 0) fail("the curation names no leaves: nothing to replicat
 // ---- the dev server ----
 const began = Date.now();
 const dev = await ensureDevServer({ workspace: workspace.path, logPath: join(buildDir, "dev.log"), keep: Boolean(options.keepDev) });
-const stopDev = () => dev.stop();
+stopDev = () => dev.stop();
 
 // The display the live page is drawn on: what the headless Chrome must match.
 const tab = await findPage(liveMatch, Number(options.port));
@@ -136,63 +166,100 @@ reporter.send([
 ]);
 
 // ---- lanes ----
+// Every part is bounded, the stage is bounded, and the lanes adapt: a
+// part that runs past PART_MS is recorded as failed and its lane moves
+// on (its tab closes when its own commands time out, tools/cdp/cdp.mjs);
+// each such failure closes one lane, down to LANES_MIN, since a lane
+// that ran out of time was most likely starved by the others; when the
+// stage runs past STAGE_MS, what is not finished is recorded as failed
+// and the build composes what it has. Nothing here waits without end.
+const PART_MS = 180_000;
+const STAGE_MS = 15 * 60_000;
+const LANES_MIN = 2;
 const matched = [];
 const toFix = [];
 const failed = [];
 const reused = [];
 const queue = [...parts];
 const partsBegan = Date.now();
-async function lane() {
+let capacity = Math.max(1, Number(options.lanes));
+const stageOver = () => Date.now() - partsBegan > STAGE_MS;
+const overdue = (part, error) => {
+  failed.push({ id: part.id, slug: part.slug, error });
+  step(`${part.slug}: ${error}`);
+  if (capacity > LANES_MIN) {
+    capacity -= 1;
+    step(`… ${capacity} lanes from here: a lane ran out of time`);
+  }
+};
+async function lane(index) {
   for (let part = queue.shift(); part; part = queue.shift()) {
-    const partBegan = Date.now();
-    try {
-      reporter.send([{ kind: "focus", id: part.id }]);
-      let outcome = null;
-      const twin = libraryMatch(part.instance);
-      if (twin) {
-        adoptLibraryPart(part, twin);
-        outcome = await check(part);
-        if (!outcome.matched) step(`${part.slug}: the library's ${twin.slug} looked alike but does not match here; writing it from the page`);
-        else reused.push(part.id);
-      }
-      if (!outcome?.matched) {
-        part.reused = null;
-        await writeComponent({
-          instances: [part.instance],
-          faces: read.faces ?? [],
-          spec: { slug: part.slug, name: part.name },
-          folder: part.folder,
-          appUrl,
-          viewport,
-          display,
-          baseline,
-          marker: part.marker,
-          assets: read.assets ?? {},
-        });
-        outcome = await check(part);
-      }
-      part.outcome = outcome;
-      const seconds = `${Math.round((Date.now() - partBegan) / 100) / 10} s`;
-      if (outcome.matched) {
-        matched.push(part.id);
-        step(`${part.slug}: ${outcome.states[0].result.verdict} (${seconds})`);
-      } else {
-        toFix.push({ id: part.id, slug: part.slug, states: outcome.states.map((s) => ({ state: s.state, verdict: s.result?.verdict ?? s.verdict, mismatch: s.result?.mismatch ?? null, clusters: s.result?.clusters?.slice(0, 3) ?? [], error: s.error })) });
-        step(`${part.slug}: ${outcome.states.map((s) => s.result?.verdict ?? s.verdict).join(", ")} (${seconds})`);
-      }
-    } catch (error) {
-      // A render caught in a dev-server reload is tried once more; anything else is this part's own failure.
-      if (/navigated or closed/.test(error.message) && !part.retried) {
-        part.retried = true;
-        queue.unshift(part);
-        continue;
-      }
-      failed.push({ id: part.id, slug: part.slug, error: error.message });
-      step(`${part.slug}: could not be written (${error.message})`);
+    if (stageOver()) {
+      failed.push({ id: part.id, slug: part.slug, error: `not started: the parts stage ran past ${STAGE_MS / 60_000} minutes` });
+      continue;
     }
+    const partBegan = Date.now();
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve("late"), PART_MS);
+      timer.unref?.();
+    });
+    const outcome = await Promise.race([replicatePart(part).then(() => "done"), late]);
+    clearTimeout(timer);
+    if (outcome === "late") overdue(part, `did not finish within ${PART_MS / 1000} s (${Math.round((Date.now() - partBegan) / 1000)} s in); left for later`);
+    // A lane past the capacity ends once its part is done; the parts left go to the others.
+    if (index >= capacity) return;
   }
 }
-await Promise.all(Array.from({ length: Math.max(1, Number(options.lanes)) }, lane));
+/** One part: adopted from the library or written from the page, then checked; never throws. */
+async function replicatePart(part) {
+  const partBegan = Date.now();
+  try {
+    reporter.send([{ kind: "focus", id: part.id }]);
+    let outcome = null;
+    const twin = libraryMatch(part.instance);
+    if (twin) {
+      adoptLibraryPart(part, twin);
+      outcome = await check(part);
+      if (!outcome.matched) step(`${part.slug}: the library's ${twin.slug} looked alike but does not match here; writing it from the page`);
+      else reused.push(part.id);
+    }
+    if (!outcome?.matched) {
+      part.reused = null;
+      await writeComponent({
+        instances: [part.instance],
+        faces: read.faces ?? [],
+        spec: { slug: part.slug, name: part.name },
+        folder: part.folder,
+        appUrl,
+        viewport,
+        display,
+        baseline,
+        marker: part.marker,
+        assets: read.assets ?? {},
+      });
+      outcome = await check(part);
+    }
+    part.outcome = outcome;
+    const seconds = `${Math.round((Date.now() - partBegan) / 100) / 10} s`;
+    if (outcome.matched) {
+      matched.push(part.id);
+      step(`${part.slug}: ${outcome.states[0].result.verdict} (${seconds})`);
+    } else {
+      toFix.push({ id: part.id, slug: part.slug, states: outcome.states.map((s) => ({ state: s.state, verdict: s.result?.verdict ?? s.verdict, mismatch: s.result?.mismatch ?? null, clusters: s.result?.clusters?.slice(0, 3) ?? [], error: s.error })) });
+      step(`${part.slug}: ${outcome.states.map((s) => s.result?.verdict ?? s.verdict).join(", ")} (${seconds})`);
+    }
+  } catch (error) {
+    // A render caught in a dev-server reload is tried once more; anything else is this part's own failure.
+    if (/navigated or closed/.test(error.message) && !part.retried) {
+      part.retried = true;
+      return replicatePart(part);
+    }
+    failed.push({ id: part.id, slug: part.slug, error: error.message });
+    step(`${part.slug}: could not be written (${error.message})`);
+  }
+}
+await Promise.all(Array.from({ length: capacity }, (_, index) => lane(index)));
 stage("parts", partsBegan);
 
 /** Check one part's states, stream each pass, and the match with its picture. */
@@ -222,17 +289,45 @@ async function check(part) {
 const composeBegan = Date.now();
 reporter.send([{ kind: "phase", phase: "composing", line: "Putting the page together around its parts" }]);
 const built = parts.filter((part) => part.outcome);
-const page = await composePage(built);
+const page = await bounded(composePage(built), 5 * 60_000, "composing the page").catch((error) => fail(error.message));
 stage("compose", composeBegan);
 
 const pageBegan = Date.now();
-const pageCheck = await settled(checkPage);
+const pageCheck = await bounded(settled(checkPage), 2 * 60_000, "checking the page").catch((error) => ({ verdict: "failed", mismatch: null, pct: null, clusters: [], error: error.message }));
 stage("pageCheck", pageBegan);
 
 // ---- the library learns the parts it lacked ----
 const libraryBegan = Date.now();
 const learned = learnParts(built.filter((part) => part.outcome.matched && part.reused === null));
 stage("library", libraryBegan);
+
+// ---- the gate: the copy is usable now; what is left is the tail ----
+const pageArea = viewport.width * viewport.height * display.dpr * display.dpr;
+const areaOf = (part) => Math.max(1, Math.round((part.node.rect?.[2] ?? 1) * (part.node.rect?.[3] ?? 1)));
+record(tailFile(codebase, briefId), {
+  kind: "phase",
+  phase: "copy",
+  items: parts.map((part) => ({ item: part.slug, weight: areaOf(part), matched: statusOf(part) === "matched" })),
+});
+for (const entry of toFix) {
+  const worst = entry.states.find((s) => s.verdict === "differs") ?? entry.states[0];
+  const small = worst && classifyPart({ verdict: worst.verdict, mismatch: worst.mismatch, pageArea });
+  entry.rule = small?.tail ? "small" : "gate";
+  entry.reason = small?.tail ? `${small.reason.replace("its area", "the page")}` : "still differs at the gate";
+  record(tailFile(codebase, briefId), { kind: "item", item: entry.slug, rule: entry.rule, reason: entry.reason });
+  step(`${entry.slug} left for later: ${entry.reason}`);
+}
+for (const entry of failed) {
+  record(tailFile(codebase, briefId), { kind: "item", item: entry.slug, rule: "gate", reason: entry.error });
+  step(`${entry.slug} left for later: ${entry.error}`);
+}
+const pagePct = parseFloat(pageCheck?.pct ?? "100");
+const proceed = pageCheck?.verdict !== "failed" && Number.isFinite(pagePct) && pagePct <= TAIL.PAGE_PROCEED_PCT;
+let gateLine = `Usable now: ${matched.length} of ${parts.length} parts match and the page differs by ${pageCheck?.pct ?? "?"}`;
+if (proceed) gateLine += "; the change is written on this copy";
+else gateLine += `; the copy is not usable yet (${pageCheck?.error ?? `the page differs by more than ${TAIL.PAGE_PROCEED_PCT}%`})`;
+if (toFix.length + failed.length > 0) gateLine += `. ${toFix.length + failed.length} part${toFix.length + failed.length === 1 ? "" : "s"} left for later, each with its reason above: the long tail, for background units.`;
+step(gateLine);
 
 await reporter.flush();
 stopDev();
@@ -248,11 +343,22 @@ console.log(
     learned,
     fitted: page.rounds,
     timings,
+    gate: { proceed, line: gateLine },
   }),
 );
 process.exit(0);
 
 // ---- helpers ----
+
+/** `work` finished within `ms`, or an error naming the stage that did not. */
+function bounded(work, ms, what) {
+  let timer;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms / 1000} s`)), ms);
+    timer.unref?.();
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
 
 function statusOf(part) {
   if (!part.outcome) return "failed";
@@ -449,7 +555,7 @@ async function composePage(builtParts) {
           attrs.push(name === "checked" ? "defaultChecked" : name);
           continue;
         }
-        attrs.push(`${jsxName}={${JSON.stringify(value)}}`);
+        attrs.push(`${jsxName}={${jsxValue(name, value)}}`);
       }
       if (node.tag === "button") attrs.push(`type="button"`);
       if (node.tag === "input" || node.tag === "textarea") attrs.push("readOnly");
@@ -610,7 +716,11 @@ async function checkPage() {
   let verdict = "differs";
   if (result.diffPixels === 0) verdict = "match";
   else if (result.diffPixels <= 0.003 * result.width * result.height) verdict = "faint";
-  return { verdict, mismatch: result.diffPixels, pct: result.pct, clusters: result.clusters.slice(0, 6), screenshot: mine, diff };
+  // The page's dialog is part of the copy (its own state, open by default
+  // as the page shows it), so the whole-page diff compares like with like;
+  // the note says why the shading is in both pictures.
+  const overlay = tree.overlay ? { reason: "a dialog covers the live page", dialog: tree.overlay.dialog, backdrop: tree.overlay.backdrop, label: tree.overlay.label } : null;
+  return { verdict, mismatch: result.diffPixels, pct: result.pct, clusters: result.clusters.slice(0, 6), screenshot: mine, diff, overlay };
 }
 
 /**

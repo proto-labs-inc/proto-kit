@@ -6,8 +6,10 @@
  * (tools/check.mjs, each pass landing as it is made), several at a
  * time; a component that matches in every state lands as built, and
  * the library is published as they land (publishes coalesce, so this
- * never queues builds). What does not match stays "extracting" and is
- * listed for a unit to fix.
+ * never queues builds). What does not match, or could not be written,
+ * lands as skipped with the product's picture and where it differs,
+ * so the library completes at once; it is listed for a unit to fix,
+ * and lands as built when the unit's check passes.
  *
  * Usage: node tools/import.mjs <codebase> [<plan.json>] [--theme <light|dark>] [--lanes <n>]
  *        node tools/import.mjs <codebase> --check-theme <light|dark> [--lanes <n>]
@@ -28,15 +30,23 @@
  *   }
  * A type style without a name is named from where it is used.
  *
- * Prints one JSON line: { seconds, built: [slug], toFix: [{ slug, states }], failed: [{ slug, error }] }.
+ * The moment every component has been written and checked is the
+ * import's gate: the library is completed right here (library.mjs
+ * complete), whatever is left, and what is left is the long tail
+ * (tools/tail.mjs rule 1), named with its reason for a background
+ * unit; the run's tail.jsonl gets the phase record the tail's own
+ * decisions are made from.
+ *
+ * Prints one JSON line: { seconds, built: [slug], toFix: [{ slug, states, unfitted, reason }], failed: [{ slug, error }], gate: { line, completeSeconds, complete } }.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findPage } from "./cdp/attach.mjs";
-import { connect } from "./cdp/cdp.mjs";
-import { takeFrame } from "./cdp/live.mjs";
+import { connect, evaluate } from "./cdp/cdp.mjs";
+import { frameCrop, takeFrame, withLive } from "./cdp/live.mjs";
+import { classifyState, record, tailFile } from "./tail.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
@@ -66,6 +76,11 @@ spawnSync("mkdir", ["-p", scratch]);
 
 const tool = (name) => join(kit, "tools", name);
 const step = (message) => console.error(`… ${message}`);
+// A tool's failure in one line: the error it named, not Node's own banner under it.
+const lastLine = (stderr) => {
+  const lines = stderr.trim().split("\n").filter((line) => line.trim() !== "" && !/^Node\.js v/.test(line));
+  return lines.find((line) => /Error|error:|could not|does not|did not|no open tab|nothing on/.test(line))?.trim() ?? lines.pop()?.trim() ?? "failed";
+};
 
 /**
  * Run a kit tool to the end, or stop it after two minutes: one stuck
@@ -166,6 +181,8 @@ step(`${themes?.[options.theme]?.length ?? 0} ${options.theme} colours, ${plan.t
 const built = [];
 const toFix = [];
 const failed = [];
+// Each component's states' pixels, for the tail's weights.
+const areas = new Map();
 // The heaviest first (most states to read and check), so a big
 // component starts in the first batch instead of becoming the tail; the
 // library still lists them in the plan's order.
@@ -180,32 +197,153 @@ async function lane() {
     const snapped = await run("snapshot.mjs", [codebase, `@${spec}`, "--theme", options.theme]);
     const wrote = took();
     if (snapped.status !== 0) {
-      failed.push({ slug: component.slug, error: snapped.stderr.trim().split("\n").pop() });
-      step(`${component.slug}: could not be written (${snapped.stderr.trim().split("\n").pop()})`);
+      const error = lastLine(snapped.stderr);
+      failed.push({ slug: component.slug, error });
+      await leave(component, "could-not-isolate", "The import could not read it from the page on its own this run");
+      step(`${component.slug}: could not be written (${error})`);
       continue;
     }
+    let unfitted = [];
+    try {
+      unfitted = JSON.parse(snapped.stdout).unfitted ?? [];
+    } catch {
+      // The writer's line is for the record; a component it wrote is checked either way.
+    }
+    if (unfitted.length > 0) step(`${component.slug}: sizes could not be fitted for ${unfitted.join(", ")} (the render route did not answer); checking as written`);
     const checked = await run("check.mjs", [codebase, component.slug, "--theme", options.theme]);
     let result = null;
     try {
       result = JSON.parse(checked.stdout);
     } catch {
-      failed.push({ slug: component.slug, error: checked.stderr.trim().split("\n").pop() });
+      const error = lastLine(checked.stderr);
+      failed.push({ slug: component.slug, error });
+      await leave(component, "could-not-isolate", "The import could not check it against the page this run");
+      step(`${component.slug}: could not be checked (${error})`);
       continue;
     }
+    areas.set(component.slug, result.states.map((s) => s.area ?? 1));
     if (result.matched) {
       write("component", component.slug, "status", "done");
       built.push(component.slug);
       publish();
       step(`${component.slug}: built, every state matches (written in ${wrote}, done in ${took()})`);
     } else {
-      toFix.push({ slug: component.slug, states: result.states.filter((s) => !["match", "shifted", "offscreen"].includes(s.verdict)) });
+      const differing = result.states.filter((s) => !["match", "shifted", "context", "faint", "offscreen"].includes(s.verdict));
+      toFix.push({ slug: component.slug, states: differing, unfitted });
+      await leave(component, "did-not-match", whereItDiffers(component, differing));
       step(`${component.slug}: ${result.states.map((s) => `${s.state} ${s.verdict}`).join(", ")} (${took()})`);
     }
   }
 }
+
+/**
+ * A component the import could not finish stays in the library with
+ * the product's picture and why, as skipped, so the library completes
+ * without waiting on the unit that fixes it; the unit lands it as done
+ * when its check passes. The picture is the survey's crop, else the
+ * product capture of its latest check.
+ */
+async function leave(component, kind, reason) {
+  const picture = component.picture ?? latestCapture(component.slug) ?? (await cropFromFrame(component));
+  if (!picture) {
+    step(`${component.slug}: left as found (no picture of it to show yet)`);
+    return;
+  }
+  try {
+    write("component", component.slug, "status", "skipped", "--kind", kind, "--reason", reason, "--screenshot", picture);
+    publish();
+  } catch (error) {
+    step(`${component.slug}: could not be left as skipped (${error.message.split("\n").pop()})`);
+  }
+}
+
+// The component's default state cut from the resting frame, when the page still stands where the frame was taken.
+async function cropFromFrame(component) {
+  const selector = component.states?.[0]?.selector;
+  if (!selector) return null;
+  try {
+    const liveUrl = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8")).source.liveUrl;
+    const page = new URL(liveUrl);
+    const tab = await findPage(`${page.host}${page.pathname}`);
+    if (!tab) return null;
+    const live = await connect(tab.webSocketDebuggerUrl);
+    try {
+      const rect = await withLive(() => evaluate(live, `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })()`));
+      if (!rect || rect.width === 0 || rect.height === 0) return null;
+      const out = join(scratch, `${component.slug}-crop.png`);
+      return (await frameCrop(live, codebase, rect, out)) ? out : null;
+    } finally {
+      live.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+// The product capture of the component's latest landed check, from the library's own history.
+function latestCapture(slug) {
+  try {
+    const manifest = JSON.parse(readFileSync(join(home, "library", "public", "manifest.json"), "utf8"));
+    const entry = manifest.components.find((c) => c.slug === slug);
+    const live = [...(entry?.history ?? [])].reverse().find((pass) => pass.live)?.live;
+    return live ? join(home, "library", "public", live) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Where the component differs, for the person whose product it is: the states and the spot, in one sentence under the reason cap.
+function whereItDiffers(component, states) {
+  const spots = states.map((s) => `${s.state.toLowerCase()} ${s.activity?.replace(/^[^:]*:\s*/, "").toLowerCase() ?? "differs"}`);
+  let sentence = `Not identical to the product yet: ${spots.join("; ")}`;
+  if (sentence.length > 120) sentence = `Not identical to the product yet in ${states.length} of its states (${states.map((s) => s.state.toLowerCase()).join(", ")})`;
+  if (sentence.length > 120) sentence = `Not identical to the product yet in ${states.length} of its states`;
+  return `${sentence}; being fixed`;
+}
 await Promise.all(Array.from({ length: Math.max(1, Number(options.lanes)) }, lane));
 
-console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 1000), built, toFix, failed }));
+// ---- the gate: the library is usable now; the rest is the tail ----
+const gateBegan = Date.now();
+let complete = true;
+let completeError = null;
+try {
+  write("complete");
+} catch (error) {
+  complete = false;
+  completeError = error.message.split("\n").pop();
+}
+publish();
+const completeSeconds = Math.round((Date.now() - gateBegan) / 100) / 10;
+// The tail's own record: every component with its weight (its largest
+// state's pixels), the built ones matched already.
+const weightOf = (slug) => Math.max(1, ...(areas.get(slug) ?? [1]));
+record(tailFile(codebase), {
+  kind: "phase",
+  phase: "import-tail",
+  items: [...built.map((slug) => ({ item: slug, weight: weightOf(slug), matched: true })), ...toFix.map((t) => ({ item: t.slug, weight: weightOf(t.slug) })), ...failed.map((f) => ({ item: f.slug, weight: weightOf(f.slug) }))],
+});
+for (const entry of toFix) {
+  // Rule 1 names every one of them; rule 2 says when a unit need not even try.
+  const small = entry.states.length > 0 && entry.states.every((s) => classifyState({ verdict: s.verdict, mismatch: s.mismatch, area: s.area }).tail);
+  const why = small ? classifyState({ verdict: entry.states[0].verdict, mismatch: entry.states[0].mismatch, area: entry.states[0].area }).reason : `${entry.states.map((s) => s.state).join(", ")} still differ${entry.states.length === 1 ? "s" : ""} at the gate`;
+  entry.reason = why;
+  entry.rule = small ? "small" : "gate";
+  record(tailFile(codebase), { kind: "item", item: entry.slug, rule: entry.rule, reason: why });
+  step(`${entry.slug} left for later: ${why}`);
+}
+for (const entry of failed) {
+  entry.rule = "gate";
+  record(tailFile(codebase), { kind: "item", item: entry.slug, rule: "gate", reason: entry.error });
+  step(`${entry.slug} left for later: ${entry.error}`);
+}
+const left = toFix.length + failed.length;
+let line = `Usable now: ${built.length} of ${components.length} built in ${Math.round((Date.now() - started) / 1000)} s`;
+if (complete) line += `; the library is complete (${completeSeconds} s)`;
+else line += `; the library could not be completed (${completeError})`;
+if (left > 0) line += `. ${left} left for later, each with its reason above; they are the long tail and go to background units.`;
+step(line);
+
+console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 1000), built, toFix, failed, gate: { line, complete, completeSeconds } }));
 
 /** Names for type styles the plan left unnamed, from the elements that use them. */
 function nameTypes(styles) {

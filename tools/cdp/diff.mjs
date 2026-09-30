@@ -11,11 +11,15 @@ export const THRESHOLD = 8;
  * Compare two PNGs at `threshold` (max channel delta that still
  * counts as equal). Writes the diff image (the real capture with
  * every disagreeing pixel painted red) to `diffPath` when given.
- * -> { width, height, diffPixels, pct, maxDelta, clusters }
+ * `ignore(x, y)` names device pixels that are not the element's own
+ * (outside its rounded corners, where the page shows through): they
+ * are neither counted nor painted.
+ * -> { width, height, diffPixels, pct, maxDelta, clusters, bad }
  *    clusters: bounding boxes of the disagreeing regions, largest
- *    first, in CSS px at `dpr`.
+ *    first, in CSS px at `dpr`; bad: one byte per pixel, 1 where the
+ *    two disagree.
  */
-export function diffPngs(realPath, minePath, { diffPath, threshold = THRESHOLD, dpr = 2 } = {}) {
+export function diffPngs(realPath, minePath, { diffPath, threshold = THRESHOLD, dpr = 2, ignore = null } = {}) {
   const real = decodePng(readFileSync(realPath));
   const mine = decodePng(readFileSync(minePath));
   const width = Math.min(real.width, mine.width);
@@ -34,8 +38,9 @@ export function diffPngs(realPath, minePath, { diffPath, threshold = THRESHOLD, 
         Math.abs(real.data[a + 1] - mine.data[b + 1]),
         Math.abs(real.data[a + 2] - mine.data[b + 2]),
       );
-      maxDelta = Math.max(maxDelta, delta);
-      if (delta > threshold) {
+      const own = ignore === null || !ignore(x, y);
+      if (own) maxDelta = Math.max(maxDelta, delta);
+      if (own && delta > threshold) {
         diffPixels += 1;
         bad[y * width + x] = 1;
         out[o] = 255;
@@ -60,6 +65,7 @@ export function diffPngs(realPath, minePath, { diffPath, threshold = THRESHOLD, 
     pct: ((100 * diffPixels) / (width * height)).toFixed(2) + "%",
     maxDelta,
     clusters: clusters(bad, width, height, dpr),
+    bad,
   };
 }
 

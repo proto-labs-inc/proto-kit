@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ProtoRig } from "@proto/rig";
-import type { Manifest } from "@proto/wire";
+import { ProtoRig } from "@proto-labs-inc/rig";
+import type { Manifest } from "@proto-labs-inc/wire";
 import manifest from "../public/prototype.json";
 import "./styles.css";
 

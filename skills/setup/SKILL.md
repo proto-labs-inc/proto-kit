@@ -82,7 +82,7 @@ again and wait for the new prompt. The printed setup document is JSON:
   "productUrl": "https://...",                 // the product page to parse, or absent
   "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" },  // New prototype prompts only
   "prototype": { "slug": "...", "title": "..." },  // Edit prompts only
-  "summary": "Linked as ooj@prototypes.fun in Proojto; still linked as ooj@ooj.foo in ooj.foo.",
+  "summary": "Linked as ada@example.com in Acme; still linked as ada@acme.dev in Acme Labs.",
   "added":   { "user", "team", "laptop", "linkedAt" },  // null when the token it held still works
   "replaced": { … },                           // the same team's previous credential, when there was one
   "kept":    [ { … } ]                         // the other teams this laptop works in, untouched
@@ -168,7 +168,6 @@ teams holds two, side by side.
       "linkedAt": "2026-09-28T…"
     }
   ],
-  "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
 }
 ```
