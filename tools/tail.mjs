@@ -219,7 +219,8 @@ export function decide(records, codebase, now = Date.now()) {
   const gainBefore = before.P - earlier.P;
   const remaining = 1 - here.P;
   const eta = gain > 0 ? (remaining / gain) * TAIL.WINDOW_MS : Infinity;
-  const minutes = eta === Infinity ? "no end in sight" : `about ${Math.max(1, Math.round(eta / 60_000))} more minute${Math.round(eta / 60_000) === 1 ? "" : "s"} to go`;
+  const minutesLeft = Math.max(1, Math.round(eta / 60_000));
+  const minutes = eta === Infinity ? "no end in sight" : `about ${minutesLeft} more minute${minutesLeft === 1 ? "" : "s"} to go`;
   const lastMinute = `the rest improved ${pct(gain + gainBefore)} in the last minute`;
   const tail = `The rest keeps going in the background.`;
   const base = { ...numbers(here), gain, gainBefore, eta };
