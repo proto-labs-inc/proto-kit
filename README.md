@@ -250,3 +250,7 @@ node tools/fake-import/run.mjs /tmp/demo-library
 # open the URL Vite prints and watch it fill in; press "Queue it" on
 # the skipped card and the driver extracts it
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
