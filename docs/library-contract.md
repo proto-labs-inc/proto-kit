@@ -286,6 +286,17 @@ a markup dump.
   default. `tools/snapshot.mjs` types those props `string | null`, and
   presence-only attributes (`disabled`, `checked`) as booleans.
 
+  `tools/snapshot.mjs` also writes `"shape": { "tags", "root" }`, the
+  default look's element shape and the root's face and paint: a
+  prototype build (`tools/replicate.mjs`) reads it to recognise the
+  component in a part of another page and reuse it. The app ignores it.
+
+  Every written component takes a `className` prop, landed on its root
+  beside its own classes, for wherever it is placed (a page's margins
+  around it). A component a prototype build learned from its page
+  (docs/build-read.md) arrives `done` with `unverified` saying it was
+  checked against the page in that build, not in the library.
+
   `status done` copies it into the manifest, and refuses a token the
   manifest does not hold, so push the tokens before landing the unit.
 - `notes.md`: the unit's working notes; the app never reads it.

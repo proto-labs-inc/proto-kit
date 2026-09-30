@@ -304,8 +304,12 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
   const url = `${appUrl.replace(/\/+$/, "")}/#/render/${encodeURIComponent(slug)}/${encodeURIComponent(state)}?x=${rect.x}&y=${rect.y}&w=${rect.w}`;
   const replica = await headlessPage(url, { width, height, display });
   try {
-    await evaluate(replica.page, "new Promise((done) => { const tick = () => document.querySelector('[data-render]') && !document.querySelector('[data-loading]') ? done() : setTimeout(tick, 50); tick(); })");
-    const outcome = await evaluate(replica.page, "document.querySelector('[data-render]').dataset.render");
+    // At most 15 s: a route that never mounts (the app failed to load) is
+    // this pass's failure, not a hang. The outcome is read in the same
+    // breath as the wait, so a page reloading between the two cannot
+    // answer with an empty document.
+    const outcome = await evaluate(replica.page, "new Promise((done) => { const until = Date.now() + 15000; const tick = () => { const root = document.querySelector('[data-render]'); if (root && !document.querySelector('[data-loading]')) done(root.dataset.render); else if (Date.now() > until) done(null); else setTimeout(tick, 50); }; tick(); })");
+    if (outcome === null) throw new Error(`the render route did not mount ${slug}/${state} within 15 s`);
     if (outcome !== "ok") throw new Error(`the render route could not show ${slug}/${state}: ${outcome}`);
     await evaluate(replica.page, "document.fonts.ready.then(() => document.fonts.status)");
     // The replica's own photos, to tell a photo each browser scales

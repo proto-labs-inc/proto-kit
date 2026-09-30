@@ -43,8 +43,9 @@
  *
  * Prints one JSON line: { slug, module, states, tokens, backdrop, nodes, fonts, images }.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { findPage } from "./cdp/attach.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
@@ -55,7 +56,7 @@ const USAGE = "usage: node tools/snapshot.mjs <codebase> <json | @file>";
 // ---- what to copy ----
 
 // Properties a child takes from its parent unless it sets them.
-const INHERITED = new Set([
+export const INHERITED = new Set([
   "color", "cursor", "direction", "visibility", "white-space", "white-space-collapse", "text-wrap-mode", "text-wrap-style",
   "font-family", "font-size", "font-style", "font-weight", "font-stretch", "font-variant", "font-variant-caps",
   "font-variant-east-asian", "font-variant-ligatures", "font-variant-numeric", "font-variant-alternates", "font-variant-position",
@@ -91,7 +92,7 @@ const DECLARED_SET = new Set(DECLARED);
 // Never copied: logical duplicates of physical properties the computed
 // style also lists, animation machinery with no keyframes behind it,
 // SVG geometry that lives in attributes, and engine internals.
-function skipped(name) {
+export function skipped(name) {
   if (name.startsWith("--")) return true;
   if (DECLARED_SET.has(name)) return true;
   if (/^border-(start|end)-(start|end)-radius$/.test(name)) return true;
@@ -107,7 +108,7 @@ function skipped(name) {
 // ---- reading the page ----
 
 /** Everything about one instance, read in one evaluate. */
-const READ_INSTANCE = String.raw`(rootSelector) => {
+export const READ_INSTANCE = String.raw`(rootSelector) => {
   const root = document.querySelector(rootSelector);
   if (!root) return null;
   const elements = [root, ...root.querySelectorAll('*')];
@@ -193,7 +194,7 @@ const READ_INSTANCE = String.raw`(rootSelector) => {
  * component needs one (`fit`), or where the element is drawn at a size
  * its content does not give it (an image, an icon, an empty box).
  */
-function layoutOf(node, nodes, fit, isRoot, room = null) {
+export function layoutOf(node, nodes, fit, isRoot, room = null) {
   const st = node.style;
   const out = {};
   if (!isRoot) {
@@ -270,7 +271,7 @@ function fractions(tracks, size, st) {
  * size. Returns whether anything was pinned (the component is written
  * again and fitted once more).
  */
-async function fitSizes(appUrl, slug, looks, states, viewport, display) {
+export async function fitSizes(appUrl, slug, looks, states, viewport, display) {
   let changed = false;
   for (const inst of looks) {
     const [rx, ry, rw] = inst.nodes[0].rect;
@@ -342,7 +343,7 @@ function fills(node, parent, axis) {
 // ---- the app's own base ----
 
 /** Computed style of a bare element of each kind inside the library app, the base under every component. */
-async function appBaseline(appUrl, kinds, viewport, display) {
+export async function appBaseline(appUrl, kinds, viewport, display) {
   const page = await headlessPage(`${appUrl}/#/render/__baseline__/none`, { ...viewport, display });
   try {
     return await evaluate(
@@ -382,12 +383,12 @@ async function appBaseline(appUrl, kinds, viewport, display) {
   }
 }
 
-const kindOf = (node) => `${node.tag}|${node.svg ? 1 : 0}|${node.tag === "input" ? node.attrs.type ?? "" : ""}`;
+export const kindOf = (node) => `${node.tag}|${node.svg ? 1 : 0}|${node.tag === "input" ? node.attrs.type ?? "" : ""}`;
 
 // ---- fonts and images ----
 
 /** The page's @font-face rules, read through the CSS domain (cross-origin sheets included). */
-async function fontFaces(live) {
+export async function fontFaces(live) {
   const sheets = [];
   const listener = live.on("CSS.styleSheetAdded", ({ header }) => sheets.push(header));
   await live.send("DOM.enable");
@@ -413,7 +414,7 @@ async function fontFaces(live) {
   return faces;
 }
 
-const familiesIn = (value) =>
+export const familiesIn = (value) =>
   value
     .split(",")
     .map((f) => f.trim().replace(/^["']|["']$/g, ""))
@@ -448,8 +449,8 @@ function inlineImage(url) {
 
 // ---- writing the component ----
 
-const pascal = (slug) => slug.replace(/(^|-)([a-z0-9])/g, (_, __, c) => c.toUpperCase());
-const keyOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "default";
+export const pascal = (slug) => slug.replace(/(^|-)([a-z0-9])/g, (_, __, c) => c.toUpperCase());
+export const keyOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "default";
 
 const SVG_KEEP_KEBAB = /^(data-|aria-)/;
 const HTML_ATTRS = {
@@ -466,7 +467,7 @@ const BOOLEAN_ATTRS = { disabled: "disabled", checked: "defaultChecked" };
 // references to them, tab order) means nothing outside its page.
 const PAGE_WIRING = new Set(["id", "tabindex", "aria-describedby", "aria-labelledby", "aria-controls", "aria-owns", "aria-activedescendant", "aria-errormessage", "aria-details", "form"]);
 
-function jsxAttr(name, node) {
+export function jsxAttr(name, node) {
   if (PAGE_WIRING.has(name)) return null;
   if (name in HTML_ATTRS) return HTML_ATTRS[name];
   if (name.startsWith("data-") || name.startsWith("on")) return null;
@@ -492,7 +493,7 @@ function ownName(node) {
   return null;
 }
 
-function nameNodes(nodes) {
+export function nameNodes(nodes) {
   const used = new Map();
   return nodes.map((node, i) => {
     let base = "part";
@@ -520,9 +521,9 @@ function childKind(child) {
   return "t";
 }
 
-const shapeOf = (nodes) => nodes.map((n) => `${n.tag}:${n.parent}:${n.children.map(childKind).join("")}`).join("|");
+export const shapeOf = (nodes) => nodes.map((n) => `${n.tag}:${n.parent}:${n.children.map(childKind).join("")}`).join("|");
 
-function cssBlock(selector, props) {
+export function cssBlock(selector, props) {
   const entries = Object.entries(props);
   if (entries.length === 0) return "";
   return `${selector} {\n${entries.map(([k, v]) => `  ${k}: ${v};`).join("\n")}\n}\n`;
@@ -554,7 +555,7 @@ const PAINTED_BY = {
 };
 
 /** The properties to write for one element of one instance. */
-function propsFor(node, nodes, baseline, declared, isRoot) {
+export function propsFor(node, nodes, baseline, declared, isRoot) {
   const out = {};
   const base = baseline[kindOf(node)].style;
   const parent = isRoot ? null : nodes[node.parent];
@@ -600,7 +601,7 @@ function propsFor(node, nodes, baseline, declared, isRoot) {
   return out;
 }
 
-function pseudoProps(node, which, baseline) {
+export function pseudoProps(node, which, baseline) {
   const style = node.pseudo[which];
   const base = baseline[kindOf(node)].pseudo[which] ?? {};
   const out = {};
@@ -782,6 +783,36 @@ function main() {
   return run(codebase, spec);
 }
 
+/**
+ * Every state of a component read from the live page, under the
+ * window's lock, plus the page's @font-face rules and the display the
+ * page is drawn on. `live` is a connected page.
+ */
+export async function readLiveInstances(live, states) {
+  const [width, height] = await evaluate(live, "[innerWidth, innerHeight]");
+  const viewport = { width, height };
+  const display = await displayOf(live);
+  const instances = [];
+  for (const state of states) {
+    // Read under the window's lock: another lane's held hover must not show in it.
+    const read = await withForcedState(live, state.selector, state.force, async () => {
+      const data = await evaluate(live, `(${READ_INSTANCE})(${JSON.stringify(state.selector)})`);
+      if (!data) throw new Error(`nothing on the live page matches ${state.selector} (state ${state.name})`);
+      return data;
+    });
+    instances.push(instanceOf(state, read));
+  }
+  const faces = await fontFaces(live);
+  return { instances, faces, viewport, display };
+}
+
+/** One instance as the writer holds it: the read, plus room for fitted sizes. */
+export function instanceOf(state, read) {
+  const inst = { state, ...read, fit: read.nodes.map(() => ({})) };
+  inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0, inst.room));
+  return inst;
+}
+
 async function run(codebase, spec) {
   const home = join(process.env.HOME ?? "", ".proto", codebase);
   const library = join(home, "library");
@@ -793,47 +824,22 @@ async function run(codebase, spec) {
   const tab = await findPage(`${page.host}${page.pathname}`);
   if (!tab) throw new Error("the product page is not open in the Proto window");
   const live = await connect(tab.webSocketDebuggerUrl);
-  const Name = pascal(spec.slug);
-
-  let instances;
-  let faces;
-  let viewport;
-  let display;
+  let read;
   try {
-    const [width, height] = await evaluate(live, "[innerWidth, innerHeight]");
-    viewport = { width, height };
-    display = await displayOf(live);
-    instances = [];
-    for (const state of spec.states) {
-      // Read under the window's lock: another lane's held hover must not show in it.
-      const read = await withForcedState(live, state.selector, state.force, async () => {
-        const data = await evaluate(live, `(${READ_INSTANCE})(${JSON.stringify(state.selector)})`);
-        if (!data) throw new Error(`nothing on the live page matches ${state.selector} (state ${state.name})`);
-        return data;
-      });
-      const inst = { state, ...read, fit: read.nodes.map(() => ({})) };
-      inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0, inst.room));
-      instances.push(inst);
-    }
-    faces = await fontFaces(live);
+    read = await readLiveInstances(live, spec.states);
   } finally {
     live.close();
   }
+  return writeComponent({ ...read, spec, folder, appUrl, manifestPath: join(library, "public", "manifest.json") });
+}
 
-  // A held state is its look with a pseudo-class on: it shares that look's fitted sizes.
-  for (const inst of instances.filter((x) => x.state.force)) {
-    const of = inst.state.of ? instances.find((x) => x.state.name === inst.state.of) : instances[0];
-    if (of && of.nodes.length === inst.nodes.length) inst.fit = of.fit;
-  }
-
-  // The app's base under each kind of element any instance holds.
-  const kinds = [...new Set(instances.flatMap((inst) => inst.nodes.map(kindOf)))];
-  const baseline = await appBaseline(appUrl, kinds, viewport, display);
-
-  rmSync(folder, { recursive: true, force: true });
-  mkdirSync(folder, { recursive: true });
-
-  // Fonts: every face of every family the component's text uses.
+/**
+ * The @font-face rules a set of instances needs, as CSS with the files
+ * beside the module: every face of every family their text uses. A
+ * face read from a captured page carries `files` (url → local path),
+ * copied; any other is downloaded.
+ */
+async function writeFonts(folder, instances, faces) {
   const families = new Set(instances.flatMap((inst) => inst.nodes.flatMap((n) => familiesIn(n.style["font-family"] ?? ""))));
   const fontCss = [];
   const fontFiles = new Map();
@@ -846,15 +852,24 @@ async function run(codebase, spec) {
       if (!file) {
         file = fileNameOf(absolute, `font${fontFiles.size + 1}.woff2`);
         if ([...fontFiles.values()].includes(file)) file = `${fontFiles.size + 1}-${file}`;
-        await download(absolute, join(folder, file));
+        const captured = face.files?.[absolute];
+        if (captured && existsSync(captured)) copyFileSync(captured, join(folder, file));
+        else await download(absolute, join(folder, file));
         fontFiles.set(absolute, file);
       }
       body = body.replace(match[0], `url("./${file}")`);
     }
     fontCss.push(`@font-face {\n  ${body.trim().replace(/;\s*/g, ";\n  ").replace(/\n  $/, "")}\n}\n`);
   }
+  return { fontCss, fontFiles };
+}
 
-  // Images: an <img> becomes an imported file beside the module.
+/**
+ * Every <img> the instances show, as a file beside the module: a
+ * captured page's `assets` (url → local path) are copied, a data: URL
+ * is written out as the file it holds, anything else is downloaded.
+ */
+async function writeImages(folder, instances, assets) {
   const images = new Map();
   for (const inst of instances) {
     for (const node of inst.nodes) {
@@ -863,9 +878,11 @@ async function run(codebase, spec) {
       if (images.has(absolute)) continue;
       const ident = `image${images.size + 1}`;
       let file;
-      // An inline image (a data: URL) is written out as the file it holds,
-      // so it is imported like any other and chosen by look the same way.
-      if (absolute.startsWith("data:")) {
+      const captured = assets?.[absolute];
+      if (captured && existsSync(captured)) {
+        file = `${ident}${/\.[a-z0-9]+$/i.exec(captured)?.[0] ?? ".png"}`;
+        copyFileSync(captured, join(folder, file));
+      } else if (absolute.startsWith("data:")) {
         const inline = inlineImage(absolute);
         file = `${ident}.${inline.extension}`;
         writeFileSync(join(folder, file), inline.bytes);
@@ -876,6 +893,51 @@ async function run(codebase, spec) {
       images.set(absolute, { file, ident });
     }
   }
+  return images;
+}
+
+/**
+ * The component's own fingerprint, so a later build can tell that a
+ * part of another page is this component: the default look's element
+ * shape and the root's face and paint.
+ */
+export function shapeFingerprint(nodes) {
+  const root = nodes[0].style;
+  return {
+    tags: shapeOf(nodes),
+    root: Object.fromEntries(["font-family", "font-size", "font-weight", "color", "background-color", "border-top-left-radius", "border-top-width"].map((k) => [k, root[k]])),
+  };
+}
+
+/**
+ * Write a component from instances already read (live or captured):
+ * src/components/<slug>/ in `folder`, fitted against the app at
+ * `appUrl` (a library or a prototype workspace, both serving the
+ * render route). `baseline` is the app's base styles when the caller
+ * has them for these kinds already; `manifestPath` names the library
+ * manifest to match palette colours against, or null for none;
+ * `marker` puts a data-proto-id on the root; `assets` maps captured
+ * image urls to local files.
+ */
+export async function writeComponent({ instances, faces, spec, folder, appUrl, viewport, display, baseline, manifestPath = null, marker = null, assets = null }) {
+  const Name = pascal(spec.slug);
+
+  // A held state is its look with a pseudo-class on: it shares that look's fitted sizes.
+  for (const inst of instances.filter((x) => x.state.force)) {
+    const of = inst.state.of ? instances.find((x) => x.state.name === inst.state.of) : instances[0];
+    if (of && of.nodes.length === inst.nodes.length) inst.fit = of.fit;
+  }
+
+  // The app's base under each kind of element any instance holds.
+  const kinds = [...new Set(instances.flatMap((inst) => inst.nodes.map(kindOf)))];
+  const missing = kinds.filter((kind) => !baseline?.[kind]);
+  if (missing.length > 0) baseline = { ...baseline, ...(await appBaseline(appUrl, missing, viewport, display)) };
+
+  rmSync(folder, { recursive: true, force: true });
+  mkdirSync(folder, { recursive: true });
+
+  const { fontCss, fontFiles } = await writeFonts(folder, instances, faces);
+  const images = await writeImages(folder, instances, assets);
   const imageOf = (node, inst) => images.get(new URL(node.attrs.src, inst.base).toString());
 
   // Everything below is written again after each round of fitting sizes.
@@ -1046,8 +1108,11 @@ async function run(codebase, spec) {
     const d = condition ? depth + 1 : depth;
     if (condition) lines.push(`${indent(depth)}{(${condition}) && (`);
     const attrs = [];
-    if (id === 0) attrs.push("className={cx(styles.root, styles[`variant-${variant}`], interaction === \"rest\" ? undefined : styles[`interaction-${interaction}`])}");
-    else attrs.push(`className={styles[${JSON.stringify(names[id])}]}`);
+    if (id === 0) {
+      attrs.push("className={cx(styles.root, styles[`variant-${variant}`], interaction === \"rest\" ? undefined : styles[`interaction-${interaction}`], className)}");
+      // The part's marker: what the Frame's comment mode hit-tests in a prototype.
+      if (marker) attrs.push(`data-proto-id=${JSON.stringify(marker)}`);
+    } else attrs.push(`className={styles[${JSON.stringify(names[id])}]}`);
     const attrNames = new Set([...u.members.entries()].filter(([look]) => variants.includes(look)).flatMap(([look, k]) => Object.keys(look.nodes[k].attrs)));
     for (const name of attrNames) {
       const value = node.attrs[name];
@@ -1139,6 +1204,10 @@ async function run(codebase, spec) {
   destructure.push(`variant = "default"`);
   propDocs.push(`  /** A pointer or focus look, held without a pointer; "rest" is neither. */\n  interaction?: ${Name}Interaction;`);
   destructure.push(`interaction = "rest"`);
+  // Where the component is placed says how it sits there (its margins in
+  // a page); the class lands on the root beside the component's own.
+  propDocs.push(`  /** A class for the root, from wherever the component is placed. */\n  className?: string;`);
+  destructure.push("className");
 
   const tsx = `import type { ReactNode } from "react";
 import styles from "./${Name}.module.css";
@@ -1188,7 +1257,7 @@ ${lines.join("\n")}
     if (inst.state.force) live.force = inst.state.force;
     return { name: inst.state.name, props, live };
   });
-  const unit = { states, tokens: [] };
+  const unit = { states, tokens: [], shape: shapeFingerprint(defaultInst.nodes) };
   if (defaultInst.backdrop) unit.backdrop = defaultInst.backdrop;
   writeFileSync(join(folder, "component.json"), JSON.stringify(unit, null, 2) + "\n");
   return { states, defaultInst, variants };
@@ -1202,9 +1271,10 @@ ${lines.join("\n")}
     for (const inst of instances) inst.declared = inst.nodes.map((node, i) => layoutOf(node, inst.nodes, inst.fit[i], i === 0, inst.room));
     ({ states, defaultInst, variants } = emit());
   }
-  const tokens = await matchTokens(library, instances, appUrl, viewport, display);
-  const unit = { states, tokens };
+  const tokens = manifestPath ? await matchTokens(manifestPath, instances, appUrl, viewport, display) : [];
+  const unit = { states, tokens, shape: shapeFingerprint(defaultInst.nodes) };
   if (defaultInst.backdrop) unit.backdrop = defaultInst.backdrop;
+  if (spec.unverified) unit.unverified = spec.unverified;
   writeFileSync(join(folder, "component.json"), JSON.stringify(unit, null, 2) + "\n");
 
   // ---- notes.md ----
@@ -1213,7 +1283,7 @@ ${lines.join("\n")}
     "",
     `Written by tools/snapshot.mjs on ${new Date().toISOString()} from ${defaultInst.base.split("?")[0]}.`,
     "",
-    "Every value in the stylesheet is the live element's computed style; a value equal to the library app's own base for that element is left out. Widths and heights are left to the layout and pinned only where the component, rendered on its own, came out a different size from the product (100% where the product's box fills its parent, else its size); equal grid tracks that fill their container are written as fractions.",
+    "Every value in the stylesheet is the live element's computed style; a value equal to the app's own base for that element is left out. Widths and heights are left to the layout and pinned only where the component, rendered on its own, came out a different size from the product (100% where the product's box fills its parent, else its size); equal grid tracks that fill their container are written as fractions.",
     "",
     "## States and where they were read",
     "",
@@ -1228,7 +1298,7 @@ ${lines.join("\n")}
 
   return {
     slug: spec.slug,
-    module: `src/components/${spec.slug}/${Name}.tsx`,
+    module: join(folder, `${Name}.tsx`),
     states: states.map((s) => s.name),
     tokens,
     backdrop: defaultInst.backdrop,
@@ -1242,8 +1312,7 @@ ${lines.join("\n")}
 const SHAPES = ["path", "circle", "rect", "line", "polyline", "polygon", "ellipse", "text", "use"];
 
 /** The manifest's palette colours the component paints with, compared as the display draws them. */
-async function matchTokens(library, instances, appUrl, viewport, display) {
-  const manifestPath = join(library, "public", "manifest.json");
+async function matchTokens(manifestPath, instances, appUrl, viewport, display) {
   if (!existsSync(manifestPath)) return [];
   const tokens = JSON.parse(readFileSync(manifestPath, "utf8")).tokens ?? [];
   if (tokens.length === 0) return [];
@@ -1279,17 +1348,19 @@ async function matchTokens(library, instances, appUrl, viewport, display) {
   }
 }
 
-// A snapshot that cannot finish says so; it never hangs the import behind it.
-setTimeout(() => {
-  console.error("the component could not be written within 90 s (the page or the library app stopped answering); try it again");
-  process.exit(2);
-}, 90_000).unref();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  // A snapshot that cannot finish says so; it never hangs the import behind it.
+  setTimeout(() => {
+    console.error("the component could not be written within 90 s (the page or the library app stopped answering); try it again");
+    process.exit(2);
+  }, 90_000).unref();
 
-try {
-  const result = await main();
-  console.log(JSON.stringify(result));
-  process.exit(0);
-} catch (error) {
-  console.error(error.message);
-  process.exit(1);
+  try {
+    const result = await main();
+    console.log(JSON.stringify(result));
+    process.exit(0);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
 }

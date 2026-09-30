@@ -36,6 +36,10 @@ export default defineConfig({
     port: 5173, // keep in sync with public/prototype.json
     strictPort: true,
     cors: true, // the Frame fetches prototype.json cross-origin
+    // A build's lanes add parts while its checks run in other pages; a
+    // new file that is not a module (a part's notes, its fonts and
+    // pictures) would otherwise reload every open page mid-capture.
+    watch: { ignored: ["**/notes.md", "**/*.woff2", "**/*.woff", "**/*.ttf", "**/*.otf", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.avif", "**/*.svg"] },
     // Tunnel gotchas: accept the public hostname + wss HMR when served
     // through the gateway. Off by default so local dev stays untouched.
     ...(tunnel && {
