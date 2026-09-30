@@ -78,7 +78,9 @@ straight after.
    the source": the user sees the import is alive in seconds. On
    `tunnel: blocked` the import runs exactly the same (checks use the
    local address, publishing goes over 443); say the serve skill's
-   sentence once and carry on.
+   sentence once and carry on. On `tunnel: none` (the site could not be
+   reached) the same: the library is up on its local port, every check
+   uses it, and `host-library.mjs` shares it when run again later.
 
    **Listen from here on.** In the same turn, start `node
    tools/courier-up.mjs <codebase>` in the background (`--codex` on

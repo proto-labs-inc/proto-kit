@@ -27,10 +27,14 @@
  * do, is named in one sentence and does not fail the run: the library
  * is up locally, publishing goes over 443 and works, and the import
  * that called this has everything it needs. Failing here was how an
- * import came to extract nothing at all.
+ * import came to extract nothing at all. A site that cannot be reached
+ * at all is the same: the run starts without a tunnel process,
+ * tunnel.json records the port with no address, and the import runs
+ * on the local port.
  *
- * Prints, one per line: the public URL, the local URL, the run dir, and
- * whether the tunnel is connected or blocked.
+ * Prints, one per line: the public URL (or "not shared" and why), the
+ * local URL, the run dir, and whether the tunnel is connected, blocked
+ * or none.
  *
  * Usage: node host-library.mjs <codebase>
  */
@@ -120,17 +124,26 @@ const specPath = join(runDir, "spec.json");
 const status = spawnSync(process.execPath, [supervise, "status", runDir], { encoding: "utf8" });
 const servingPort = status.status === 0 && !status.stdout.includes("DOWN") ? specPort() : null;
 const port = servingPort ?? (await ephemeralPort());
+// The tunnel is only for sharing: the import, the checks and the units
+// need the local port alone. A site that cannot be reached (offline, a
+// deployment down) is said in one line, the run still starts, and
+// tunnel.json still records the port with no address, so nothing that
+// reads it fails on a missing file. The next run of this script asks
+// for the tunnel again.
 step(`provisioning the library tunnel for port ${port}`);
 const tunnel = unwrap(await callTool("provision_tunnel", { kind: "library", codebase, port }).catch((e) => ({ content: [{ text: e.message }] })));
-if (!tunnel.url || !tunnel.hostname || !tunnel.connectorToken) fail(`provision_tunnel did not answer with an address: ${tunnel.error ?? JSON.stringify(tunnel)}`);
-writeFileSync(join(runDir, "tunnel.json"), JSON.stringify({ url: tunnel.url, hostname: tunnel.hostname, port }, null, 2) + "\n");
+const shared = Boolean(tunnel.url && tunnel.hostname && tunnel.connectorToken);
+const notShared = shared ? null : `the site did not hand out an address: ${firstLine(tunnel.error ?? JSON.stringify(tunnel))}`;
+if (!shared) console.error(`! The library is served on this laptop only: ${notShared}. Run host-library.mjs again once the site is reachable to share it.`);
+writeFileSync(join(runDir, "tunnel.json"), JSON.stringify(shared ? { url: tunnel.url, hostname: tunnel.hostname, port } : { url: null, hostname: null, port, notShared }, null, 2) + "\n");
 
-// 4. The run: three processes, exactly as the serve skill shows.
+// 4. The run: the dev server and the liveness beat, and the tunnel
+// when the site handed one out, exactly as the serve skill shows.
 const spec = {
   name: `${codebase}/library`,
   processes: [
     { name: "dev", cwd: library, command: ["pnpm", "dev"], env: { PROTO_TUNNEL: "1", PROTO_PORT: String(port) } },
-    { name: "tunnel", command: ["cloudflared", "tunnel", "run", "--token", tunnel.connectorToken] },
+    ...(shared ? [{ name: "tunnel", command: ["cloudflared", "tunnel", "run", "--token", tunnel.connectorToken] }] : []),
     { name: "heartbeat", command: ["node", join(kit, "tools", "prototype-heartbeat.mjs"), "--kind", "library", runDir, codebase] },
   ],
 };
@@ -157,21 +170,35 @@ await waitFor(`${local}/manifest.json`, 60_000, (url) => fetch(url, { signal: Ab
 // run (MAA-182): a network that cannot carry a tunnel is a fact about
 // the network, not a broken library, and the import that called this
 // goes on to extract and publish over 443 as usual.
-const watch = watchTunnel(runDir);
-step("asking cloudflared whether it reached Cloudflare");
-const tunnelStatus = await settledTunnel(watch, 40_000);
-if (tunnelStatus === TUNNEL_CONNECTED) {
-  step("verifying through Cloudflare's edge");
-  await verifyEdge();
-} else {
-  console.error(`! ${TUNNEL_BLOCKED_SENTENCE}`);
-  console.error(`  cloudflared is still trying; see ${runDir}/tunnel.log.`);
+let tunnelStatus = "none";
+if (shared) {
+  const watch = watchTunnel(runDir);
+  step("asking cloudflared whether it reached Cloudflare");
+  tunnelStatus = await settledTunnel(watch, 40_000);
+  if (tunnelStatus === TUNNEL_CONNECTED) {
+    step("verifying through Cloudflare's edge");
+    await verifyEdge();
+  } else {
+    console.error(`! ${TUNNEL_BLOCKED_SENTENCE}`);
+    console.error(`  cloudflared is still trying; see ${runDir}/tunnel.log.`);
+  }
 }
 
-console.log(`library: ${tunnel.url}`);
+console.log(`library: ${shared ? tunnel.url : `not shared (${notShared})`}`);
 console.log(`local: ${local}`);
 console.log(`run: ${runDir}`);
-console.log(`tunnel: ${tunnelStatus === TUNNEL_CONNECTED ? "connected" : "blocked"}`);
+console.log(`tunnel: ${tunnelLine(tunnelStatus)}`);
+
+function tunnelLine(status) {
+  if (status === "none") return "none";
+  if (status === TUNNEL_CONNECTED) return "connected";
+  return "blocked";
+}
+
+// One line of an error, without Node's own banner.
+function firstLine(text) {
+  return String(text).split("\n").find((line) => line.trim() !== "") ?? "no answer";
+}
 
 // Wait for cloudflared to stop being undecided: a registered connection
 // or a failed pre-check, whichever comes first. Undecided at the
