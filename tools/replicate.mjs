@@ -54,7 +54,7 @@ import { ACCEPTED, checkComponent, liveMatchOf } from "./check.mjs";
 import { TAIL, classifyPart, record, tailFile } from "./tail.mjs";
 import { instanceFromRead, styleOf } from "./read-page.mjs";
 import { INSIDE, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
-import { appBaseline, cssBlock, download, instanceOf, jsxAttr, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
+import { appBaseline, cssBlock, download, instanceOf, jsxAttr, jsxValue, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
@@ -555,7 +555,7 @@ async function composePage(builtParts) {
           attrs.push(name === "checked" ? "defaultChecked" : name);
           continue;
         }
-        attrs.push(`${jsxName}={${JSON.stringify(value)}}`);
+        attrs.push(`${jsxName}={${jsxValue(name, value)}}`);
       }
       if (node.tag === "button") attrs.push(`type="button"`);
       if (node.tag === "input" || node.tag === "textarea") attrs.push("readOnly");

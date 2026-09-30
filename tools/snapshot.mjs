@@ -558,14 +558,32 @@ export function keptIdsOf(instances) {
   return kept;
 }
 
+// The aria attributes React types as numbers; the page holds them as strings.
+const NUMERIC_ARIA = new Set(["aria-level", "aria-setsize", "aria-posinset", "aria-colcount", "aria-colindex", "aria-colspan", "aria-rowcount", "aria-rowindex", "aria-rowspan", "aria-valuemax", "aria-valuemin", "aria-valuenow"]);
+// The tags whose `type` attribute React types know; on any other (a div
+// a framework marked type="button") it is the page's own wiring.
+const TYPED_TAGS = new Set(["a", "button", "input", "ol", "link", "source", "script", "style", "embed", "object", "menu"]);
+
 export function jsxAttr(name, node) {
   if (PAGE_WIRING.has(name)) return null;
+  if (name === "type" && !TYPED_TAGS.has(node.tag)) return null;
   if (name in HTML_ATTRS) return HTML_ATTRS[name];
   if (name.startsWith("data-") || name.startsWith("on")) return null;
   if (name.startsWith("aria-") || name === "role") return name;
   if (node.svg && !SVG_KEEP_KEBAB.test(name)) return name.replace(/[-:]([a-z])/g, (_, c) => c.toUpperCase());
   const keep = ["type", "placeholder", "href", "src", "alt", "width", "height", "name", "title", "id", "disabled", "checked", "rows", "cols", "target", "rel", "dir", "lang", "viewBox"];
   return keep.includes(name) ? name : null;
+}
+
+/**
+ * An attribute's value as a JSX expression: a number where React's
+ * types take one, else the string. As an expression, like a text
+ * child: a quoted JSX attribute reads backslashes literally, so a JSON
+ * string there is not the same string.
+ */
+export function jsxValue(name, value) {
+  if (NUMERIC_ARIA.has(name) && /^-?\d+(\.\d+)?$/.test(value)) return value;
+  return JSON.stringify(value);
 }
 
 // Classes named for what the element is, so the stylesheet reads: the
@@ -1383,9 +1401,7 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
         attrs.push(BOOLEAN_ATTRS[name]);
         continue;
       }
-      // As an expression, like a text child: a quoted JSX attribute reads
-      // backslashes literally, so a JSON string there is not the same string.
-      attrs.push(`${jsxName}={${JSON.stringify(value)}}`);
+      attrs.push(`${jsxName}={${jsxValue(name, value)}}`);
     }
     if (node.tag === "button" && !("type" in node.attrs)) attrs.push(`type="button"`);
     if (id === 0 && valueSlot === 0) attrs.push(`defaultValue={value}`);
