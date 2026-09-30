@@ -70,6 +70,7 @@ Serving and publishing:
 - `heartbeat.mjs`: the beat loop those share.
 - `health.mjs`: the session-start check, one line per codebase.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
+- `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
 
 The courier and the feed:
 

@@ -13,7 +13,6 @@
 import { spawn } from "node:child_process";
 import { openSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONFIG_PATH } from "./mcp-call.mjs";
 
 /** Whether an address answers with a 2xx within a moment. */
 export async function answers(url) {
@@ -34,11 +33,9 @@ export async function ensureDevServer({ workspace, logPath, keep = false, timeou
   const manifest = JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8"));
   const url = `http://localhost:${manifest.port}`;
   if (await answers(`${url}/prototype.json`)) return { url, port: manifest.port, started: false, stop() {} };
-  const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
   const log = openSync(logPath, "a");
   const child = spawn("pnpm", ["dev"], {
     cwd: workspace,
-    env: { ...process.env, PROTO_PACKAGES: config.packages },
     stdio: ["ignore", log, log],
     detached: true,
   });

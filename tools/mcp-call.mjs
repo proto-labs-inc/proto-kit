@@ -158,7 +158,6 @@ export function addCredential({ app, credential }) {
     schemaVersion: 3,
     app,
     credentials: [...kept, credential],
-    ...(previous.packages ? { packages: previous.packages } : {}),
     createdAt: previous.createdAt ?? credential.linkedAt,
     updatedAt: credential.linkedAt,
   };

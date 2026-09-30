@@ -93,7 +93,7 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
      (tabs and steps, empty/loading/error branches, overlays, toggles)
      is a state in `public/prototype.json` (id, title, one-line
      description, `parent` for branches) and a branch in the code via
-     `usePreviewState` from `@proto/rig`; the ids in both must match. The
+     `usePreviewState` from `@proto-labs-inc/rig`; the ids in both must match. The
      rig owns the URL (`?state=<id>`); wire the product's own controls to
      move between states. Hover and focus are CSS, not states.
    - **Variants**: step 8.
@@ -209,12 +209,14 @@ the template matching the source repo's framework (`vue` in its
 `package.json` → `template/workspace-vue/`, else
 `template/workspace-react/`): the slug in `package.json`, `index.html`
 and `public/prototype.json`; a free port in `vite.config.ts` and
-`prototype.json` (they must agree); the rig's source paths in
-`tsconfig.json` (pre-npm, via `PROTO_PACKAGES` from `~/.proto/config.json`);
-the page's tokens, fonts and body base in `src/`; Tailwind when the
-source uses it; `pnpm install` from the shared store. Never vendor the
-rig or add it to `package.json`; `modern-screenshot` stays a dependency
-of every workspace (the rig lazy-imports it for comment capture).
+`prototype.json` (they must agree); the page's tokens, fonts and body
+base in `src/`; Tailwind when the source uses it; `pnpm install` from the
+shared store. The rig is a dependency the template pins to one exact
+version: `@proto-labs-inc/rig` (React) or `@proto-labs-inc/rig-vue`
+(Vue), with `@proto-labs-inc/wire` for the manifest's types, all from
+npm. Never vendor the rig or change its version by hand;
+`modern-screenshot` stays a dependency of every workspace (the rig
+lazy-imports it for comment capture).
 `docs/build-read.md` describes the build folder.
 
 ## Rebuilding one section

@@ -168,7 +168,6 @@ teams holds two, side by side.
       "linkedAt": "2026-09-28T…"
     }
   ],
-  "packages": "/abs/path/to/proto/packages",   // optional, pre-npm: the rig's source
   "createdAt": "2026-09-19T…"
 }
 ```

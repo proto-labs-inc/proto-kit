@@ -45,7 +45,7 @@ directory, which is also the proto-kit checkout root.
      "name": "<codebase>/<slug>",
      "processes": [
        { "name": "dev", "cwd": "<workspace>", "command": ["pnpm", "dev"],
-         "env": { "PROTO_TUNNEL": "1", "PROTO_PACKAGES": "<config.packages, pre-npm>" } },
+         "env": { "PROTO_TUNNEL": "1" } },
        // dev command = the workspace's own package manager (its lockfile
        // tells you): ["npm", "run", "dev"], ["pnpm", "dev"], …
        { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "<connectorToken>"] },

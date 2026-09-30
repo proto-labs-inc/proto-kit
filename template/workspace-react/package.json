@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@proto-labs-inc/rig": "0.1.0",
+    "@proto-labs-inc/wire": "0.1.0",
     "modern-screenshot": "^4.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
