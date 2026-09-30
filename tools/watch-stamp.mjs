@@ -9,7 +9,7 @@
  * The harness is one of HARNESSES, the relay protocol's word set
  * (packages/relay/src/protocol.ts in the proto repo); change both
  * together. A watcher that names none stamps null, and the site then
- * says "your agent".
+ * says "your harness".
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

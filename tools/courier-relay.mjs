@@ -78,7 +78,7 @@ export function connectRelay({
   };
   // `listening()` answers { agentListening, harness }: whether a session
   // consumes the feed, and the coding agent it runs in (null when the
-  // stamp names none; the site then says "your agent").
+  // stamp names none; the site then says "your harness").
   const reportListening = () => {
     const { agentListening, harness } = listening();
     const current = `${agentListening}:${harness}`;

@@ -48,7 +48,7 @@ checkout root.
      automatically when the harness honors skill-invoke monitors.)
      `--harness` names the coding agent in the watch stamp, which the
      courier reports to the site: the site then says "Claude Code" on
-     the path to your laptop instead of "your agent". Always pass it.
+     the path to your laptop instead of "your harness". Always pass it.
    - **Codex**: there is no push wake, so instead of watching, you
      **tell the courier where to find you** and it wakes you per
      command:

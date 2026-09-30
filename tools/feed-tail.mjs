@@ -20,7 +20,7 @@
  *   waiting?").
  *   --harness: the coding agent this watch runs in, stamped beside the
  *   heartbeat so the site can name it (watch-stamp.mjs). The listen
- *   skill passes it; without it the site says "your agent".
+ *   skill passes it; without it the site says "your harness".
  */
 import { openSync, readSync, readFileSync, statSync, closeSync } from "node:fs";
 import { join, resolve } from "node:path";
