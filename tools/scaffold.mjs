@@ -80,6 +80,12 @@ const template = join(kit, "template", `workspace-${framework}`);
 const workspaces = join(home, "prototypes");
 const workspace = join(workspaces, slug);
 const fresh = !existsSync(join(workspace, "package.json"));
+// A folder that exists belongs to this build only when this build made
+// it (its workspace.json names it). Otherwise it is another prototype
+// with the same slug, and writing into it would destroy that prototype.
+const recordPath = join(buildDir, "workspace.json");
+const ours = existsSync(recordPath) && JSON.parse(readFileSync(recordPath, "utf8")).path === workspace;
+if (!fresh && !ours) fail(`a prototype named ${slug} already exists in ${workspaces}: choose another slug`);
 mkdirSync(workspaces, { recursive: true });
 if (fresh) {
   cpSync(template, workspace, { recursive: true, filter: (source) => !/[\\/](node_modules|dist)([\\/]|$)/.test(source) });

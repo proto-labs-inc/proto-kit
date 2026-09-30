@@ -29,7 +29,9 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
 2. **Title and slug.** From the brief's content: 2 to 5 words naming the
    screen or flow, never from a URL, path or issue key, never "New
    prototype", no filler like "prototype" or "concept". Kebab-case it
-   into the slug (it becomes the subdomain label).
+   into the slug (it becomes the subdomain label). The slug must be new:
+   when `~/.proto/<codebase>/prototypes/<slug>/` exists, it is another
+   prototype, so pick a different slug (scaffold refuses to write into it).
 3. **Brief id.** A website brief already has one: use it. Otherwise
    `begin_prototype_build { codebase, slug, title }` returns it; the
    gallery shows a loading card from here. `report_progress
