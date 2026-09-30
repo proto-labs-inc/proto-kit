@@ -15,9 +15,11 @@
  *
  * Two rules, over every run dir under `~/.proto/<codebase>/run/`:
  *
- *   1. A courier's processes. On Codex a courier runs `codex-wake`
- *      beside the listener and the tunnel; on Claude Code and Cursor
- *      it does not, because the Monitor tool and the open chat wake
+ *   1. A courier's processes. A courier runs the listener, and no
+ *      tunnel: the site's commands reach it through the relay, over a
+ *      connection the listener opens itself. On Codex it also runs
+ *      `codex-wake` beside the listener; on Claude Code and Cursor it
+ *      does not, because the Monitor tool and the open chat wake
  *      those sessions themselves. Which harness a courier belongs to
  *      is read per courier, never per laptop: one laptop holds a
  *      Codex courier for one codebase and a Claude Code courier for
@@ -154,6 +156,13 @@ for (const codebase of codebases) {
         skipped.push(
           `${codebase}/courier: nothing here says which agent this courier belongs to, so whether it needs the Codex wake is a guess; run this again with --harness to settle it.`,
         );
+      }
+      // Commands arrive through the relay now: a courier's tunnel carries nothing.
+      const tunnel = processes.findIndex((p) => p.name === "tunnel");
+      if (tunnel !== -1) {
+        processes.splice(tunnel, 1);
+        changes.push(`${did("remove", "removed")} the courier's tunnel, which the relay replaces`);
+        missingHere = true;
       }
     }
 

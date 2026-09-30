@@ -208,20 +208,24 @@ are recorded with their verification evidence in
 Once per **laptop and codebase** the site can start agent work here.
 The codebase is the team's: many developers, each with their own
 laptop and courier; **the courier is this laptop's**, identified by a
-cloud-minted opaque `courierId`. Tunnels are provisioned by target:
-the courier's is `{ kind: "courier", courierId }`, one per laptop,
-never named after the codebase; the library's is `{ kind: "library",
-codebase }`, one per codebase (two laptops serving the same codebase's
-library would contend for it, accepted for now). The site chooses and
-stores every address; read it from the tool's answer, never build it.
+cloud-minted opaque `courierId`. The courier opens its own connection
+out to the site's relay, on 443, so a network that blocks tunnels does
+not stop commands. The library's
+tunnel is `{ kind: "library", codebase }`, one per codebase (two
+laptops serving the same codebase's library would contend for it,
+accepted for now). The site chooses and stores every address, the
+relay's included; read it from the tool's answer, never build it.
 Laptop paths stay keyed by the codebase id
 (`~/.proto/<codebase>/`); the courier id lives in the run dir. Three pieces, one
 supervised run dir (`~/.proto/<codebase>/run/courier/`):
 
-- **The listener** (`tools/courier.mjs`): the doorbell. Receives
-  bearer-authed enumerated commands on a local port, validates, and
-  appends each accepted command to `commands.jsonl`. It holds the
-  port, so it runs under supervise, never under a Monitor watch.
+- **The listener** (`tools/courier.mjs`): the doorbell. Receives the
+  site's commands over a WebSocket it holds open to the relay
+  (`tools/courier-relay.mjs`), validates each, and appends it to
+  `commands.jsonl`; the relay hears back only once the command is in
+  the feed. It also keeps a bearer-authed port on 127.0.0.1, for
+  checks on this laptop only. It holds the connection and the port,
+  so it runs under supervise, never under a Monitor watch.
 - **The session running the listen skill**: the user's own
   interactive session (a Claude Code terminal or desktop window, or a
   Codex window); setup ends by telling them to keep it open. It
@@ -246,59 +250,53 @@ supervised run dir (`~/.proto/<codebase>/run/courier/`):
   timeouts, agent restarts, and reboots.
 
 Setup, run by the import skill while its units extract (it depends
-only on the codebase id, so nothing waits on it):
+only on the codebase id, so nothing waits on it).
+`node <kit>/tools/courier-up.mjs <codebase>` (add `--codex` on Codex)
+does all of it, idempotently; the steps are what it does:
 
 1. **Identity, once per laptop.** If the run dir has no `courierId`:
    `register_courier { codebase }` → `{ courierId,
    libraryId }`: both cloud-minted, both stored in `courier.json`.
    Never call this when a courierId already exists (a reinstall
    keeps its ids; one member with two laptops gets two couriers).
-2. Pick a free local port for the listener; generate a command
-   secret (`openssl rand -hex 24`).
-3. Provision the tunnel: `provision_tunnel { kind: "courier",
-   courierId, port: <the listener's port> }`. The site chooses the
-   courier's public address, stores it on the courier's row, and
-   returns it as `hostname` with the `connectorToken`. Re-provisioning
-   overwrites the stored address.
-4. **Secret**: `register_courier { courierId, secret }`,
-   `secret` from step 2. This call is repeatable, keyed on courierId:
-   a rotated secret just overwrites. The user never sees or touches a
-   credential.
-5. Write `~/.proto/<codebase>/run/courier/courier.json`
+2. Pick a free local port for the listener; generate a local
+   secret (`openssl rand -hex 24`). The secret guards the local port
+   and never leaves this laptop.
+3. **The relay address**: `register_courier { courierId }` →
+   `{ relayUrl, relayToken }`. Repeatable, keyed on courierId. The
+   user never sees or touches a credential.
+4. Write `~/.proto/<codebase>/run/courier/courier.json`
    (`chmod 600`): `{ codebase, port, secret, courierId, libraryId,
-   codebaseDir, agent }`; `codebaseDir` is the codebase checkout
-   (`codebase.json`'s `source.path`), where the fallback session runs;
-   the `agent` block is the fallback launcher's command template (see
-   `tools/agent-launch.mjs`'s header; on Codex, `codexAgent`, see
-   `tools/feed-drive.mjs`).
-6. `spec.json`: the listener
-   (`node <kit>/tools/courier.mjs <run-dir>`) and `cloudflared` with
-   the courier's connector token from step 3 (plus the fallback agent
-   launcher when running nobody-at-the-keyboard). **On Codex, add a
-   third process** `codex-wake`, `node <kit>/tools/feed-queue.mjs
+   codebaseDir, relay: { url, token }, agent }`; `codebaseDir` is the
+   codebase checkout (`codebase.json`'s `source.path`), where the
+   fallback session runs; the `agent` block is the fallback launcher's
+   command template (see `tools/agent-launch.mjs`'s header; on Codex,
+   `codexAgent`, see `tools/feed-drive.mjs`). A courier whose
+   `courier.json` has no `relay` block asks for one itself when it
+   starts and writes it there.
+5. `spec.json`: the listener
+   (`node <kit>/tools/courier.mjs <run-dir>`), plus the fallback agent
+   launcher when running nobody-at-the-keyboard. **On Codex, add**
+   `codex-wake`, `node <kit>/tools/feed-queue.mjs
    <run-dir>`: without it nothing ever wakes the Codex session and
    commands simply pile up in the feed. It is harmless before a
    session has identified itself, and it is not part of a Claude Code
    or Cursor spec. `supervise.mjs start`.
-7. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
+6. Verify: a `{"status": true}` POST to `127.0.0.1:<port>` with
    `Authorization: Bearer <secret>` answers with `agentListening`
-   and the line lands in `commands.jsonl`; the same POST works
-   against the public hostname from step 3 once the edge settles.
+   and `relay` (`connected`, `connecting`, `waiting` between attempts,
+   or `none` before it has a relay address), and the line lands in
+   `commands.jsonl`.
 
-**Heartbeat.** The listener beats the app's `heartbeat` tool for
-`{ kind: "courier", courierId, agentListening }` at the cadence the app
-answers with (fail-soft; `agentListening` from the feed watcher's local
-heartbeat). It is the same tool a prototype's or the library's serving
-run beats, with its own target. A courier whose beats have gone stale is
-offline; the site dispatches each brief to the team's freshest listening
-courier, and registered-but-not-listening falls back to the copyable
-prompt with "your agent isn't running".
-
-A beat never says anything about the tunnel's own state. The site
-pushes commands through the courier's tunnel, so on a network that
-blocks port 7844 the dispatch fails and the site says so from that
-failure; the question disappears once the courier pulls its own work
-over HTTPS.
+**Heartbeat.** The connection is the courier's heartbeat: the listener
+pings the relay every ten seconds, and the relay counts the courier gone
+after thirty without one; a laptop that sleeps simply goes quiet. The
+listener tells the relay whenever `agentListening` changes (read from
+the feed watcher's local heartbeat). The site asks the relay which of
+the team's couriers are connected and listening and dispatches each
+brief to one of them; connected-but-not-listening, or none connected,
+falls back to the copyable prompt. When pongs stop, or the socket
+closes, the listener reconnects by itself.
 
 The proto MCP server carries the agent's cloud actions (registration,
 tunnels, comments); command payloads arrive inline in the feed: MCP

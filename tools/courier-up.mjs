@@ -3,19 +3,22 @@
  * Bring this laptop's courier up for a codebase, in one call: the serve
  * skill's "The courier" steps, idempotent. A courier that is already up
  * is only checked; one that has its files but is stopped is started; a
- * missing one is registered, given a port, a secret and a tunnel,
- * written and started.
+ * missing one is registered, given a local port, a secret and its relay
+ * address, written and started. Then it is checked locally and at the
+ * relay.
  *
  * Usage: node tools/courier-up.mjs <codebase> [--codex]
  *   --codex adds the Codex wake process (tools/feed-queue.mjs), which
  *   nothing else wakes an idle Codex session without.
  *
- * The secret is generated here, stored in courier.json (mode 600) and
- * registered with the site; it is never printed.
+ * The secret is generated here and stored in courier.json (mode 600); it
+ * guards the courier's local port only, stays on this laptop and is never
+ * printed. The relay token comes from the site and is kept beside it.
  *
- * Prints one JSON line: { courierId, hostname, local: bool, edge: bool,
- * agentListening }. edge is false while Cloudflare's edge is still
- * settling or when the network blocks the tunnel (port 7844).
+ * Prints one JSON line: { courierId, local: bool, relay, agentListening }.
+ * relay is the courier's own word on its connection: "connected",
+ * "connecting" or "waiting" (between attempts), or "none" when it has no
+ * relay address yet.
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -70,13 +73,11 @@ if (!existsSync(courierPath) || !existsSync(specPath)) {
   if (!ids) ids = await tool("register_courier", { codebase });
   const port = await freePort();
   const secret = randomBytes(24).toString("hex");
-  const tunnel = await tool("provision_tunnel", { kind: "courier", courierId: ids.courierId, port });
-  await tool("register_courier", { courierId: ids.courierId, secret });
-  writeFileSync(courierPath, JSON.stringify({ codebase, port, secret, courierId: ids.courierId, libraryId: ids.libraryId, codebaseDir: source, hostname: tunnel.hostname }, null, 2) + "\n");
+  const relay = await tool("register_courier", { courierId: ids.courierId });
+  writeFileSync(courierPath, JSON.stringify({ codebase, port, secret, courierId: ids.courierId, libraryId: ids.libraryId, codebaseDir: source, relay: { url: relay.relayUrl, token: relay.relayToken } }, null, 2) + "\n");
   chmodSync(courierPath, 0o600);
   const processes = [
     { name: "listener", command: [process.execPath, join(kit, "tools", "courier.mjs"), dir] },
-    { name: "tunnel", command: ["cloudflared", "tunnel", "run", "--token", tunnel.connectorToken] },
   ];
   if (codex) processes.push({ name: "codex-wake", command: [process.execPath, join(kit, "tools", "feed-queue.mjs"), dir] });
   writeFileSync(specPath, JSON.stringify({ name: `${codebase}/courier`, processes }, null, 2) + "\n");
@@ -93,7 +94,7 @@ if (!/running/.test(status.stdout)) {
   }
 }
 
-// ---- answering: locally at once, through the edge once it settles ----
+// ---- answering: locally at once, and at the relay once it connects ----
 const courier = JSON.parse(readFileSync(courierPath, "utf8"));
 const ask = async (url) => {
   try {
@@ -113,12 +114,14 @@ for (let i = 0; i < 20 && !local; i++) {
   local = await ask(`http://127.0.0.1:${courier.port}`);
   if (!local) await new Promise((r) => setTimeout(r, 250));
 }
-let edge = null;
-if (courier.hostname) {
-  for (let i = 0; i < 10 && !edge; i++) {
-    edge = await ask(`https://${courier.hostname}`);
-    if (!edge) await new Promise((r) => setTimeout(r, 2000));
-  }
+// The relay state comes from the local answer: the courier is the one
+// holding the connection, so it is the one that knows. Every ask is a
+// status command in the feed, so a listener started from an older kit,
+// whose answer has no relay at all, is asked once and not twenty times.
+let relay = local?.relay ?? "none";
+for (let i = 0; local?.relay !== undefined && i < 20 && relay !== "connected"; i++) {
+  await new Promise((r) => setTimeout(r, 500));
+  relay = (await ask(`http://127.0.0.1:${courier.port}`))?.relay ?? relay;
 }
-console.log(JSON.stringify({ courierId: courier.courierId, hostname: courier.hostname ?? null, local: Boolean(local), edge: Boolean(edge), agentListening: local?.agentListening ?? false }));
+console.log(JSON.stringify({ courierId: courier.courierId, local: Boolean(local), relay, agentListening: local?.agentListening ?? false }));
 process.exit(local ? 0 : 1);
