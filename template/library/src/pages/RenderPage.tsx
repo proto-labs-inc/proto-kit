@@ -14,16 +14,19 @@ type Lookup =
 // sat on in the product where that differs from the component's own
 // (a look read from another part of the page), and that backdrop, when
 // the product painted one. Read from the folder, not the manifest, so
-// a unit verifies before anything is landed.
+// a unit verifies before anything is landed; fetched as a file rather
+// than imported as a module, so the import rewriting it while render
+// tabs are open (the writer fits sizes in rounds) never reloads them.
 type Unit = { states: ComponentState[]; backdrop?: string };
-const UNITS = import.meta.glob<{ default: Unit }>("/src/components/*/component.json");
-// A new component's component.json changes this glob: a hot update, never a full reload (Rendered.tsx says why).
-if (import.meta.hot) import.meta.hot.accept(() => {});
 
 async function unitOf(slug: string): Promise<Unit | null> {
-  const load = UNITS[`/src/components/${slug}/component.json`];
-  if (!load) return null;
-  return (await load()).default;
+  const response = await fetch(`/src/components/${encodeURIComponent(slug)}/component.json?t=${Date.now()}`);
+  if (!response.ok) return null;
+  try {
+    return (await response.json()) as Unit;
+  } catch {
+    return null;
+  }
 }
 
 /**
