@@ -293,6 +293,12 @@ a markup dump.
   it was read from and the pseudo-class held on it. `tools/check.mjs`
   checks every state that has one; the app ignores it.
 
+  A state may carry `"width"`: the width in CSS px the product gave
+  the state's element. The app shows the state at that width, scaled
+  down when its frame is narrower (a click shows it at full size); a
+  state without one is shown at the width of the product's crop, else
+  at its frame's.
+
   A prop in `props` may be `null`: the state's element has no such
   attribute in the product (a placeholder only the first look shows),
   as distinct from leaving the prop out, which takes the component's

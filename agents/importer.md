@@ -18,3 +18,9 @@ says the budget is spent. You write only inside
 src/components/<slug>/; the orchestrator owns the manifest and
 everything else. Report what the last check said, not what you
 attempted; your result will be re-checked.
+
+Pictures (a logo, an icon, an illustration, a chart: the `picture*`,
+`image*` and `background*` files beside the module) are the product's own
+files, set in as they are: never edit, redraw or restyle one. A
+difference inside a picture is its size or what is around it; fix
+that, or report it after two checks.

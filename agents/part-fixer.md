@@ -18,3 +18,9 @@ everything else. An animated decoration or a system-font glyph a few
 pixels off is not yours to chase: two checks on it, then move on.
 Report what the last check said (each state's verdict and mismatch),
 not what you attempted; your result will be re-checked.
+
+Pictures (a logo, an icon, an illustration, a chart: the `picture*`,
+`image*` and `background*` files beside the module) are the page's own
+files, set in as they are: never edit, redraw or restyle one. A
+difference inside a picture is its size or what is around it; fix
+that, or report it after two checks.

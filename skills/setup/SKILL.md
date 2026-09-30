@@ -375,9 +375,12 @@ Proto window step, while the product's live page is open there:
    candidates over CDP and take the largest png/svg.
 2. Else scan the repo: `public/favicon.*`, `app/icon.*`,
    `src/app/icon.*`.
-3. Convert to a data URL (png/svg/ico, ≤ 256 KB: pick a size that
-   fits) and call the `set_codebase_icon` MCP tool with
-   `{ codebase, image }`. The laptop token supplies the member and team.
+3. Run `node <kit>/tools/codebase-icon.mjs <codebase> <file or icon
+   url>`. It uploads the bytes straight to Proto's storage and sets
+   the codebase's icon; the laptop token supplies the member and team.
+   It takes png, svg or ico up to 256 KB. When it refuses the format or
+   the size, convert once (`sips -s format png -Z 128 <in> --out
+   <tmp>.png`) and run it again with that file.
 4. **Fail soft.** Nothing usable found → skip silently and move on;
    the site shows a letter fallback. No icon is ever worth a
    question or an error sentence.

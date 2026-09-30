@@ -27,6 +27,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { evaluate } from "./cdp/cdp.mjs";
+import { PICTURE_OF } from "./pictures.mjs";
 import { fontFaces } from "./snapshot.mjs";
 
 /** How many boxes the tree shows at most, and how deep it goes. */
@@ -50,6 +51,7 @@ const PAGE_READ = String.raw`(maxNodes, maxDepth, repeatFrom) => {
     for (const child of el.children) collect(child);
   })(document.body);
   const index = new Map(elements.map((el, i) => [el, i]));
+  const pictureOf = ${PICTURE_OF};
   const probe = getComputedStyle(document.body);
   const props = [];
   for (let i = 0; i < probe.length; i++) if (!probe[i].startsWith("--")) props.push(probe[i]);
@@ -89,6 +91,7 @@ const PAGE_READ = String.raw`(maxNodes, maxDepth, repeatFrom) => {
       attrs, children, style: styleOf(el), pseudo,
       value: tag === "input" || tag === "textarea" ? el.value : null,
       rect: [r.x, r.y, r.width, r.height],
+      picture: pictureOf(el),
     };
   });
 
@@ -250,7 +253,13 @@ const PAGE_READ = String.raw`(maxNodes, maxDepth, repeatFrom) => {
     body: Object.fromEntries(["background-color", "color", "font-family", "font-size", "font-weight", "line-height", "letter-spacing", "-webkit-font-smoothing", "text-rendering", "margin-top", "margin-right", "margin-bottom", "margin-left", "min-height", "overflow-x", "overflow-y"].map((k) => [k, bodyStyle.getPropertyValue(k)])),
     rootFontSize: parseFloat(htmlStyle.fontSize),
   };
-  const images = [...new Set(elements.filter((el) => el.tagName === "IMG" && el.currentSrc && !el.currentSrc.startsWith("data:")).map((el) => el.currentSrc))];
+  // Every picture file: the images, and the files the stylesheet paints (a background, a mask, a list marker, a border).
+  const styleFiles = elements.flatMap((el) => {
+    const s = getComputedStyle(el);
+    const values = [s.backgroundImage, s.webkitMaskImage, s.listStyleImage, s.borderImageSource].join(" ");
+    return [...values.matchAll(/url\("(https?:[^"]+)"\)/g)].map((m) => m[1]);
+  });
+  const images = [...new Set([...elements.filter((el) => el.tagName === "IMG" && el.currentSrc && !el.currentSrc.startsWith("data:")).map((el) => el.currentSrc), ...styleFiles])];
 
   window.__protoRead = JSON.stringify({
     viewport: { width: vw, height: vh, dpr: devicePixelRatio },
@@ -373,6 +382,7 @@ export function instanceFromRead(read, at, { backdrop = null, room = null } = {}
       pseudo: Object.fromEntries(Object.entries(el.pseudo).map(([which, values]) => [which, styleOf(read, values)])),
       value: el.value,
       rect: [...el.rect],
+      picture: el.picture ?? null,
     };
   });
   return { nodes, backdrop, room, rootFontSize: read.page.rootFontSize, base: read.page.url };

@@ -14,3 +14,9 @@ names no property, change it in the component's folder, and run
 check.mjs again with the theme named in your brief; stop when it says
 the budget is spent. You write only inside `src/components/<slug>/`.
 Report what the last check said, not what you attempted.
+
+Pictures (a logo, an icon, an illustration, a chart: the `picture*`,
+`image*` and `background*` files beside the module) are the product's own
+files, set in as they are: never edit, redraw or restyle one. A
+difference inside a picture is its size or what is around it; fix
+that, or report it after two checks.

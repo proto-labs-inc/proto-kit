@@ -568,6 +568,7 @@ function authored(slug, themes) {
   for (const state of states) {
     requireString(state.name, "state.name");
     if (typeof state.props !== "object" || state.props === null || Array.isArray(state.props)) fail(`state "${state.name}" needs a props object`);
+    if (state.width !== undefined && !(typeof state.width === "number" && state.width > 0)) fail(`state "${state.name}": width is the product's width in CSS px, a positive number`);
   }
   if (new Set(states.map((s) => s.name)).size !== states.length) fail("state names must be unique");
   const componentTokens = Array.isArray(unit.tokens) ? { light: unit.tokens, dark: unit.tokens } : unit.tokens;
