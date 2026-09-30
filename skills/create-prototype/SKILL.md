@@ -5,347 +5,201 @@ description: Build a new prototype from your product's own code, optionally with
 
 # Create a prototype
 
-A prototype is an atomic, framework-native slice of the user's app: a
-standalone vanilla Vite app importing their real design system. Naked:
-nothing Proto-visible inside it except the rig, the invisible package
-that syncs state to the URL and speaks to the Frame. The Frame (the
-Proto web app) wraps it with the variants sidebar, comment pins,
-and state map; your job is only the app itself.
+A prototype is an exact copy of one screen of the user's product with
+the brief's change built on top of it: a standalone Vite app in
+`~/.proto/<codebase>/prototypes/<slug>/`, naked except for the rig (the
+invisible package that syncs state to the URL and speaks to the Frame).
+The tools copy the page; you write only the change.
 
-## The brief
+All `tools/…` paths resolve from the kit root: the installed plugin
+root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
+`CURSOR_PLUGIN_ROOT`), otherwise the folder above this skill's
+`skills/` directory. Run every kit tool with the node the kit runs on.
 
-The site and copied prompts hand this skill fields, not workflow
-instructions:
+## The runbook
 
-- `codebase`: the connected codebase.
-- `description`: what the prototype should show or decide. It may be empty
-  when `contextUrl` carries the product brief.
-- `contextUrl`: an optional document, issue, or meeting-notes link that
-  explains what to build.
-- `referenceUrl`: the live product screen to replicate and extend.
-- `referenceHtml`: optional structure hints captured by the site.
-- `useRealData`: whether to use the source app's live data; false means mock
-  realistic data.
+1. **Brief.** The site or a copied prompt hands you fields: `codebase`,
+   `description` (may be empty when `contextUrl` carries the brief),
+   `contextUrl` (a document, issue or notes link: read it through a
+   connected connector, else open it in a browser; do not ask about
+   connector setup), `referenceUrl` (the live screen to copy; it is
+   open in the Proto window), `referenceHtml` (structure hints; the live
+   page wins), `useRealData` (false means mock realistic data). A brief
+   whose run is `rebuild-section` goes to "Rebuilding one section".
+2. **Title and slug.** From the brief's content: 2 to 5 words naming the
+   screen or flow, never from a URL, path or issue key, never "New
+   prototype", no filler like "prototype" or "concept". Kebab-case it
+   into the slug (it becomes the subdomain label). The slug must be new:
+   when `~/.proto/<codebase>/prototypes/<slug>/` exists, it is another
+   prototype, so pick a different slug (scaffold refuses to write into it).
+3. **Brief id.** A website brief already has one: use it. Otherwise
+   `begin_prototype_build { codebase, slug, title }` returns it; the
+   gallery shows a loading card from here. `report_progress
+   { briefId, status: "started" }` before any slow work.
+4. **Copy the page**, one command:
+   `node tools/proto-build.mjs <briefId> --codebase <id> --page
+   <referenceUrl substring> --slug <slug> --title "<title>"`.
+   It reads the page (styles, variables, fonts, images: everything the
+   change needs, in the build folder), sends the title, drafts the
+   curation and **stops once**, printing the leaves and sections with
+   their draft names. Fix names that read as "Group", "Block", "Text" or
+   "part-nN" in the printed `curation.json` (the `raw` and `text` fields
+   say what the part is; the marker follows the name, kebab-case) and
+   leave the rest. Names become `data-proto-id` markers, which are
+   comment anchors for the prototype's life, so this is the one review
+   worth an agent turn. Then run **the same command again**: it names
+   the tree, scaffolds the workspace, replicates every leaf in parallel
+   lanes, composes `src/App.tsx`, checks the page, and prints the parts
+   list (also at `<build>/parts.json`): each part's node id, name,
+   marker, files under `src/parts/<slug>/`, whether it came from the
+   library, its check's status, its rect and its section. Every event
+   the site needs (phases, queued, pass, matched, composing) is sent by
+   the tools; you send none of them yourself. `--accept-curation` skips
+   the stop when the draft names are already right.
+5. **Serve early.** The dev server the copy used has stopped; start the
+   serve skill's steps 1 to 4 now (register, provision the tunnel, write
+   the run spec, `supervise.mjs start`), in that order, and do not verify
+   through the edge yet: the tunnel connects while you write the change.
+   `report_progress serving` comes later, at step 10.
+6. **Parts left to fix** (`toFix` in the parts list, usually a few): one
+   `proto:part-fixer` subagent per part, all in parallel, with the part
+   brief below. Do not pass a model. Carry on with step 7 while they run.
+7. **Write the change.** Edit only the parts the brief is about, from the
+   parts list and the copied files: never re-read the live page with
+   ad-hoc scripts, the read has everything. A part from the library is a
+   library component copied into `src/parts/`; edit the copy. Send
+   `build-stream.mjs focus <briefId> --codebase <id> <nodeId>` when you
+   start on a part, so the site shows which one.
+   - **Preview states**: every distinct mode a reviewer should reach
+     (tabs and steps, empty/loading/error branches, overlays, toggles)
+     is a state in `public/prototype.json` (id, title, one-line
+     description, `parent` for branches) and a branch in the code via
+     `usePreviewState` from `@proto/rig`; the ids in both must match. The
+     rig owns the URL (`?state=<id>`); wire the product's own controls to
+     move between states. Hover and focus are CSS, not states.
+   - **Variants**: step 8.
+   - Mock data reads as real (real names, real-looking numbers and
+     dates); the source app's live data only when `useRealData` is true.
+8. **Variants in parallel.** Decide one or two decisions the brief
+   supports a real choice on (layout, hierarchy, interaction pattern,
+   density); none when it supports none. For each, one command writes
+   the skeleton:
+   `node tools/variant-set.mjs <workspace> <marker> --title "<set>"
+   --variants "<id>=<Title>|<note>;<id>=<Title>|<note>" --default <id>
+   --baseline current=Current --overview "<the question>" --slot <class>`
+   where `<marker>` is the `data-proto-id` of the part the set varies
+   and `<class>` its slot in App.tsx (`className={styles["partNN"]}`).
+   It writes the manifest entry (`status: "building"`), the switch
+   `src/variants/<marker>/index.tsx` on `useVariant`, one stub per
+   variant, and frees the slot's pinned height. You replace the part in
+   App.tsx with the switch, the part itself as its baseline:
+   `<MarkerVariants className={styles["partNN"]} baseline={<Part className={styles["partNN"]} />} />`.
+   Then one `proto:variant-builder` subagent per variant, all in
+   parallel, with the variant brief below; do not pass a model. Mobbin
+   references are not gathered in a build: the baseline is the reference.
+9. **Check, as tools.** When the units are back:
+   - `pnpm typecheck` in the workspace and `node tools/verify-markers.mjs <workspace>`.
+   - `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>`:
+     every state and every variant loaded headless; blank renders,
+     console errors, a set's marker missing from its view, parts drawn
+     outside their parents or over siblings, and the untouched parts
+     against the read (moved, resized, pixel clusters outside the
+     change). Add `--changed <marker,marker>` for parts you edited
+     outside a variant set (the sets' components are known). Fix what it
+     names, run it again; two rounds, then report what remains. It sends
+     the pass and matched events for the changed parts.
+   - `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>`:
+     the variant previews from real renders, into the manifest, and the
+     set's `status` cleared.
+10. **Serve.** Continue in the serve skill at step 5 (verify through the
+    edge, publish, report); `build-stream.mjs phase <briefId> --codebase
+    <id> serving "<one sentence>"` and `report_progress serving` as it
+    starts. Registration flipped the brief to done. Tell the user once
+    the prototype is reachable, not before. Never commit anything into
+    the user's repos.
 
-Generate the title yourself from the brief's actual content. When the brief
-has a `contextUrl`, read it before naming the prototype. The resolved title is
-mandatory and must never be blank: when the context source has no title, an
-empty title, or only an unusable generic label, make up a fitting title from
-its content. Keep the title short and specific, usually 2–5 words that identify
-the screen or flow. Never derive it from a URL, hostname, path segment, or issue
-key. Treat an absent title or the placeholder `New prototype` as no title;
-honor a different title only when the user explicitly supplied it. Avoid filler
-such as "prototype," "concept," or "variant." Kebab-case the title into the
-slug (lowercase letters, digits, hyphens; it becomes the subdomain label, so
-pick something a person could read aloud). Do not ask the user for a title
-merely because the field is absent.
+Blocked at any step: `build-stream.mjs question <briefId> --codebase
+<id> "<question>"` and `report_progress needs-input`; a failure is
+`report_progress failed` with one plain sentence.
 
-Resolve `contextUrl` before scaffolding:
+## The part brief
 
-1. Check whether a connector for that link's service is available to the
-   current agent.
-2. If no connector is available, open `contextUrl` in a browser and read it
-   there. Do not ask about connector setup.
-3. If a connector is available and already connected, confirm it can access
-   this link and use it.
-4. If the connector is available but not connected, ask the user whether they
-   want to set it up. If they agree, use the harness's supported connector
-   setup and then read the link through it. If they decline, open the link in
-   a browser and read it there.
+> Fix the part `<slug>` (`<name>`, node `<nodeId>`) of build `<briefId>`
+> in codebase `<codebase>` so it matches the reference page. Its folder
+> is `<workspace>/src/parts/<slug>/` (`<Name>.tsx`, `<Name>.module.css`,
+> `component.json`); the build folder is
+> `~/.proto/<codebase>/run/builds/<briefId>/`. What differs: `<the
+> part's differs entry>`. Pass pictures are in `<build>/checks/<slug>/`
+> (`<n>-live.png` the product, `<n>.png` ours, `<n>-diff.png` the
+> difference). Read the value that differs from `<build>/read.json`
+> (the element's computed style; `tree.json` names the element index),
+> never from the live page. Fix it in the module or stylesheet, then run
+> `node <kit>/tools/check-part.mjs <briefId> --codebase <codebase>
+> <slug>`. At most six checks; write only in the part's folder. Report
+> the last check's verdict and mismatch per state.
 
-`contextUrl` is product context, not the visual source. `referenceUrl` is the
-live screen whose appearance and interactions govern the prototype. A brief
-may also carry `referenceHtml`; use it to map structure and copy, but the live
-page wins on any disagreement, and never paste it into the prototype at
-runtime.
+## The variant brief
 
-## The gallery shows the build
+> Write the `<id>` variant ("<Title>": <note>) of the "<set title>" set
+> in the Proto prototype at `<workspace>`. Its files are
+> `src/variants/<marker>/<id>.tsx` and `<id>.module.css` (stubs exist;
+> replace them). The part it varies is the copy at
+> `src/parts/<slug>/<Name>.tsx` and `.module.css`: keep its data (names,
+> numbers, copy) and the product's values (its colours, type and spacing;
+> `src/tokens.css` holds the page's custom properties), rearranged as the
+> direction says. The root keeps `data-proto-id="<marker>"`; every
+> coherent piece inside carries its own kebab-case `data-proto-id`. The
+> component takes `{ className?: string }` and puts it on the root. No
+> new dependencies; touch no other file. Run `pnpm typecheck` in the
+> workspace before finishing. Report the files written and the last
+> typecheck's result.
 
-Before scaffolding, put a loading card in the user's gallery: call
-`begin_prototype_build { codebase, slug, title }` and keep the brief id it
-returns. The laptop token identifies the member. One
-guard: when this build was started by a website brief, you already
-have a brief id: use that one and do not call
-`begin_prototype_build` again.
+## Component markers
 
-Report progress on that brief id at the checkpoints, each message
-one plain sentence a non-engineer can read: `started` before any
-slow work, `building` when workspace work begins, `serving` when the
-serve flow starts, and `failed` or `needs-input` whenever that is
-the truth. Registration, inside the serve skill, flips the brief to
-done.
-
-## Stream the build
-
-The user watches the build happen in New prototype: the reference page
-seen through frosted glass, its structure drawn root first, each part
-landing as you finish it. Tell the site each step as you take it, with
-`tools/build-stream.mjs` (resolve kit tools from the installed host's
-plugin root, as below). Every command takes the brief id and
-`--codebase <id>`; it sends build events for you, uploads images itself,
-and keeps the build's tree in `~/.proto/<codebase>/run/builds/<briefId>/`.
-
-1. **Read the page** as soon as the reference tab is open in the Proto
-   window: `build-stream.mjs read <briefId> --codebase <id> --page
-   <url-substring>`. It captures the page, reads its tree root first and
-   writes `tree.json` (node ids, tag.class, boxes, a selector each).
-2. **Name it** once you know the prototype's title:
-   `build-stream.mjs title <briefId> --codebase <id> "<title>"`.
-3. **Curate the tree.** Write `curation.json` next to `tree.json`: one
-   entry per node, `{ "id", "name", "role", "marker" }`. The name is what
-   the part is ("Sidebar", "Member list"); the role is `section` (holds
-   other parts), `leaf` (a part you build as one component) or
-   `packaging` (a box whose only job is to hold another). `marker` is the
-   `data-proto-id` the part becomes in the prototype, so the build's
-   sections and the Frame's components are the same things. Then
-   `build-stream.mjs name <briefId> --codebase <id> <curation.json>`.
-4. **Build leaf by leaf.** `build-stream.mjs queue <briefId> --codebase
-   <id>` lists every leaf. For each leaf, as you write it:
-   `pass <briefId> --codebase <id> <nodeId> <n> [pixelsOff]` for each
-   attempt you check against the page (pixelsOff when you measured it),
-   then `matched <briefId> --codebase <id> <nodeId>` when it is right.
-5. **Check the whole page** before serving: `phase <briefId> --codebase
-   <id> composing "<one sentence>"`; and `phase ... serving` when the
-   serve skill starts.
-6. **Ask when blocked:** `question <briefId> --codebase <id> "<question>"`
-   alongside `report_progress` with `needs-input`.
-
-A build the site did not start (no brief yet) streams too: the brief id
-`begin_prototype_build` returns works the same way.
-
-### Rebuilding one section
-
-A brief whose run is `rebuild-section` is a change the user asked for
-from the Frame's element picker: `get_brief` gives the prototype
-(`prototype_slug`), the component (`section`, its `data-proto-id`) and
-the change itself (`description`, the Frame's full edit prompt: follow
-it, it scopes the edit to that component and its variant). The Frame
-has already frosted the component over. Report `started`, make the
-change in the prototype's workspace (the running dev server shows it as
-you save), then `report_progress` `done`: the Frame blows the frost away
-over the updated component.
-
-When the prototype came from a streamed build (`parent_brief_id` is
-set), also report on the build's stream so its history shows the
-change: `pass <briefId> --codebase <id> <nodeId> <n>` per attempt and,
-when done, capture the component as the prototype now draws it and send
-`matched <briefId> --codebase <id> <nodeId> --image <png> --rect
-x,y,w,h`. The node is the one whose `marker` is the section, in the
-parent build's `tree.json` curation.
-
-## Where it lives
-
-Scaffold `~/.proto/<codebase>/prototypes/<slug>/` by copying the
-workspace template **matching the source repo's framework**. Read the
-codebase's `package.json`: `vue` → `template/workspace-vue/`, otherwise
-(react, or no source repo) → `template/workspace-react/`. The
-prototype is a framework-native slice; a React mock of a Vue product
-isn't one. Then make it this prototype's own:
-
-1. `package.json` `name`, `index.html` `<title>`, and
-   `public/prototype.json` `name` → the slug.
-2. Pick a free port (one prototype per port; check the codebase's other
-   workspaces) and set it in **both** `vite.config.ts` and
-   `prototype.json`: they must agree, the Frame reads the manifest.
-3. Pre-npm: the rig resolves via the `PROTO_PACKAGES` env var (path to
-   a proto checkout's `packages/` dir, recorded in
-   `~/.proto/config.json`). Vite reads it in the template's config,
-   and `tsc` needs the same entries written into `tsconfig.json`
-   `paths`: the adapter (`@proto/rig` → `<packages>/rig/src/index.tsx`
-   for React, `@proto/rig-vue` → `<packages>/rig-vue/src/index.ts` for
-   Vue), plus `@proto/rig-core` → `<packages>/rig-core/src/index.ts`
-   (the adapters bare-import it) and `@proto/wire` →
-   `<packages>/wire/src/index.ts`. React workspaces must also keep
-   `resolve.dedupe: ["react", "react-dom"]` in Vite: the source-aliased
-   rig lives outside the standalone workspace, and without deduplication
-   a production build can bundle a second React runtime and crash its
-   hooks before the prototype mounts. Don't vendor the rig, don't add
-   it to package.json: once the packages publish to npm they become
-   plain dependencies and both the alias block and the paths disappear.
-4. `pnpm install` (standalone: never inside a git checkout, never a
-   workspace package of one).
-
-`modern-screenshot` stays a dependency of every workspace: the rig
-lazy-imports it from the prototype's own node_modules for comment
-capture. Removing it breaks comment screenshots silently.
+Every visually coherent component's root element carries a kebab-case
+`data-proto-id` (dot-separated kebab segments are valid for ids ported
+from a registry). The Frame's comment mode hit-tests them, and comments
+are pinned to them: once served, renaming an id orphans its comments;
+extend, do not rename. List rows repeat one id. Vendored third-party
+code lives outside `src/` (`vendor/`); everything under `src/` is
+prototype-authored and marker-covered; `verify-markers.mjs` enforces
+exactly that line and fails a non-kebab id.
 
 ## Images and other public files
 
-`public/` ships to the build root, and a published build is served from
-under a path (`<codebase>/<slug>/<buildId>/`). Reference its files
-against the build's base:
+`public/` ships to the build root and a published build lives under a
+path, so reference files against the build's base:
+`<img src={`${import.meta.env.BASE_URL}portraits/soleio.jpg`} />`. A
+root-absolute `/portraits/x.jpg` works in dev and dies published;
+`publish.mjs` refuses such a build. Paths in `public/prototype.json`
+are build-relative without a leading slash (`previews/x.png`,
+`references/x.png`); `previews.mjs` writes them that way.
 
-```tsx
-<img src={`${import.meta.env.BASE_URL}portraits/soleio.jpg`} />
-```
+## Where it lives
 
-Written root-absolutely (`/portraits/soleio.jpg`) an image renders in dev
-and through the tunnel, where the workspace is the host root, then 404s
-once published. The template's vite `base: "./"` rewrites every reference
-the bundler sees (HTML attributes, CSS `url()`, imported assets); a path
-written as a string literal in component data stays exactly as typed.
-`publish.mjs` refuses such a build, naming the file and the reference.
+`scaffold.mjs` (inside `proto-build.mjs`) creates the workspace from
+the template matching the source repo's framework (`vue` in its
+`package.json` → `template/workspace-vue/`, else
+`template/workspace-react/`): the slug in `package.json`, `index.html`
+and `public/prototype.json`; a free port in `vite.config.ts` and
+`prototype.json` (they must agree); the rig's source paths in
+`tsconfig.json` (pre-npm, via `PROTO_PACKAGES` from `~/.proto/config.json`);
+the page's tokens, fonts and body base in `src/`; Tailwind when the
+source uses it; `pnpm install` from the shared store. Never vendor the
+rig or add it to `package.json`; `modern-screenshot` stays a dependency
+of every workspace (the rig lazy-imports it for comment capture).
+`docs/build-read.md` describes the build folder.
 
-Asset paths stored in `public/prototype.json` are data consumed by the
-Frame, so write them build-relatively without a leading slash:
-`previews/example.svg`, `references/example.png`, and
-`wireframes/example.svg`. Do not write `/previews/...`, `/references/...`,
-or `/wireframes/...`; those root-absolute strings are also inlined into the
-prototype bundle and fail the publish check. The Frame resolves the relative
-value against the live or published prototype base.
+## Rebuilding one section
 
-## The live URL is the visual source of truth
-
-When there is a source URL, the prototype must look like that page,
-not like the source code's idea of it, not like your memory of it.
-
-1. Confirm the URL is reachable first. If it doesn't load (auth wall,
-   404, connection refused), **stop and tell the user**: never invent
-   the page from memory or source alone. If it's behind their login,
-   read it through their own Chrome over CDP exactly as the
-   import-design-system skill does (attach, never steal focus).
-2. Walk the page before building: hover the controls, open the menus,
-   dropdowns, sheets. Capture what each interaction reveals. The
-   resting screenshot is not the page.
-3. Find the matching page in the source repo and read its
-   layout and components: the source explains mechanisms (why a
-   toolbar wraps, what an active state looks like). Copy render
-   structure and mechanisms into the prototype; never import the
-   user's app code at runtime.
-
-"Match" means: same chrome, layout, type, color, copy, control
-variants, and states. Semantic tokens and components from the
-imported library, no guessed hex, no simplified chrome, no invented
-alternate layout.
-
-Page-level fidelity is THIS skill's job (the import extracts the
-system; it never rebuilds pages). When a page must be matched
-closely, use the CDP toolkit (`tools/cdp/`) with the reading
-discipline in the import-design-system skill and the traps in
-`docs/cdp-traps.md`: read values, copy mechanisms, verify rects
-before pixels, at whatever fidelity the prototype's purpose
-actually needs.
-
-## Build from their design system
-
-Before writing UI, open the codebase's library
-(`~/.proto/<codebase>/library/`) and map each region of the page to
-extracted components and tokens. Reuse what the import produced; when
-a component the page needs is missing from the library, build it
-faithfully from source + live page (and note it as an import gap):
-don't invent a parallel look.
-
-**Wire the source's CSS system into the workspace**: the template
-ships bare CSS on purpose (it doesn't know your product). Read how the
-source styles itself and reproduce that chain:
-
-- Tailwind source (the common case): add `tailwindcss` +
-  `@tailwindcss/vite` to the workspace, register the plugin in
-  `vite.config.ts`, and import the product's theme/token layer in
-  `styles.css` before your own rules. The goal is that the product's
-  utility classes and tokens resolve identically in the prototype.
-- Plain CSS/custom-property systems: import the token stylesheet(s)
-  (from the library import or copied from source) at the top of
-  `styles.css`.
-
-Either way, verify a chromatic token early: one element using a brand
-color must render the source's hue, not a default. Catching a
-dead style chain before building the page is minutes; after, hours.
-
-Mock data by default: typed constants in the prototype, realistic copy
-(real-sounding names, plausible timestamps: the inbox example's
-messages, not "Item 1"). Real backend data only when the user asks.
-
-## Component markers: mandatory
-
-Every visually coherent component's root element carries a kebab-case
-`data-proto-id`. The Frame's comment mode hit-tests these markers for
-the selector and anchors comments to them.
-
-- Coherent component, not every div: header, message-list,
-  message-row, yes; a wrapper whose only job is to hold another div,
-  no. List rows repeat the same id; that's correct.
-- Ids are **anchor keys**: comments people leave are pinned to them.
-  Once a prototype has been served, renaming an id orphans its
-  comments: extend, don't rename. Ids ported from an existing
-  registry stay verbatim (dot-separated kebab segments like
-  `project-shell.product-sidebar` are valid) for the same reason.
-- Vendored third-party code (a copied design-system package slice,
-  say) lives **outside `src/`**: `vendor/` at the workspace root.
-  Everything under `src/` is prototype-authored and must be fully
-  marker-covered; the checker enforces exactly that line.
-- `node tools/verify-markers.mjs <workspace>` (resolve kit tools from the
-  installed host's `PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, or
-  `CURSOR_PLUGIN_ROOT`; otherwise use the root above this skill's
-  `skills/` directory) must pass before you're
-  done: it fails any component-rendering file with no markers and any
-  non-kebab id, and prints the id inventory. Read it and check it
-  names the page's real anatomy.
-
-## Preview states
-
-Before building UI, list every distinct mode a reviewer should reach:
-tabs and steps, empty/loading/error branches, open overlays worth
-jumping to, view toggles. Each becomes a state in `prototype.json`
-(id, title, one-line description, `parent` for branches of a base
-state) and a branch in the code via `usePreviewState`.
-
-- The rig owns URL sync: every state is addressable as `?state=<id>`,
-  and copy-pasting a URL must reproduce the exact mode. You never
-  touch the URL yourself: derive UI from the hook, register ids in
-  the manifest, ids in both places must match.
-- Wire the product's own controls to move between states (a Retry
-  button leaves the error state; emptying the list enters the empty
-  state): reviewers should be able to use the prototype, not only
-  the Frame's state picker.
-- Hover and focus are CSS, not states.
-
-## Variants
-
-Before building, infer one or two decisions in the prompt that would benefit
-from comparison (for example, layout, hierarchy, interaction pattern, or
-content density) and proactively create variant sets for them. Do this even
-when the brief does not explicitly ask for variants, but only where the prompt
-supports a meaningful choice; do not manufacture arbitrary differences.
-
-For each variant set, add it under
-`variantSets` in `prototype.json`: the `component` it varies, 2–4
-`variants` (id, title, a `note` saying what the direction is for), the
-`default`, the `baseline` (the UI as it exists today, so reviewers can
-always compare against current reality), and an `overview` framing the
-question being decided. Drive the code with `useVariant`.
-
-Ground variants in reality: for each direction, find a real product
-that does it well on Mobbin, capture or draw a small reference image into
-`public/references/`, and register it under `references` with a note
-saying what to look at and which variant it informs. A variant without
-a reference is a guess with styling.
-
-## Verify, then stop
-
-1. `pnpm typecheck` and `node tools/verify-markers.mjs <workspace>` pass.
-2. Paired screenshots against the live source URL: the resting page
-   plus the 2–3 most important captured interactions. Read the pairs,
-   list mismatches, fix the obvious ones, re-shoot once. **Two rounds
-   total, then stop**: remaining mismatches get reported to the
-   user, not iterated on forever.
-3. Reload the app at `?state=<id>` for each registered state and
-   confirm the right mode renders.
-4. **Hand off to the serve skill, which registers the prototype.**
-   Registration (`register_prototype` with `{ codebase, slug, title }`) happens inside
-   the serve skill, after the tunnel is provisioned and the run is
-   up, never here: a registered prototype is a tile on the site, and
-   opening a tile whose hostname does not exist yet poisons the
-   viewer's resolver for thirty minutes. `register_prototype`
-   upserts on (codebase, slug), so re-registering after a title
-   change is correct and expected; an authorization error means the
-   laptop must be relinked through setup. Registering
-   also flips the build's brief to done, closing the gallery's
-   loading card.
-
-Serving the prototype (dev server + tunnel + registration) is the
-serve skill's job. Don't provision tunnels, don't publish, don't
-commit anything into the user's repos: the workspace lives outside
-them on purpose. When it works locally, continue into the serve
-skill; the user should hear about the prototype once it is reachable,
-not before.
+A brief whose run is `rebuild-section` is a change asked from the
+Frame's element picker: `get_brief` gives the prototype
+(`prototype_slug`), the component (`section`, its `data-proto-id`) and
+the change (`description`, the Frame's full edit prompt, scoped to that
+component and its variant). The Frame has frosted the component over.
+Report `started`, make the change in the prototype's workspace (the
+running dev server shows it as you save), run `check-states.mjs` and,
+for a variant, `previews.mjs`, then `report_progress done`. When the
+prototype came from a streamed build (`parent_brief_id` is set), run
+those two with `--brief <parent> --codebase <id>` so the build's stream
+shows the change: the node is the one whose `marker` is the section.

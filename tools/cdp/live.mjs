@@ -61,13 +61,18 @@ const STANDING = "JSON.stringify([innerWidth, innerHeight, scrollX, scrollY, dev
 /**
  * Capture the resting page once: every CSS transition on it finished
  * first (the window is behind others and never advances them), under
- * the lock, so no lane's held state is in it.
+ * the lock, so no lane's held state is in it. `also` runs under the
+ * same lock before the shot and its result comes back as `read`.
  */
-export async function takeFrame(live, codebase) {
+export async function takeFrame(live, codebase, { also } = {}) {
   let hovered = [];
+  let read;
   const paths = framePaths(codebase);
   mkdirSync(join(paths.png, ".."), { recursive: true });
   await withLive(async () => {
+    // A build's one read of the page runs under this same lock, just
+    // before the shot, so the frame and the read see the same page.
+    if (also) read = await also();
     await evaluate(live, "(() => { for (const a of document.getAnimations()) if (a instanceof CSSTransition) a.finish(); return true; })()");
     await stableShot(live, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, paths.png);
     // Kept as raw pixels too: every resting state is cut from them by
@@ -80,7 +85,7 @@ export async function takeFrame(live, codebase) {
     hovered = await evaluate(live, HOVERED);
     writeFileSync(paths.meta, JSON.stringify({ standing, hovered, size: [decoded.width, decoded.height], at: Date.now() }) + "\n");
   });
-  return { ...paths, hovered };
+  return { ...paths, hovered, read };
 }
 
 /**
