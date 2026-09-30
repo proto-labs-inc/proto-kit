@@ -6,10 +6,19 @@ import manifest from "../public/prototype.json";
 import { App } from "./App";
 import "./styles.css";
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ProtoRig manifest={manifest as Manifest}>
-      <App />
-    </ProtoRig>
-  </StrictMode>,
-);
+const root = document.getElementById("root")!;
+
+// The build's checks render one part alone at #/render/<slug>/<state>
+// (src/render.tsx). Only the dev server does: in a build the condition
+// is false at compile time and the module is left out.
+if (import.meta.env.DEV && window.location.hash.startsWith("#/render/")) {
+  import("./render").then(({ renderPart }) => renderPart(root));
+} else {
+  createRoot(root).render(
+    <StrictMode>
+      <ProtoRig manifest={manifest as Manifest}>
+        <App />
+      </ProtoRig>
+    </StrictMode>,
+  );
+}
