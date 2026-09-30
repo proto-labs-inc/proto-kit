@@ -81,10 +81,25 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    through the edge yet: the tunnel connects while you write the change.
    `report_progress serving` comes later, at step 10.
 6. **The gate, then the parts left to fix.** The composed page is the
-   copy's gate: `replicate.gate.proceed` says whether the change can
-   be written on it (the page differs by at most `TAIL.PAGE_PROCEED_PCT`,
-   0.5% of its pixels, and mounted), and `gate.line` says so in one
-   line; relay it to the user as it stands. Every part in `toFix` is
+   copy's gate: the change is written on it when the page differs by at
+   most `TAIL.PAGE_PROCEED_PCT` (0.5% of its pixels) and mounted.
+   `proto-build.mjs` takes a copy over the gate through it itself: it
+   copies once more after the page settles and, still over, asks the
+   person on the site whether to start building anyway (the copy-gate
+   question, answered there, going with the recommended option after
+   30 seconds), and waits for the answer. Never ask that question
+   yourself, and never as prose in the terminal. Its output's `gate`
+   says what came of it:
+   - `outcome: "proceed"`: the copy passed; `gate.line` says so in one
+     line; relay it to the user as it stands.
+   - `outcome: "build"`: the person (or the default) said start on this
+     copy; carry on.
+   - `outcome: "reply"`: the person wrote what to do instead;
+     `gate.instruction` is their words. Follow it as given, as the next
+     thing you do (finish one part, skip one, use a placeholder image),
+     then carry on.
+
+   Every part in `toFix` is
    the long tail from here, each with its reason (`toFix[].reason`: a
    small share of the page, or simply not matched at the gate); you
    never fix a part yourself, not even a three-pixel one. For each,
@@ -95,8 +110,7 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    so every command of theirs asks the user; a plain subagent runs
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
-   resizer now matches the page") and nothing more. A `proceed` of
-   false is the one case to stop and say what the page check named.
+   resizer now matches the page") and nothing more.
 7. **Write the change.** Edit only the parts the brief is about, from the
    parts list and the copied files: never re-read the live page with
    ad-hoc scripts, the read has everything. A part from the library is a
@@ -167,9 +181,37 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
     the prototype is reachable, not before. Never commit anything into
     the user's repos.
 
-Blocked at any step: `build-stream.mjs question <briefId> --codebase
-<id> "<question>"` and `report_progress needs-input`; a failure is
-`report_progress failed` with one plain sentence.
+## Blocked
+
+A decision only the person can make is asked on the site, where the
+build is watched, never as prose in the terminal:
+
+```
+node tools/build-stream.mjs question <briefId> --codebase <id> --kind generic "<the question>" \
+  --option <id>="<Label>" --option <id>="<Label>" [--option <id>="<Label>"] \
+  [--recommended <id> --default-after <seconds>] [--detail "<what you found>"] [--suggest "<a reply>"]...
+node tools/build-stream.mjs await-answer <briefId> <questionId> --codebase <id>
+```
+
+- The question is direct and short (200 characters at most). It has 2
+  or 3 options, each label verb-first and saying what happens next
+  ("Use the list", "Keep both tabs"), 40 characters at most; option
+  ids are lowercase with dashes. Up to 3 suggested replies (80
+  characters each) the person can send with one click.
+- A recommended option with a default (`--default-after`, 5 to 600
+  seconds) only when going on without the person is safe; without
+  one, the build waits for the answer.
+- `question` prints the question id and puts the brief in needs-input;
+  `await-answer` prints one JSON line, `{ "by": "option" | "reply" |
+  "default", "option"?, "text"? }`, and the brief is building again.
+- Act on the answer as given: an option is the path it names; a reply
+  (`by: "reply"`) is an instruction, followed as written.
+- When the person answers in the terminal instead (stop the wait),
+  tell the site with `node tools/build-stream.mjs answered <briefId>
+  <questionId> --codebase <id> --text "<what they said>"` and carry on
+  with their answer.
+
+A failure is `report_progress failed` with one plain sentence.
 
 ## The part brief
 

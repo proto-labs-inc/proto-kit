@@ -53,7 +53,8 @@ The library and the import:
 A prototype build (`docs/build-read.md`):
 
 - `proto-build.mjs`: the whole copy of the reference page in one command, then the parts list.
-- `build-stream.mjs`: the build's events to the site (read, curate, name, phase, focus, question).
+- `build-stream.mjs`: the build's events to the site (read, curate, name, phase, focus), and its questions: ask, await the answer, or pass on one given in the terminal.
+- `copy-gate.mjs`: a copy over its gate, retried once, then the copy-gate question on the site.
 - `scaffold.mjs`, `replicate.mjs`: the workspace from the read; every leaf copied, checked and composed.
 - `variant-set.mjs`: a variant set's skeleton, one stub per variant for the units.
 - `check-states.mjs`: every state and variant loaded headless; errors, rect sanity, the untouched parts against the read.
@@ -76,6 +77,7 @@ Serving and publishing:
 The courier and the feed:
 
 - `courier.mjs`: validate the website's commands onto a durable feed.
+- `questions.mjs`: a build's answers taken from the feed; a stray one routed and dropped.
 - `courier-relay.mjs`: the courier's transport, one WebSocket to the site's relay.
 - `courier-http.mjs`: the courier's local-only port, for this laptop's own checks.
 - `feed-tail.mjs`: follow one codebase's feed from the committed offset.

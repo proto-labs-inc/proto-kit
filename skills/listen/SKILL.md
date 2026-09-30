@@ -94,7 +94,8 @@ checkout root.
      run when a chat picks this protocol up again.
 2. **Act on each event line** `{"offset": N, "command": {…}}`, one at
    a time, in arrival order (your notifications are already serial:
-   that IS the one-run-at-a-time queue). First mark it in hand: `node
+   that IS the one-run-at-a-time queue). First mark it in hand (an
+   answer to a question excepted, below): `node
    <kit>/tools/tail.mjs handling <codebase> N` (the line's offset). The
    offset is committed only after acting (step 3), so without this
    mark the tail's rule 6 would count the command you are handling as
@@ -137,15 +138,25 @@ checkout root.
         tunnel is one of these, and the serve skill has its exact
         sentence: report it once, publish what exists, and carry on
         with the rest of the work, because everything but the live
-        view still works. If the flow needs something
-        only the user can give (a login, a decision), report
-        `"needs-input"` with the question as the message, then park
-        that command and move on; it resumes when the answer
-        arrives.
+        view still works. A decision inside a build is asked on the
+        site and answered there (the create-prototype skill's
+        "Blocked"). If the flow needs something else only the user
+        can give (a login), report `"needs-input"` with the question
+        as the message, then park that command and move on; it
+        resumes when the answer arrives.
 
      **Without a `briefId`**: follow the named skill directly and
      record the outcome in your `status.json`. Progress reporting
      is per-brief.
+   - `{"run": "answer", "briefId", "questionId", "option" | "text" |
+     "hold"}`: a person's answer to a build's question, from the site.
+     It is never work of its own and takes no handling mark: run `node
+     <kit>/tools/questions.mjs route <codebase> N`. When the build that
+     asked is waiting on it (its `await-answer` takes it) or already
+     took it, say nothing more. When no build is waiting on it, `route`
+     drops it and prints one line saying so; say that line and move on.
+     Never commit an answer line's offset yourself: `route` and the
+     build's wait commit it once every line before it is committed.
    - `{"status": true}`: write a status report to
      `<run-dir>/status.json` with what you're working on, serving health
      (read the sibling run dirs' state.json + liveness), feed offset.
@@ -153,7 +164,7 @@ checkout root.
      <kit>/tools/supervise.mjs stop|start` on the named sibling run
      dir (or all serving ones).
 3. **Commit after acting**: write `{"offset": N}` (the acted line's
-   offset) to `offset.json` via Bash. Not before: delivery is
+   offset) to `offset.json` via Bash (an answer line excepted: step 2). Not before: delivery is
    at-least-once, and committing early is how commands get lost. (Not
    on Codex: `feed-queue.mjs` commits there, and two writers would
    lose commands.)
@@ -178,8 +189,10 @@ checkout root.
 
 Setup and the import arm the watch before their own slow work, so a
 command can wake you while you are still in the middle of something
-else in this session (a design-system import, another build). Finish
-what you are doing first; the command waits its turn:
+else in this session (a design-system import, another build). An
+answer to a question is not such a command: route it at once, as step
+2 says, since the build asking may be waiting on it. Anything else:
+finish what you are doing first; the command waits its turn:
 
 - say one line in the conversation: what arrived ("A prototype
   build came in from the site") and that it starts once the current
