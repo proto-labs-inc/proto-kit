@@ -5,10 +5,9 @@
  * whichever of black and white reads better. Every other shadcn
  * colour is mixed from those two, so the library's own UI stays
  * legible on a light, dark or saturated surface. Before the surface
- * token exists the page keeps the stylesheet's own neutral, which
- * follows the reader's colour scheme and is dark by default
- * (styles.css), so the library never flashes light inside a dark
- * setup dialog.
+ * token exists the page keeps a neutral of its own theme, which
+ * follows the embedding site's theme (index.html, styles.css), so the
+ * library never flashes light inside a dark setup dialog.
  */
 import type { ThemeId, Token } from "./library";
 
