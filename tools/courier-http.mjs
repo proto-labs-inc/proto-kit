@@ -1,9 +1,9 @@
 /**
- * The courier's HTTP transport (MAA-130). Carries bearer-authed JSON
- * commands from the tunnel to the transport-agnostic handler in
- * courier.mjs. The transport decision (tunnel-carried HTTP, WebSocket
- * revisited later) lives on the issue; a WS transport replaces this
- * file and nothing else.
+ * The courier's local HTTP port (MAA-130). Carries bearer-authed JSON
+ * commands from this laptop (courier-up.mjs's check) to the
+ * transport-agnostic handler in courier.mjs. It listens on
+ * 127.0.0.1 only; the site's commands arrive through the relay
+ * (courier-relay.mjs).
  */
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";

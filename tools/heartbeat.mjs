@@ -1,11 +1,10 @@
 /**
- * The beat loop the kit's heartbeat processes share:
- * prototype-heartbeat.mjs (a prototype's or the library's serving run)
- * and courier.mjs (this laptop's courier). Every beat is one call of
- * the app's `heartbeat` tool with a target that says what is being
- * served: { kind: "prototype", codebase, slug }, { kind: "library",
- * codebase } or { kind: "courier", courierId, agentListening }; the
- * identity comes from ~/.proto/config.json's laptop token. The app owns the cadence:
+ * The beat loop of prototype-heartbeat.mjs (a prototype's or the
+ * library's serving run; the courier's heartbeat is its relay
+ * connection, courier-relay.mjs). Every beat is one call of the app's
+ * `heartbeat` tool with a target that says what is being served:
+ * { kind: "prototype", codebase, slug } or { kind: "library",
+ * codebase }; the identity comes from ~/.proto/config.json's laptop token. The app owns the cadence:
  * the tool answers with `staleAfterSeconds`, the silence after which
  * it treats the laptop as gone, and this loop beats at a third of that
  * window, so the app still sees a beat inside it when one goes

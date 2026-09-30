@@ -32,6 +32,13 @@ checkout root.
 
 ## The loop
 
+0. **Make sure the courier is up.** `node <kit>/tools/courier-up.mjs
+   <codebase>` (add `--codex` on Codex). It starts a stopped courier,
+   moves one set up by an older kit onto the relay (restarting the
+   courier alone, never the codebase's other runs), and prints whether
+   it reached the relay. This is why the one prompt the site
+   offers, "run /proto:listen", fixes both a laptop nobody is listening on
+   and one whose courier stopped.
 1. **Arm the watch.** How depends on the harness:
    - **Claude Code**: arm the Monitor tool on
      `node <kit>/tools/feed-tail.mjs <run-dir>`, description
@@ -152,12 +159,15 @@ checkout root.
    idle final message with no watch ends the session.
 5. **Listener death is NOT a notification to you**: you watch the
    feed file, not the listener process, so you learn nothing when it
-   dies. Its supervisor restarts it automatically; your job is only to
-   *confirm* it when handling a `status` command: check the run dir's
-   `state.json` + process liveness and include the listener's health
-   in the report. If the supervisor itself is down, start it. Either
-   way the feed file means commands were never lost while the port was
-   dark: the site's POSTs failed fast and it knows to retry.
+   dies. Its supervisor restarts it automatically, and it reconnects
+   to the relay by itself; your job is only to *confirm* it when
+   handling a `status` command: check the run dir's `state.json` +
+   process liveness and include the listener's health in the report.
+   If the supervisor itself is down, start it. Either way nothing
+   accepted is lost: a command is in the feed before the relay hears
+   it arrived, and while the listener is down the relay counts this
+   courier gone and the site refuses to send rather than dropping
+   anything.
 
 ## Busy when a command lands
 

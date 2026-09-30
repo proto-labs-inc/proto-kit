@@ -1,23 +1,22 @@
 #!/usr/bin/env node
 /**
  * The courier listener (MAA-130, amendment 2): the website→laptop
- * doorbell. Receives bearer-authed enumerated JSON commands on a local
- * port (exposed publicly via this laptop's courier tunnel, provisioned
- * by the site for { kind: "courier", courierId }),
- * validates them, and appends each ACCEPTED command as one JSON line to
- * <run-dir>/commands.jsonl — the durable feed the listening session
- * consumes (see skills/listen/ and
- * docs/harness-mechanics.md for why a file, not stdout: lines
+ * doorbell. Receives enumerated JSON commands from the site's relay over
+ * the WebSocket courier-relay.mjs holds open, validates them, and appends
+ * each ACCEPTED command as one JSON line to <run-dir>/commands.jsonl,
+ * the durable feed the listening session consumes (see skills/listen/
+ * and docs/harness-mechanics.md for why a file, not stdout: lines
  * emitted while no watch is armed would be lost, and the monitored
- * command is killed at watch end while this listener must keep its
- * port).
+ * command is killed at watch end while this listener must keep going).
+ * Its bearer-authed HTTP port is local only (127.0.0.1), for checks on
+ * this laptop; the secret in courier.json guards that port and nothing
+ * else.
  *
  * That's the whole job: no spawning, no queue, no run tracking — the
  * session running the listen skill acts on commands inline.
  *
  * Command handling is transport-agnostic: handle() takes a parsed JSON
- * command however it arrived. courier-http.mjs is the current
- * transport; a WebSocket transport replaces that file only.
+ * command however it arrived, from the relay or from the local port.
  *
  * Commands v1 (validated, then appended verbatim + envelope):
  *   { "run": "<prompt-name>", "briefId"?: "…" }
@@ -25,12 +24,15 @@
  *   { "restart-serving": "<slug>" | true }
  *
  * Usage: node courier.mjs <run-dir>     (reads <run-dir>/courier.json:
- *   { "codebase": "acme", "port": 5300, "secret": "…" })
+ *   { "codebase": "acme", "port": 5300, "secret": "…", "courierId": "…",
+ *     "relay": { "url": "…", "token": "…" } })
  */
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { serveHttp } from "./courier-http.mjs";
+import { connectRelay, relayConfig } from "./courier-relay.mjs";
+import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 
 const runDir = resolve(process.argv[2] ?? "");
 if (!process.argv[2]) {
@@ -90,8 +92,9 @@ export async function handle(cmd) {
     // Synchronous half of status: is anyone consuming this feed? The
     // site reads this to pick the Execute button's tier. The command
     // still lands in the feed so a listening agent can enrich
-    // status.json with the slow half.
-    return { status: 200, body: { ok: true, id: entry.id, ...agentState() } };
+    // status.json with the slow half. relay says whether the site can
+    // reach this courier at all.
+    return { status: 200, body: { ok: true, id: entry.id, ...agentState(), relay: connection?.state() ?? "none" } };
   }
   return { status: 202, body: { ok: true, id: entry.id } };
 }
@@ -100,24 +103,57 @@ serveHttp({ port: config.port, secret: config.secret, handle }, () =>
   console.log(`courier listener for ${config.codebase} on 127.0.0.1:${config.port}`),
 );
 
-// Heartbeat to the cloud: how the site knows this laptop's courier is
-// alive and whether an agent is consuming its feed. Couriers are per
-// laptop, keyed by the cloud-minted courierId in courier.json; the
-// beat's target is { kind: "courier", courierId, agentListening }. The
-// app answers with its staleness window and the loop paces itself
-// from that (heartbeat.mjs). Fail soft always: a beat that cannot be
-// sent is a missed beat, never a crash.
-//
-// Nothing here says whether this laptop's tunnel is up (MAA-182). The
-// site pushes commands through that tunnel, so on a network that blocks
-// it a dispatch fails, and the site says so from the failure itself
-// rather than from anything stored. That question disappears when the
-// courier pulls its own work over HTTPS (MAA-200).
+// The relay: where the site's commands arrive. The connection is also
+// the heartbeat (courier-relay.mjs), so nothing here beats to the site.
+// A courier set up before the relay existed has no relay block, so it
+// asks for one itself and keeps it in courier.json.
+const ADDRESS_TIMEOUT_MS = 15_000;
+async function relaySettings() {
+  const known = relayConfig(config);
+  if (known) return known;
+  // A network that swallows packets would otherwise hold one attempt for
+  // minutes; better to fail it and let the backoff below try again.
+  const result = await callTool("register_courier", { courierId: config.courierId }, targetFor(readConfig(), { codebase: config.codebase }), {
+    signal: AbortSignal.timeout(ADDRESS_TIMEOUT_MS),
+  });
+  const text = result?.content?.[0]?.text ?? "";
+  if (result?.isError) throw new Error(text || "register_courier failed");
+  const answer = JSON.parse(text || "{}");
+  if (!answer.relayUrl || !answer.relayToken) throw new Error("the site sent no relay address");
+  config.relay = { url: answer.relayUrl, token: answer.relayToken };
+  // Other tools write this file while the courier runs (codex-thread.mjs
+  // records the Codex thread here, and feed-queue.mjs reads it back), and
+  // this fetch can retry for minutes, so the file is read again now and
+  // only relay is set: the copy read at startup would erase what they
+  // wrote. The relay token sits beside the secret, so the file stays the
+  // owner's alone even when it was written before it held one.
+  const path = join(runDir, "courier.json");
+  const current = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(path, JSON.stringify({ ...current, relay: config.relay }, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(path, 0o600);
+  return config.relay;
+}
+
+// Once connected, courier-relay.mjs reconnects on its own; this retry only
+// covers not knowing where the relay is yet (offline, or the site down).
+let connection = null;
 if (config.courierId) {
-  const { beatForever } = await import("./heartbeat.mjs");
-  beatForever(() => ({
-    kind: "courier",
-    courierId: config.courierId,
-    agentListening: agentState().agentListening,
-  }));
+  const startRelay = async (attempt = 0) => {
+    try {
+      const { url, token } = await relaySettings();
+      connection = connectRelay({
+        url,
+        courierId: config.courierId,
+        token,
+        handle,
+        listening: () => agentState().agentListening,
+        log: (text) => console.log(text),
+      });
+    } catch (error) {
+      const wait = Math.min(60_000, 5_000 * 2 ** attempt);
+      console.log(`relay: could not get this courier's relay address (${error.message}); trying again in ${wait / 1000}s`);
+      setTimeout(() => startRelay(attempt + 1), wait);
+    }
+  };
+  startRelay();
 }

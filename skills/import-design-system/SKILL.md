@@ -80,8 +80,9 @@ straight after.
    tools/courier-up.mjs <codebase>` in the background (`--codex` on
    Codex) and arm the listen skill's watch (its step 1), unless setup
    already did both. `courier-up` does the serve skill's courier steps
-   in one call (registering, tunnel, secret, supervisor, a status
-   check through the edge) and never prints the secret; do not build
+   in one call: it registers the courier (once), gets its relay
+   address, starts the supervisor, and moves a courier set up by an
+   older kit onto the relay. It never prints the secret; do not build
    the courier by hand. Both are light, and from then on the site
    shows this laptop as listening: a Build the user presses mid-import
    lands in the feed and waits its turn (the listen skill's "Busy when
@@ -247,8 +248,9 @@ Every line, in order, before you say the import is done:
 - `node tools/publish-library.mjs <codebase> --wait`: this last publish
   carries `completedAt`, so the published copy says the import finished;
 - the courier is up: `node tools/courier-up.mjs <codebase>` prints
-  `local: true` and `edge: true` (on a network that blocks the tunnel,
-  `edge: false`; say the serve skill's sentence);
+  `local: true` and `relay: "connected"`. If `relay` is anything else,
+  say plainly that the site cannot reach this laptop yet, and carry on:
+  the import itself does not need it;
 - one sentence to the user: the library is published and stays
   viewable after this laptop closes;
 - keep listening: take any command that queued up during the import
