@@ -63,7 +63,7 @@ export function ComponentPage({ slug, state, library, courier }: Props) {
             <h1 className="text-2xl font-medium">{component.name}</h1>
             {note && <p className="m-0 text-sm text-muted-foreground">{note}</p>}
           </div>
-          <ThemeToggle />
+          <ThemeToggle manifest={manifest} />
         </header>
         <States component={component} view={view} state={state} courier={courier} />
         {component.tokens[theme].length > 0 && <Colours component={component} tokens={tokens} theme={theme} />}

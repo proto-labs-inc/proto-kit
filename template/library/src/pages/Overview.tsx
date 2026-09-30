@@ -43,7 +43,7 @@ export function Overview({ library, courier }: Props) {
             </h1>
             {started && <ImportLine library={library} courier={courier} />}
           </div>
-          <ThemeToggle />
+          <ThemeToggle manifest={manifest} />
         </header>
 
         {!started && (

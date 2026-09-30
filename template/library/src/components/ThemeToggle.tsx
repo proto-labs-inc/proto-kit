@@ -1,9 +1,12 @@
 import { MoonIcon, SunIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { hasImportedThemePair, type Manifest } from "@/library";
 import { usePreviewThemeControl } from "@/theme";
 
-export function ThemeToggle() {
+export function ThemeToggle({ manifest }: { manifest: Manifest }) {
   const { theme, setTheme } = usePreviewThemeControl();
+  if (!hasImportedThemePair(manifest)) return null;
+
   const next = theme === "light" ? "dark" : "light";
   const Icon = next === "dark" ? MoonIcon : SunIcon;
 

@@ -172,6 +172,22 @@ export function tokensFor(manifest: Manifest, theme: ThemeId): Token[] {
   return manifest.themes[theme];
 }
 
+/**
+ * Whether the import captured two meaningfully different palettes.
+ *
+ * One-theme and legacy libraries mirror their tokens into both theme slots
+ * for compatibility, so the presence of `themes.light` and `themes.dark`
+ * alone does not mean the product actually has two imported modes.
+ */
+export function hasImportedThemePair(manifest: Manifest): boolean {
+  const { light, dark } = manifest.themes;
+  if (light.length === 0 || dark.length === 0 || light.length !== dark.length) return false;
+
+  const lightValues = new Map(light.map((token) => [token.name, token.value]));
+  if (dark.some((token) => !lightValues.has(token.name))) return false;
+  return dark.some((token) => lightValues.get(token.name) !== token.value);
+}
+
 export const settled = (component: Component) => component.status === "done" || component.status === "skipped";
 
 /** Whether anything can still change: the import is running, a
