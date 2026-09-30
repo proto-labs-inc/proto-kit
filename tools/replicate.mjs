@@ -18,15 +18,17 @@
  * and named), workspace.json (scaffold.mjs). Starts the workspace's dev
  * server when it is not up, and stops it again unless --keep-dev.
  *
- * Prints one JSON line: { seconds, matched: [id], toFix: [{ id, states }],
- * failed: [{ id, error }], reused: [id], page: { verdict, mismatch, pct },
- * timings }.
+ * Prints one JSON line: { seconds, parts: [{ id, slug, marker, reused,
+ * status }], matched: [id], toFix: [{ id, slug, states }], failed: [{ id,
+ * slug, error }], reused: [id], page: { verdict, mismatch, pct }, learned,
+ * fitted, timings }, where a part's status is matched, differs or failed.
  */
-import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createReporter } from "./build-report.mjs";
+import { ensureDevServer } from "./dev-server.mjs";
 import { findPage } from "./cdp/attach.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
@@ -78,7 +80,6 @@ const tree = need("tree.json", "run build-stream.mjs read first");
 const read = need("read.json", "run build-stream.mjs read first");
 const curation = tree.curation ?? need("curation.json", "run build-stream.mjs curate, review it, then name");
 const workspace = need("workspace.json", "run scaffold.mjs first");
-const config = JSON.parse(readFileSync(join(homeDir, ".proto", "config.json"), "utf8"));
 const library = join(home, "library");
 const appUrl = `http://localhost:${workspace.port}`;
 const liveMatch = liveMatchOf(tree.url);
@@ -92,27 +93,9 @@ const leaves = curation.filter((entry) => entry.role === "leaf").map((entry) => 
 if (leaves.length === 0) fail("the curation names no leaves: nothing to replicate");
 
 // ---- the dev server ----
-let dev = null;
 const began = Date.now();
-if (!(await answers(`${appUrl}/prototype.json`))) {
-  step(`starting the workspace's dev server on ${workspace.port}`);
-  // Its output goes to the build folder: a reload's reason is in there.
-  const log = openSync(join(buildDir, "dev.log"), "a");
-  dev = spawn("pnpm", ["dev"], { cwd: workspace.path, env: { ...process.env, PROTO_PACKAGES: config.packages }, stdio: ["ignore", log, log], detached: true });
-  const until = Date.now() + 30_000;
-  while (!(await answers(`${appUrl}/prototype.json`))) {
-    if (Date.now() > until) fail(`the dev server did not answer on ${workspace.port} within 30 s`);
-    await new Promise((r) => setTimeout(r, 200));
-  }
-}
-const stopDev = () => {
-  if (dev && !options.keepDev) {
-    try {
-      process.kill(-dev.pid, "SIGTERM");
-    } catch {}
-  }
-};
-process.on("exit", stopDev);
+const dev = await ensureDevServer({ workspace: workspace.path, logPath: join(buildDir, "dev.log"), keep: Boolean(options.keepDev) });
+const stopDev = () => dev.stop();
 
 // The display the live page is drawn on: what the headless Chrome must match.
 const tab = await findPage(liveMatch, Number(options.port));
@@ -251,6 +234,7 @@ stopDev();
 console.log(
   JSON.stringify({
     seconds: Math.round((Date.now() - started) / 100) / 10,
+    parts: parts.map((part) => ({ id: part.id, slug: part.slug, marker: part.marker, reused: part.reused ?? null, status: statusOf(part) })),
     matched,
     toFix,
     failed,
@@ -265,6 +249,12 @@ process.exit(0);
 
 // ---- helpers ----
 
+function statusOf(part) {
+  if (!part.outcome) return "failed";
+  if (part.outcome.matched) return "matched";
+  return "differs";
+}
+
 async function warmDev() {
   for (let attempt = 0; attempt < 5; attempt++) {
     const page = await headlessPage(`${appUrl}/`, { ...viewport, display });
@@ -278,15 +268,6 @@ async function warmDev() {
     } finally {
       await page.close().catch(() => {});
     }
-  }
-}
-
-async function answers(url) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
-    return res.ok;
-  } catch {
-    return false;
   }
 }
 
