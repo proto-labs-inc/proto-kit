@@ -36,10 +36,10 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callTool } from "./mcp-call.mjs";
+import { ephemeralPort } from "./ports.mjs";
 import { TUNNEL_BLOCKED, TUNNEL_BLOCKED_SENTENCE, TUNNEL_CONNECTED, TUNNEL_CONNECTING, watchTunnel } from "./tunnel-state.mjs";
 
 const codebase = process.argv[2];
@@ -119,7 +119,7 @@ const supervise = join(kit, "tools", "supervise.mjs");
 const specPath = join(runDir, "spec.json");
 const status = spawnSync(process.execPath, [supervise, "status", runDir], { encoding: "utf8" });
 const servingPort = status.status === 0 && !status.stdout.includes("DOWN") ? specPort() : null;
-const port = servingPort ?? (await freePort());
+const port = servingPort ?? (await ephemeralPort());
 step(`provisioning the library tunnel for port ${port}`);
 const tunnel = unwrap(await callTool("provision_tunnel", { kind: "library", codebase, port }).catch((e) => ({ content: [{ text: e.message }] })));
 if (!tunnel.url || !tunnel.hostname || !tunnel.connectorToken) fail(`provision_tunnel did not answer with an address: ${tunnel.error ?? JSON.stringify(tunnel)}`);
@@ -212,21 +212,6 @@ function specPort() {
   const dev = JSON.parse(readFileSync(specPath, "utf8")).processes?.find((p) => p.name === "dev");
   const port = Number(dev?.env?.PROTO_PORT);
   return Number.isInteger(port) && port > 0 ? port : null;
-}
-
-// A port nothing holds right now. The socket closes before Vite binds,
-// and Vite's strictPort turns anything that grabs it in between into a
-// loud failure rather than a silent move to an address the tunnel does
-// not carry.
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.on("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
-    });
-  });
 }
 
 // True once `check` passes. The dev server is the one thing worth

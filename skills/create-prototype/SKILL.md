@@ -228,8 +228,11 @@ are build-relative without a leading slash (`previews/x.png`,
 the template matching the source repo's framework (`vue` in its
 `package.json` → `template/workspace-vue/`, else
 `template/workspace-react/`): the slug in `package.json`, `index.html`
-and `public/prototype.json`; a free port in `vite.config.ts` and
-`prototype.json` (they must agree); the rig's source paths in
+and `public/prototype.json`; a port free on this laptop that no other
+prototype or library under `~/.proto` claims, in `vite.config.ts` and
+`prototype.json` (they must agree), with the workspace's own token in
+`public/__proto-workspace.json`, which every tool reads back from the
+port before rendering in it; the rig's source paths in
 `tsconfig.json` (pre-npm, via `PROTO_PACKAGES` from `~/.proto/config.json`);
 the page's tokens, fonts and body base in `src/`; Tailwind when the
 source uses it; `pnpm install` from the shared store. Never vendor the
