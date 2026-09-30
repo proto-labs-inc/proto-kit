@@ -18,7 +18,8 @@
  *      by under a fifth, or a pass made it worse;
  *   5. the unit's budget: three checks or two minutes;
  *   6. someone is waiting: a site command is queued (one being handled
- *      right now is not queued: `handling` marks it).
+ *      right now is not queued: `handling` marks it; nor is an answer
+ *      to a build's question, which its build takes).
  * And a phase (the import's tail, a build's copy) is weighed as a
  * whole from two minutes in: P(t), the matched share of the work by
  * weight, sampled at every check pass; every thirty seconds the gain
@@ -181,7 +182,14 @@ export function waiting(codebase) {
   const offset = Math.max(offsetIn(join(run, "offset.json")), offsetIn(handlingFile(codebase)));
   const size = statSync(feed).size;
   if (size <= offset) return { waiting: false, what: null };
-  const pending = readFileSync(feed, "utf8").slice(offset).split("\n").filter(Boolean);
+  // An answer to a build's question is never work waiting: its build
+  // takes it, or the listen skill drops it.
+  const pending = readFileSync(feed, "utf8")
+    .slice(offset)
+    .split("\n")
+    .filter(Boolean)
+    .filter((line) => !isAnswer(line));
+  if (pending.length === 0) return { waiting: false, what: null };
   let what = "a site command";
   try {
     const command = JSON.parse(pending[0]);
@@ -190,6 +198,14 @@ export function waiting(codebase) {
     // An unreadable line still waits.
   }
   return { waiting: true, what, count: pending.length };
+}
+
+function isAnswer(line) {
+  try {
+    return JSON.parse(line).run === "answer";
+  } catch {
+    return false;
+  }
 }
 
 /**
