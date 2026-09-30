@@ -87,27 +87,45 @@ and keeps the build's tree in `~/.proto/<codebase>/run/builds/<briefId>/`.
 
 1. **Read the page** as soon as the reference tab is open in the Proto
    window: `build-stream.mjs read <briefId> --codebase <id> --page
-   <url-substring>`. It captures the page, reads its tree root first and
-   writes `tree.json` (node ids, tag.class, boxes, a selector each).
+   <url-substring>`. One read, under the window's lock: it captures the
+   page, reads its tree root first and writes `tree.json`, and keeps
+   every element's computed style, the page's tokens, fonts and images
+   beside it (`read.json`, `assets/`; docs/build-read.md). Nothing
+   after this reads the live page again except the checks.
 2. **Name it** once you know the prototype's title:
    `build-stream.mjs title <briefId> --codebase <id> "<title>"`.
-3. **Curate the tree.** Write `curation.json` next to `tree.json`: one
-   entry per node, `{ "id", "name", "role", "marker" }`. The name is what
-   the part is ("Sidebar", "Member list"); the role is `section` (holds
-   other parts), `leaf` (a part you build as one component) or
-   `packaging` (a box whose only job is to hold another). `marker` is the
-   `data-proto-id` the part becomes in the prototype, so the build's
-   sections and the Frame's components are the same things. Then
-   `build-stream.mjs name <briefId> --codebase <id> <curation.json>`.
-4. **Build leaf by leaf.** `build-stream.mjs queue <briefId> --codebase
-   <id>` lists every leaf. For each leaf, as you write it:
+3. **Curate the tree.** `build-stream.mjs curate <briefId> --codebase
+   <id>` drafts `curation.json` next to `tree.json`: one entry per node,
+   `{ "id", "name", "role", "marker" }`, roles from the page's structure
+   (`section` holds other parts, `leaf` is one part you build as one
+   component, `packaging` only holds another) and names from what the
+   page says (aria labels, headings, landmarks, text). Review it: fix
+   names that read as "Group" or "Block" where you can see what the part
+   is, move a role where the draft split or merged wrongly. `marker` is
+   the `data-proto-id` the part becomes, so the build's sections and the
+   Frame's components are the same things. Then `build-stream.mjs name
+   <briefId> --codebase <id> <curation.json>`.
+4. **Scaffold** the workspace from the read: `scaffold.mjs <slug>
+   --codebase <id> --brief <briefId> --title "<title>"` (see "Where it
+   lives").
+5. **Copy the page.** `replicate.mjs <briefId> --codebase <id>` builds
+   every leaf as a part in `src/parts/`, reusing the library where a
+   component matches, checks each against the page pixel by pixel,
+   composes `src/App.tsx` around them and checks the whole page; it
+   streams every pass and match itself. Its JSON line says what matched
+   and what is left: `toFix` names the parts whose checks differ, with
+   the differing clusters, and `page` the whole page's verdict. Work on
+   those parts only, in `src/parts/<slug>/`, checking each with
+   `check.mjs <codebase> <slug> --app http://localhost:<port> --unit
+   src/parts/<slug>/component.json --live <referenceUrl>` and reporting
    `pass <briefId> --codebase <id> <nodeId> <n> [pixelsOff]` for each
-   attempt you check against the page (pixelsOff when you measured it),
-   then `matched <briefId> --codebase <id> <nodeId>` when it is right.
-5. **Check the whole page** before serving: `phase <briefId> --codebase
+   attempt, then `matched <briefId> --codebase <id> <nodeId>` when it is
+   right. An animated decoration or a system-font glyph that differs by a
+   few pixels is not yours to chase: two passes, then move on.
+6. **Check the whole page** before serving: `phase <briefId> --codebase
    <id> composing "<one sentence>"`; and `phase ... serving` when the
    serve skill starts.
-6. **Ask when blocked:** `question <briefId> --codebase <id> "<question>"`
+7. **Ask when blocked:** `question <briefId> --codebase <id> "<question>"`
    alongside `report_progress` with `needs-input`.
 
 A build the site did not start (no brief yet) streams too: the brief id
@@ -135,35 +153,22 @@ parent build's `tree.json` curation.
 
 ## Where it lives
 
-Scaffold `~/.proto/<codebase>/prototypes/<slug>/` by copying the
-workspace template **matching the source repo's framework**. Read the
-codebase's `package.json`: `vue` → `template/workspace-vue/`, otherwise
-(react, or no source repo) → `template/workspace-react/`. The
-prototype is a framework-native slice; a React mock of a Vue product
-isn't one. Then make it this prototype's own:
-
-1. `package.json` `name`, `index.html` `<title>`, and
-   `public/prototype.json` `name` → the slug.
-2. Pick a free port (one prototype per port; check the codebase's other
-   workspaces) and set it in **both** `vite.config.ts` and
-   `prototype.json`: they must agree, the Frame reads the manifest.
-3. Pre-npm: the rig resolves via the `PROTO_PACKAGES` env var (path to
-   a proto checkout's `packages/` dir, recorded in
-   `~/.proto/config.json`). Vite reads it in the template's config,
-   and `tsc` needs the same entries written into `tsconfig.json`
-   `paths`: the adapter (`@proto/rig` → `<packages>/rig/src/index.tsx`
-   for React, `@proto/rig-vue` → `<packages>/rig-vue/src/index.ts` for
-   Vue), plus `@proto/rig-core` → `<packages>/rig-core/src/index.ts`
-   (the adapters bare-import it) and `@proto/wire` →
-   `<packages>/wire/src/index.ts`. React workspaces must also keep
-   `resolve.dedupe: ["react", "react-dom"]` in Vite: the source-aliased
-   rig lives outside the standalone workspace, and without deduplication
-   a production build can bundle a second React runtime and crash its
-   hooks before the prototype mounts. Don't vendor the rig, don't add
-   it to package.json: once the packages publish to npm they become
-   plain dependencies and both the alias block and the paths disappear.
-4. `pnpm install` (standalone: never inside a git checkout, never a
-   workspace package of one).
+`tools/scaffold.mjs <slug> --codebase <id> --brief <briefId> --title
+"<title>"` creates `~/.proto/<codebase>/prototypes/<slug>/` from the
+workspace template **matching the source repo's framework** (`vue` in
+the source's `package.json` → `template/workspace-vue/`, otherwise
+`template/workspace-react/`), and makes it this prototype's own in one
+call: the slug in `package.json`, `index.html` and
+`public/prototype.json`; a free port in both `vite.config.ts` and
+`prototype.json` (they must agree, the Frame reads the manifest); the
+rig's source paths in `tsconfig.json` (pre-npm, the rig resolves via
+`PROTO_PACKAGES` from `~/.proto/config.json`, MAA-216); the page's
+tokens, fonts and body base in `src/`; Tailwind's plugin and import when
+the source uses it; `pnpm install` from the shared store. Run it again
+and it changes nothing that exists. Never vendor the rig or add it to
+package.json. Run every kit tool with the node the kit runs on; the
+scaffold records the workspace in the build folder (`workspace.json`)
+for `replicate.mjs`.
 
 `modern-screenshot` stays a dependency of every workspace: the rig
 lazy-imports it from the prototype's own node_modules for comment
@@ -235,22 +240,12 @@ a component the page needs is missing from the library, build it
 faithfully from source + live page (and note it as an import gap):
 don't invent a parallel look.
 
-**Wire the source's CSS system into the workspace**: the template
-ships bare CSS on purpose (it doesn't know your product). Read how the
-source styles itself and reproduce that chain:
-
-- Tailwind source (the common case): add `tailwindcss` +
-  `@tailwindcss/vite` to the workspace, register the plugin in
-  `vite.config.ts`, and import the product's theme/token layer in
-  `styles.css` before your own rules. The goal is that the product's
-  utility classes and tokens resolve identically in the prototype.
-- Plain CSS/custom-property systems: import the token stylesheet(s)
-  (from the library import or copied from source) at the top of
-  `styles.css`.
-
-Either way, verify a chromatic token early: one element using a brand
-color must render the source's hue, not a default. Catching a
-dead style chain before building the page is minutes; after, hours.
+**The source's CSS system is wired by the scaffold**: `src/tokens.css`
+holds every custom property the page computes on `:root` and `body`,
+`src/fonts.css` its @font-face rules with the files, `src/styles.css`
+the body's own base, and Tailwind's plugin and import are in place when
+the source uses it. Build on those; a value you need that is not there
+is read from `read.json`, never guessed.
 
 Mock data by default: typed constants in the prototype, realistic copy
 (real-sounding names, plausible timestamps: the inbox example's
