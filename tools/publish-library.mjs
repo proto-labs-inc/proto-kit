@@ -14,7 +14,7 @@
  * while it waited. The writer's own lock is untouched: a unit's
  * history and status lines stay instant while a build runs.
  *
- * Usage: node publish-library.mjs <library> [--dry-run]
+ * Usage: node publish-library.mjs <library> [--wait] [--dry-run]
  *   <library> is the library app's folder (~/.proto/<codebase>/library)
  *   or just the codebase id, the same argument library.mjs takes. The
  *   codebase comes from public/manifest.json. --dry-run builds and
@@ -24,6 +24,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { packHistory } from "./pack-history.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // A build and an upload take tens of seconds, so a waiting publish
@@ -40,7 +41,7 @@ const fail = (message) => {
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const argument = args.find((a) => !a.startsWith("--"));
-if (!argument) fail("usage: node publish-library.mjs <library> [--dry-run]");
+if (!argument) fail("usage: node publish-library.mjs <library> [--wait] [--dry-run]");
 
 let libraryDir = resolve(argument);
 if (!argument.includes("/")) {
@@ -55,8 +56,16 @@ if (!existsSync(manifestPath)) fail(`${manifestPath} does not exist; run an impo
 const codebase = JSON.parse(readFileSync(manifestPath, "utf8")).codebase;
 if (!codebase) fail(`${manifestPath} names no codebase; a library with nothing imported has nothing to publish`);
 
-// mkdir is atomic: whoever makes the folder holds the lock.
+// mkdir is atomic: whoever makes the folder holds the lock. A publish
+// that finds the lock held leaves a note and returns straight away:
+// the running publish builds once more when it finishes, and that
+// build carries everything landed by then. So ten components landing
+// together cost two builds, not ten in a queue. --wait waits for the
+// running publish instead and builds after it (the finish, which must
+// know its own publish went out).
 const lock = join(libraryDir, ".publish-lock");
+const pending = join(libraryDir, ".publish-pending");
+const wait = args.includes("--wait");
 const deadline = Date.now() + WAIT_MS;
 let waited = false;
 for (;;) {
@@ -72,6 +81,11 @@ for (;;) {
       rmSync(lock, { recursive: true, force: true });
       continue;
     }
+    if (!wait) {
+      mkdirSync(pending, { recursive: true });
+      console.log("a publish is running; it publishes again when it finishes, carrying this");
+      process.exit(0);
+    }
     if (Date.now() > deadline) fail(`${lock} is held by another publish; remove it if nothing is running`);
     if (!waited) {
       console.error("… another publish is running; this one builds after it, so it carries everything landed by then");
@@ -86,9 +100,16 @@ for (;;) {
 // holding every later publish for STALE_MS.
 process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
 
-const build = spawnSync("pnpm", ["build"], { cwd: libraryDir, stdio: ["ignore", "inherit", "inherit"] });
-if (build.status !== 0) fail(`pnpm build failed in ${libraryDir}`);
-const publishArgs = [join(HERE, "publish.mjs"), "--kind", "library", "--codebase", codebase, "--dir", join(libraryDir, "dist")];
-if (dryRun) publishArgs.push("--dry-run");
-const publish = spawnSync(process.execPath, publishArgs, { stdio: ["ignore", "inherit", "inherit"] });
-if (publish.status !== 0) process.exit(publish.status ?? 1);
+// Build and upload; again while a publish asked for in the meantime is waiting.
+do {
+  rmSync(pending, { recursive: true, force: true });
+  const build = spawnSync("pnpm", ["build"], { cwd: libraryDir, stdio: ["ignore", "inherit", "inherit"] });
+  if (build.status !== 0) fail(`pnpm build failed in ${libraryDir}`);
+  // Check pictures, three per check, go out packed in a few sheets per
+  // component: a publish carries at most 200 files (tools/pack-history.mjs).
+  packHistory(join(libraryDir, "dist"));
+  const publishArgs = [join(HERE, "publish.mjs"), "--kind", "library", "--codebase", codebase, "--dir", join(libraryDir, "dist")];
+  if (dryRun) publishArgs.push("--dry-run");
+  const publish = spawnSync(process.execPath, publishArgs, { stdio: ["ignore", "inherit", "inherit"] });
+  if (publish.status !== 0) process.exit(publish.status ?? 1);
+} while (existsSync(pending));

@@ -22,8 +22,13 @@
  *       public/product/favicon.<ext> and named in the manifest, so the
  *       app can show the page the way a browser tab does.
  *   token <library> <json>            one { name, value, group, role? }
+ *   tokens <library> <json>           many at once, [{ name, value, group, role? }, …]: one write, one line
  *   type <library> <json>             one { name, family, size, weight, lineHeight, sample }
- *   inventory <library> <json>        every component at once, [{ slug, name }], all "found"
+ *   types <library> <json>            many at once: one write, one line
+ *   inventory <library> <json>        every component at once, [{ slug, name, screenshot? }], all "found";
+ *                                     screenshot is the product's own crop of it (tools/cdp/crop.mjs),
+ *                                     copied to components/<slug>/screenshot.png so the library shows
+ *                                     the component before it is built
  *   component <library> <slug> status <found|extracting|done|skipped|queued>
  *       [--kind <could-not-isolate|did-not-match|not-tried>] [--reason "<sentence>"] [--screenshot <png>] [--activity "<line>"]
  *       done reads the component the unit authored in
@@ -38,9 +43,11 @@
  *       (copied to components/<slug>/screenshot.png). The crop stays
  *       on the entry from then on; the kind and reason stay while
  *       queued and go when the component is read again.
- *   history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "<line>"
- *       Moves both images into components/<slug>/history/ and appends
- *       the pass. Every pass a component made is kept.
+ *   history <library> <slug> --screenshot <png> --diff <png> [--live <png>] [--verdict <v>] --mismatch <n> --activity "<line>"
+ *       Moves the images into components/<slug>/history/ and appends
+ *       the pass. Every pass a component made is kept. tools/check.mjs
+ *       lands each pass the moment it is made, so a component's checks
+ *       stream into the library while it is still being read.
  *   event <library> [slug] <activity>  one activity line, about a component or the whole import
  *   take-queued <library>             pops queue.json: prints the slug it took (now "queued",
  *                                     completedAt cleared), "*" for a request to import
@@ -66,10 +73,12 @@ import { join, resolve } from "node:path";
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
   init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>] [--favicon <file>]
   token <library> <json>
+  tokens <library> <json array>
   type <library> <json>
+  types <library> <json array>
   inventory <library> <json array>
   component <library> <slug> status <found|extracting|done|skipped|queued> [--kind ...] [--reason ...] [--screenshot ...] [--activity ...]
-  history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity <line>
+  history <library> <slug> --screenshot <png> --diff <png> [--live <png>] [--verdict <v>] --mismatch <n> --activity <line>
   event <library> [slug] <activity>
   take-queued <library>
   complete <library>`;
@@ -79,6 +88,8 @@ const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
 // the product closely enough, or the import never got to it.
 const SKIP_KINDS = ["could-not-isolate", "did-not-match", "not-tried"];
 const REASON_CAP = 140;
+// What a check found (tools/verify-replica.mjs).
+const VERDICTS = ["match", "shifted", "context", "faint", "offscreen", "differs"];
 // The whole import, asked for again from the app: a request whose slug
 // is this, rather than a component's.
 const EVERYTHING = "*";
@@ -306,31 +317,39 @@ const commands = {
 
   token() {
     const token = readJsonArg(positional[0]);
-    requireString(token.name, "token.name");
-    requireString(token.value, "token.value");
-    requireString(token.group, "token.group");
-    if (token.role !== undefined && token.role !== "surface" && token.role !== "text") fail("token.role is surface or text");
+    checkToken(token);
     change((manifest) => {
-      const existing = manifest.tokens.findIndex((t) => t.name === token.name);
-      if (existing === -1) manifest.tokens.push(token);
-      else manifest.tokens[existing] = token;
+      putByName(manifest.tokens, token);
       return { activity: `Reading colours (${token.name})` };
+    });
+  },
+
+  tokens() {
+    const list = readJsonArg(positional[0]);
+    if (!Array.isArray(list) || list.length === 0) fail("tokens takes a non-empty JSON array of { name, value, group, role? }");
+    list.forEach(checkToken);
+    change((manifest) => {
+      for (const token of list) putByName(manifest.tokens, token);
+      return { activity: `Reading colours (${list.length} of them)` };
     });
   },
 
   type() {
     const style = readJsonArg(positional[0]);
-    requireString(style.name, "type.name");
-    requireString(style.family, "type.family");
-    requireString(style.size, "type.size");
-    requireString(style.lineHeight, "type.lineHeight");
-    requireString(style.sample, "type.sample");
-    if (typeof style.weight !== "number") fail("type.weight must be a number");
+    checkType(style);
     change((manifest) => {
-      const existing = manifest.type.findIndex((t) => t.name === style.name);
-      if (existing === -1) manifest.type.push(style);
-      else manifest.type[existing] = style;
+      putByName(manifest.type, style);
       return { activity: `Reading type styles (${style.name})` };
+    });
+  },
+
+  types() {
+    const list = readJsonArg(positional[0]);
+    if (!Array.isArray(list) || list.length === 0) fail("types takes a non-empty JSON array of { name, family, size, weight, lineHeight, sample }");
+    list.forEach(checkType);
+    change((manifest) => {
+      for (const style of list) putByName(manifest.type, style);
+      return { activity: `Reading type styles (${list.length} of them)` };
     });
   },
 
@@ -341,12 +360,18 @@ const commands = {
       requireString(item.slug, "slug");
       requireString(item.name, "name");
       if (!/^[a-z0-9][a-z0-9-]*$/.test(item.slug)) fail(`slug "${item.slug}" must be lowercase letters, digits and dashes`);
+      if (item.screenshot !== undefined && !existsSync(item.screenshot)) fail(`${item.screenshot} does not exist`);
     }
     change((manifest) => {
       for (const item of list) {
         if (manifest.components.some((c) => c.slug === item.slug)) continue;
-        manifest.components.push({ slug: item.slug, name: item.name, status: "found", states: [], tokens: [], history: [] });
+        const entry = { slug: item.slug, name: item.name, status: "found", states: [], tokens: [], history: [] };
         mkdirSync(folderOf(item.slug), { recursive: true });
+        if (item.screenshot !== undefined) {
+          copyFileSync(item.screenshot, join(folderOf(item.slug), "screenshot.png"));
+          entry.screenshot = relative(item.slug, "screenshot.png");
+        }
+        manifest.components.push(entry);
       }
       return { activity: `Found ${manifest.components.length} components` };
     });
@@ -396,7 +421,8 @@ const commands = {
     const [slug] = positional;
     const mismatch = Number(options.mismatch);
     if (!slug || !options.screenshot || !options.diff || !options.activity || !Number.isInteger(mismatch) || mismatch < 0) fail(USAGE);
-    for (const image of [options.screenshot, options.diff]) if (!existsSync(image)) fail(`${image} does not exist`);
+    for (const image of [options.screenshot, options.diff, options.live].filter(Boolean)) if (!existsSync(image)) fail(`${image} does not exist`);
+    if (options.verdict !== undefined && !VERDICTS.includes(options.verdict)) fail(`--verdict is one of ${VERDICTS.join(", ")}`);
     change((manifest) => {
       const entry = componentIn(manifest, slug);
       const folder = join(folderOf(slug), "history");
@@ -404,14 +430,20 @@ const commands = {
       const n = nextPass(folder);
       renameOrCopy(options.screenshot, join(folder, `${n}.png`));
       renameOrCopy(options.diff, join(folder, `${n}-diff.png`));
-      entry.history.push({
+      const pass = {
         at: now(),
         activity: options.activity,
         screenshot: relative(slug, "history", `${n}.png`),
         diff: relative(slug, "history", `${n}-diff.png`),
         mismatch,
-      });
-      return { activity: `${options.activity} (${pixelsOff(mismatch)})`, slug };
+      };
+      if (options.live) {
+        renameOrCopy(options.live, join(folder, `${n}-live.png`));
+        pass.live = relative(slug, "history", `${n}-live.png`);
+      }
+      if (options.verdict !== undefined) pass.verdict = options.verdict;
+      entry.history.push(pass);
+      return { activity: options.activity, slug };
     });
   },
 
@@ -466,9 +498,27 @@ function coverage(components) {
   return parts.join(", ");
 }
 
-function pixelsOff(mismatch) {
-  if (mismatch === 0) return "no difference";
-  return `${mismatch.toLocaleString("en-GB")} pixels differ`;
+function checkToken(token) {
+  requireString(token.name, "token.name");
+  requireString(token.value, "token.value");
+  requireString(token.group, "token.group");
+  if (token.role !== undefined && token.role !== "surface" && token.role !== "text") fail("token.role is surface or text");
+}
+
+function checkType(style) {
+  requireString(style.name, "type.name");
+  requireString(style.family, "type.family");
+  requireString(style.size, "type.size");
+  requireString(style.lineHeight, "type.lineHeight");
+  requireString(style.sample, "type.sample");
+  if (typeof style.weight !== "number") fail("type.weight must be a number");
+}
+
+// Replace the entry of the same name, else add it at the end.
+function putByName(list, item) {
+  const existing = list.findIndex((t) => t.name === item.name);
+  if (existing === -1) list.push(item);
+  else list[existing] = item;
 }
 
 // What the unit authored in src/components/<slug>/: the module, its
@@ -503,6 +553,10 @@ function authored(slug, tokens) {
     if (!tokens.some((t) => t.name === name)) fail(`component.json names the token "${name}", which the manifest does not hold; push it with \`token\` first`);
   }
   const record = { module: ["src", "components", slug, modules[0]].join("/"), states, tokens: [...new Set(unit.tokens)] };
+  if (unit.backdrop !== undefined) {
+    requireString(unit.backdrop, "backdrop");
+    record.backdrop = unit.backdrop;
+  }
   if (unit.unverified !== undefined) {
     requireString(unit.unverified, "unverified");
     if (unit.unverified.length > REASON_CAP) fail(`unverified is ${unit.unverified.length} characters; the cap is ${REASON_CAP}: one plain sentence for the user`);
@@ -527,6 +581,7 @@ function importedModules() {
 function unbuild(entry) {
   delete entry.module;
   delete entry.unverified;
+  delete entry.backdrop;
   entry.states = [];
   entry.tokens = [];
 }
