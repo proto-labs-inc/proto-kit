@@ -32,14 +32,21 @@
  * out. --activity replaces the pass's line (a unit saying what it changed).
  *
  * Prints one JSON line: { slug, states: [{ state, verdict, mismatch,
- * shifted, clusters, activity }], matched } where matched is true when
- * every checked state's verdict is match, shifted, context, faint or
- * offscreen (tools/verify-replica.mjs says what each means).
+ * area, shifted, clusters, activity, tail }], matched, stop } where
+ * matched is true when every checked state's verdict is match,
+ * shifted, context, faint or offscreen (tools/verify-replica.mjs says
+ * what each means). Every pass is recorded in the run's tail.jsonl
+ * (tools/tail.mjs); a state's `tail` says when a unit should stop on
+ * it and why (its difference is small, the last passes did not help,
+ * the unit's budget is spent), and `stop` when that holds for every
+ * state that still differs: the unit reports then, instead of another
+ * pass.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyState, passTrend, readRecords, record, tailFile, unitBudget } from "./tail.mjs";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -163,12 +170,45 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     entry.activity = options.activity ?? label(unit, entry.state, entry.result.activity);
     if (target.land) land(library, slug, entry.result, entry.activity, options.theme);
   }
+  // Every pass goes on the run's record, and the unit's own budget
+  // counts from its first check after the import's gate.
+  const tail = tailFile(codebase);
+  const before = readRecords(tail);
+  const phaseAt = [...before].reverse().find((r) => r.kind === "phase")?.at ?? 0;
+  const own = before.filter((r) => r.at >= phaseAt && r.item === slug);
+  const checks = own.filter((r) => r.kind === "check").length + 1;
+  const startedAt = own.find((r) => r.kind === "check")?.at ?? Date.now();
+  record(tail, { kind: "check", item: slug });
   const summary = checked.states.map((entry) => {
     if (!entry.result) return entry;
     const { result, activity } = entry;
-    return { state: entry.state, verdict: result.verdict, mismatch: result.mismatch, shifted: result.shifted, clusters: result.clusters.slice(0, 4), activity };
+    const area = Math.round(result.rect[2] * result.rect[3] * result.display.dpr * result.display.dpr);
+    record(tail, { kind: "pass", item: slug, state: entry.state, verdict: result.verdict, mismatch: result.mismatch, area });
+    const history = [...own.filter((r) => r.kind === "pass" && r.state === entry.state).map((r) => r.mismatch), result.mismatch];
+    const stop = stopReason({ verdict: result.verdict, mismatch: result.mismatch, area, history, checks, startedAt });
+    return { state: entry.state, verdict: result.verdict, mismatch: result.mismatch, area, shifted: result.shifted, clusters: result.clusters.slice(0, 4), activity, tail: stop };
   });
-  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched }));
+  // A state whose check failed outright (the render route did not mount) has no tail verdict: it is checked again, not stopped on.
+  const differing = summary.filter((s) => s.tail && !ACCEPTED.includes(s.verdict));
+  const stop = differing.length > 0 && differing.every((s) => s.tail.stop);
+  for (const s of differing) if (s.tail.stop) console.error(`${slug} ${s.state}: stop here, ${s.tail.reason}`);
+  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched, stop }));
+}
+
+/**
+ * Whether a unit should stop on this state, and why (tools/tail.mjs
+ * rules 2, 4 and 5): a difference too small to chase, passes that no
+ * longer help, or a budget spent. Never on a state that matches.
+ */
+function stopReason({ verdict, mismatch, area, history, checks, startedAt }) {
+  if (ACCEPTED.includes(verdict)) return { stop: false, reason: null };
+  const small = classifyState({ verdict, mismatch, area });
+  if (small.tail) return { stop: true, rule: small.rule, reason: small.reason };
+  const trend = passTrend(history);
+  if (trend.stop) return { stop: true, rule: "diminishing", reason: trend.reason };
+  const budget = unitBudget({ checks, startedAt });
+  if (budget.stop) return { stop: true, rule: "budget", reason: budget.reason };
+  return { stop: false, reason: null };
 }
 
 // The pass's line names the state when the component has more than one.

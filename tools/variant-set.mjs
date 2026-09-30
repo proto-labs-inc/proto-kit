@@ -29,13 +29,16 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { buildOfWorkspace } from "./build-folder.mjs";
+import { createReporter } from "./build-report.mjs";
 
 const USAGE = 'usage: node tools/variant-set.mjs <workspace> <component> --title "<t>" --variants "id=Title|note;..." --default <id> [--baseline id=Title] [--state <id>] [--overview "<sentence>"]';
 const options = {};
 const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
-  if (args[i].startsWith("--")) {
+  if (args[i] === "--no-send") options.noSend = true;
+  else if (args[i].startsWith("--")) {
     options[args[i].slice(2)] = args[i + 1];
     i += 1;
   } else positional.push(args[i]);
@@ -156,6 +159,13 @@ if (options.overview) entry.overview = { title: options.title, description: opti
 manifest.variantSets = [...(manifest.variantSets ?? []).filter((set) => set.component !== component), entry];
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 
+// The site hears the set is being written from the tool itself, so it never sits on the copy's last line.
+const build = buildOfWorkspace(workspace);
+if (build) {
+  const reporter = createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: options.noSend ? "file" : "site" });
+  reporter.send([{ kind: "phase", phase: "composing", line: `Writing the "${options.title}" variant set (${variants.length} variant${variants.length === 1 ? "" : "s"})` }]);
+  await reporter.flush();
+}
 console.log(
   JSON.stringify({
     component,

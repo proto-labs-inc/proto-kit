@@ -188,7 +188,11 @@ what you are doing first; the command waits its turn:
 - when the current work is done, take the waiting commands oldest
   first, exactly as step 2 describes.
 
-The site shows such a brief as sent, not started, until you start it.
+The import's current work ends at its Finish (`complete` and the
+publish), not when the units it dispatched to fix components report:
+they run in the background and land on their own, so a brief never
+waits on them. The site shows such a brief as sent, not started,
+until you start it.
 
 ## Restart protocol
 

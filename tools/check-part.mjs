@@ -11,15 +11,20 @@
  * Usage: node tools/check-part.mjs <briefId> --codebase <id> <part-slug> [--no-send] [--port 9333]
  *
  * Prints one JSON line: { slug, matched, states: [{ state, verdict,
- * mismatch, clusters }], pictures } where pictures is the folder with
- * <n>-live.png (the product), <n>.png (ours) and <n>-diff.png.
+ * mismatch, clusters, tail }], stop, pictures } where pictures is the
+ * folder with <n>-live.png (the product), <n>.png (ours) and
+ * <n>-diff.png. Every pass is recorded in the build's tail.jsonl
+ * (tools/tail.mjs); `tail` says when the unit should stop on a state
+ * and why (a small share of the page, passes that no longer help, the
+ * budget spent), `stop` when that holds for every differing state.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildFolder, nextPassFor } from "./build-folder.mjs";
 import { createReporter } from "./build-report.mjs";
-import { checkComponent, liveMatchOf } from "./check.mjs";
+import { ACCEPTED, checkComponent, liveMatchOf } from "./check.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
+import { classifyPart, passTrend, readRecords, record, tailFile, unitBudget } from "./tail.mjs";
 
 const USAGE = "usage: node tools/check-part.mjs <briefId> --codebase <id> <part-slug> [--no-send] [--port 9333]";
 const options = { port: "9333" };
@@ -78,12 +83,39 @@ if (outcome.matched) {
 reporter.send([{ kind: "focus", id: null }]);
 await reporter.flush();
 
+// The build's tail record: this unit's checks count from its first after the copy's gate.
+const tail = tailFile(options.codebase, briefId);
+const before = readRecords(tail);
+const phaseAt = [...before].reverse().find((r) => r.kind === "phase")?.at ?? 0;
+const own = before.filter((r) => r.at >= phaseAt && r.item === slug);
+const checks = own.filter((r) => r.kind === "check").length + 1;
+const startedAt = own.find((r) => r.kind === "check")?.at ?? Date.now();
+record(tail, { kind: "check", item: slug });
+const pageArea = (tree.viewport?.width ?? 1) * (tree.viewport?.height ?? 1) * (outcome.states[0]?.result?.display?.dpr ?? 2) ** 2;
+const states = outcome.states.map((s) => {
+  const verdict = s.result?.verdict ?? s.verdict;
+  const mismatch = s.result?.mismatch ?? null;
+  record(tail, { kind: "pass", item: slug, state: s.state, verdict, mismatch });
+  let stop = { stop: false, reason: null };
+  if (verdict && !ACCEPTED.includes(verdict)) {
+    const small = classifyPart({ verdict, mismatch, pageArea });
+    const trend = passTrend([...own.filter((r) => r.kind === "pass" && r.state === s.state).map((r) => r.mismatch), mismatch]);
+    const budget = unitBudget({ checks, startedAt });
+    if (small.tail) stop = { stop: true, rule: small.rule, reason: small.reason.replace("its area", "the page") };
+    else if (trend.stop) stop = { stop: true, rule: "diminishing", reason: trend.reason };
+    else if (budget.stop) stop = { stop: true, rule: "budget", reason: budget.reason };
+  }
+  if (stop.stop) console.error(`${slug} ${s.state}: stop here, ${stop.reason}`);
+  return { state: s.state, verdict, mismatch, clusters: s.result?.clusters?.slice(0, 3) ?? [], error: s.error, tail: stop };
+});
+const differing = states.filter((s) => s.verdict && !ACCEPTED.includes(s.verdict));
 console.log(
   JSON.stringify({
     slug,
     node: part.id,
     matched: outcome.matched,
-    states: outcome.states.map((s) => ({ state: s.state, verdict: s.result?.verdict ?? s.verdict, mismatch: s.result?.mismatch ?? null, clusters: s.result?.clusters?.slice(0, 3) ?? [], error: s.error })),
+    states,
+    stop: differing.length > 0 && differing.every((s) => s.tail.stop),
     pictures: out,
   }),
 );

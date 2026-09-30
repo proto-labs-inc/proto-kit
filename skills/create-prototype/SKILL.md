@@ -76,9 +76,23 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    the run spec, `supervise.mjs start`), in that order, and do not verify
    through the edge yet: the tunnel connects while you write the change.
    `report_progress serving` comes later, at step 10.
-6. **Parts left to fix** (`toFix` in the parts list, usually a few): one
-   `proto:part-fixer` subagent per part, all in parallel, with the part
-   brief below. Do not pass a model. Carry on with step 7 while they run.
+6. **The gate, then the parts left to fix.** The composed page is the
+   copy's gate: `replicate.gate.proceed` says whether the change can
+   be written on it (the page differs by at most `TAIL.PAGE_PROCEED_PCT`,
+   0.5% of its pixels, and mounted), and `gate.line` says so in one
+   line; relay it to the user as it stands. Every part in `toFix` is
+   the long tail from here, each with its reason (`toFix[].reason`: a
+   small share of the page, or simply not matched at the gate); you
+   never fix a part yourself, not even a three-pixel one. For each,
+   one `proto:part-fixer` subagent, all in parallel, in the background,
+   with the part brief below. Do not pass a model, and never pass a
+   `name`: a named agent becomes a teammate in its own session (under
+   agent teams), which does not keep this session's permission mode,
+   so every command of theirs asks the user; a plain subagent runs
+   here with this session's mode. Carry on with step 7 while they run;
+   when a fixer reports a part matched, say one short line ("The
+   resizer now matches the page") and nothing more. A `proceed` of
+   false is the one case to stop and say what the page check named.
 7. **Write the change.** Edit only the parts the brief is about, from the
    parts list and the copied files: never re-read the live page with
    ad-hoc scripts, the read has everything. A part from the library is a
@@ -115,9 +129,13 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    App.tsx with the switch, the part itself as its baseline:
    `<MarkerVariants className={styles["partNN"]} baseline={<Part className={styles["partNN"]} />} />`.
    Then one `proto:variant-builder` subagent per variant, all in
-   parallel, with the variant brief below; do not pass a model. Mobbin
+   parallel, in the background, with the variant brief below; do not
+   pass a model, and never a `name` (step 6 says why). Mobbin
    references are not gathered in a build: the baseline is the reference.
-9. **Check, as tools.** When the units are back:
+9. **Check, as tools.** When the variant units are back (the part
+   fixers are the tail: run `node tools/tail.mjs decide <codebase>
+   --build <briefId> --wait` once here, relay its one line, and never
+   wait for them beyond what it says):
    - `pnpm typecheck` in the workspace and `node tools/verify-markers.mjs <workspace>`.
    - `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>`:
      every state and every variant loaded headless; blank renders,
@@ -151,12 +169,21 @@ Blocked at any step: `build-stream.mjs question <briefId> --codebase
 > `~/.proto/<codebase>/run/builds/<briefId>/`. What differs: `<the
 > part's differs entry>`. Pass pictures are in `<build>/checks/<slug>/`
 > (`<n>-live.png` the product, `<n>.png` ours, `<n>-diff.png` the
-> difference). Read the value that differs from `<build>/read.json`
-> (the element's computed style; `tree.json` names the element index),
-> never from the live page. Fix it in the module or stylesheet, then run
-> `node <kit>/tools/check-part.mjs <briefId> --codebase <codebase>
-> <slug>`. At most six checks; write only in the part's folder. Report
-> the last check's verdict and mismatch per state.
+> difference). First run `node <kit>/tools/explain-diff.mjs <codebase>
+> <slug> --build <briefId>`: it reads the page's element and our part
+> at the differing spots and names each difference (a computed value,
+> a box, a text, a reference that points at nothing, an image or a
+> face that did not load, the colour behind the part). Apply the fix
+> it names in the module or stylesheet, then run `node
+> <kit>/tools/check-part.mjs <briefId> --codebase <codebase> <slug>`.
+> Budget: three checks or two minutes from your start, whichever comes
+> first; then stop and report. `<build>/read.json` holds the page's
+> computed styles (`tree.json` names the element index) when you need
+> a value explain-diff did not print. Never write a script against the
+> Proto window or the headless Chrome (no attach.mjs, cdp.mjs, ws, port
+> 9333 or 9444 from your own code). Write only in the part's folder.
+> Report what explain-diff named, what you changed, and the last
+> check's verdict and mismatch per state.
 
 ## The variant brief
 

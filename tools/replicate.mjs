@@ -19,9 +19,17 @@
  * server when it is not up, and stops it again unless --keep-dev.
  *
  * Prints one JSON line: { seconds, parts: [{ id, slug, marker, reused,
- * status }], matched: [id], toFix: [{ id, slug, states }], failed: [{ id,
- * slug, error }], reused: [id], page: { verdict, mismatch, pct }, learned,
- * fitted, timings }, where a part's status is matched, differs or failed.
+ * status }], matched: [id], toFix: [{ id, slug, states, reason, rule }],
+ * failed: [{ id, slug, error }], reused: [id], page: { verdict, mismatch,
+ * pct }, learned, fitted, timings, gate: { proceed, line } }, where a
+ * part's status is matched, differs or failed.
+ *
+ * The composed page is the copy's gate (tools/tail.mjs rule 1): the
+ * build goes on to the change from here, whatever is left, and every
+ * part left is the long tail with its reason (a small share of the
+ * page, or simply not matched at the gate) for a background unit.
+ * `gate.proceed` is false only when the copy is unusable: the page did
+ * not mount, or its difference is beyond TAIL.PAGE_PROCEED_PCT.
  */
 import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -36,6 +44,7 @@ import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { framePaths } from "./cdp/live.mjs";
 import { ACCEPTED, checkComponent, liveMatchOf } from "./check.mjs";
+import { TAIL, classifyPart, record, tailFile } from "./tail.mjs";
 import { instanceFromRead, styleOf } from "./read-page.mjs";
 import { appBaseline, cssBlock, instanceOf, jsxAttr, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
 
@@ -233,6 +242,34 @@ const libraryBegan = Date.now();
 const learned = learnParts(built.filter((part) => part.outcome.matched && part.reused === null));
 stage("library", libraryBegan);
 
+// ---- the gate: the copy is usable now; what is left is the tail ----
+const pageArea = viewport.width * viewport.height * display.dpr * display.dpr;
+const areaOf = (part) => Math.max(1, Math.round((part.node.rect?.[2] ?? 1) * (part.node.rect?.[3] ?? 1)));
+record(tailFile(codebase, briefId), {
+  kind: "phase",
+  phase: "copy",
+  items: parts.map((part) => ({ item: part.slug, weight: areaOf(part), matched: statusOf(part) === "matched" })),
+});
+for (const entry of toFix) {
+  const worst = entry.states.find((s) => s.verdict === "differs") ?? entry.states[0];
+  const small = worst && classifyPart({ verdict: worst.verdict, mismatch: worst.mismatch, pageArea });
+  entry.rule = small?.tail ? "small" : "gate";
+  entry.reason = small?.tail ? `${small.reason.replace("its area", "the page")}` : "still differs at the gate";
+  record(tailFile(codebase, briefId), { kind: "item", item: entry.slug, rule: entry.rule, reason: entry.reason });
+  step(`${entry.slug} left for later: ${entry.reason}`);
+}
+for (const entry of failed) {
+  record(tailFile(codebase, briefId), { kind: "item", item: entry.slug, rule: "gate", reason: entry.error });
+  step(`${entry.slug} left for later: ${entry.error}`);
+}
+const pagePct = parseFloat(pageCheck?.pct ?? "100");
+const proceed = pageCheck?.verdict !== "failed" && Number.isFinite(pagePct) && pagePct <= TAIL.PAGE_PROCEED_PCT;
+let gateLine = `Usable now: ${matched.length} of ${parts.length} parts match and the page differs by ${pageCheck?.pct ?? "?"}`;
+if (proceed) gateLine += "; the change is written on this copy";
+else gateLine += `; the copy is not usable yet (${pageCheck?.error ?? `the page differs by more than ${TAIL.PAGE_PROCEED_PCT}%`})`;
+if (toFix.length + failed.length > 0) gateLine += `. ${toFix.length + failed.length} part${toFix.length + failed.length === 1 ? "" : "s"} left for later, each with its reason above: the long tail, for background units.`;
+step(gateLine);
+
 await reporter.flush();
 stopDev();
 console.log(
@@ -247,6 +284,7 @@ console.log(
     learned,
     fitted: page.rounds,
     timings,
+    gate: { proceed, line: gateLine },
   }),
 );
 process.exit(0);

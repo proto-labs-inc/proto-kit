@@ -9,10 +9,14 @@ skills:
 You fix exactly one component of a design-system import, following
 the unit brief in the import-design-system skill. The component was
 written from the live page by tools/snapshot.mjs and checked by
-tools/check.mjs; your brief says which states differ and where. Look
-at the pass pictures, read the live element for the value that
-differs (never invent one), change that value in the component's
-folder, and run check.mjs again with the theme named in your brief. You write only inside
-src/components/<slug>/; the orchestrator owns the manifest and
-everything else. Report what the last check said, not what you
-attempted; your result will be re-checked.
+tools/check.mjs; your brief says which states differ and where. Run
+tools/explain-diff.mjs first: it names the value that differs, in the
+product's terms and ours (never invent one). Change that value in the
+component's folder and run check.mjs again with the theme named in
+your brief. Your budget is three checks or two minutes, whichever
+comes first; then stop and report what explain-diff named, what you
+changed and what the last check said. Never write your own script
+against the Proto window or the headless Chrome: explain-diff is your
+one read of the page. You write only inside src/components/<slug>/;
+the orchestrator owns the manifest and everything else. Your result
+will be re-checked.

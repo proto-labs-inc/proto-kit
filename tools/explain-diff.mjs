@@ -23,9 +23,15 @@
  *
  * Prints a few plain lines per state on stderr and one JSON line on
  * stdout: { slug, states: [{ state, verdict, mismatch, clusters,
- * backdrop, differences: [{ kind, element, property, product, here,
- * inCluster, note }] }] } where kind is one of reference, image, font,
- * structure, text, attribute, box, backdrop, style.
+ * backdrop, blame, differences: [{ kind, element, property, product,
+ * here, inCluster, note }] }] } where kind is one of reference, image,
+ * font, structure, text, attribute, box, backdrop, style. `blame` says
+ * whose the difference is (tools/tail.mjs rule 3): "item" when a value
+ * of the component's own differs, "outside" when it lies on something
+ * around it (the colour behind it changed, its live element is gone or
+ * is another element now, it is animating, it points at something the
+ * page defines elsewhere), with the reason; a unit stops on "outside"
+ * with that reason instead of fixing.
  */
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -36,7 +42,7 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { ACCEPTED, liveMatchOf } from "./check.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
-import { DECLARED_SET, INHERITED, skipped } from "./snapshot.mjs";
+import { DECLARED_SET, INHERITED, localRefsIn, skipped } from "./snapshot.mjs";
 import { verifyPass, withForcedState } from "./verify-replica.mjs";
 
 const USAGE = "usage: node tools/explain-diff.mjs <codebase> <slug> [--state <name>] [--theme <light|dark>] [--build <briefId>]";
@@ -83,11 +89,12 @@ const READ_SUBTREE = String.raw`(rootSelector, colourProps, refAttrs, refProps) 
     canvas.fillRect(0, 0, 1, 1);
     return [...canvas.getImageData(0, 0, 1, 1).data];
   };
-  const idsIn = (value) => {
+  // A bare "#id" is a reference only where a link goes (href); anywhere else it is a colour.
+  const idsIn = (value, name) => {
     const ids = [];
     if (typeof value !== 'string') return ids;
     for (const m of value.matchAll(/url\(\s*["']?#([^"')\s]+)["']?\s*\)/g)) ids.push(m[1]);
-    if (/^#[^\s]+$/.test(value.trim())) ids.push(value.trim().slice(1));
+    if (/href$/.test(name) && /^#[^\s]+$/.test(value.trim())) ids.push(value.trim().slice(1));
     return ids;
   };
   const styleOf = (el, pseudo) => {
@@ -114,8 +121,8 @@ const READ_SUBTREE = String.raw`(rootSelector, colourProps, refAttrs, refProps) 
     }
     // References this element makes by id, and whether each resolves on this page.
     const references = [];
-    for (const name of refAttrs) for (const id of idsIn(attrs[name])) references.push({ where: 'attribute', name, id, found: document.getElementById(id) !== null });
-    for (const name of refProps) for (const id of idsIn(style[name])) references.push({ where: 'style', name, id, found: document.getElementById(id) !== null });
+    for (const name of refAttrs) for (const id of idsIn(attrs[name], name)) references.push({ where: 'attribute', name, id, found: document.getElementById(id) !== null });
+    for (const name of refProps) for (const id of idsIn(style[name], name)) references.push({ where: 'style', name, id, found: document.getElementById(id) !== null });
     // Aria lists name several ids at once.
     for (const name of ['aria-labelledby', 'aria-describedby', 'aria-controls', 'aria-owns']) {
       if (!attrs[name]) continue;
@@ -301,11 +308,16 @@ function compare(live, mine, clusters) {
   // owned differs.
   for (const node of mine.nodes) {
     for (const ref of node.references.filter((r) => !r.found)) {
-      const defined = live.nodes.find((n) => n.attrs.id === ref.id);
+      // What the product's own element points at here (our ids are rewritten), and whether the component defines it.
+      const twin = live.nodes[node.i];
+      const liveValue = ref.where === "style" ? twin?.style[ref.name] : twin?.attrs[ref.name];
+      const liveId = localRefsIn(liveValue ?? "")[0] ?? ref.id;
+      const defined = live.nodes.find((n) => n.attrs.id === liveId);
       add("reference", node, "mine", {
         property: ref.name,
-        product: `${ref.where === "style" ? node.style[ref.name] : node.attrs[ref.name]}`,
+        product: `${liveValue ?? "not set"}`,
         here: `points at #${ref.id}, which no element here has`,
+        id: liveId,
         note: defined ? `the product defines it on a <${defined.tag}> inside the component (its id was not kept)` : "the product defines it outside the component",
       });
     }
@@ -396,6 +408,22 @@ function compare(live, mine, clusters) {
   }
   const order = { reference: 0, image: 1, font: 2, backdrop: 3, structure: 4, text: 5, attribute: 6, box: 7, style: 8 };
   return out.sort((a, b) => order[a.kind] - order[b.kind] || Number(b.inCluster) - Number(a.inCluster));
+}
+
+/**
+ * Whose difference it is: the component's own, or something around it
+ * that no change to the component would fix (tools/tail.mjs rule 3).
+ */
+function blame(live, mine, differences, pass) {
+  const own = differences.filter((d) => d.kind !== "backdrop" && !(d.kind === "reference" && d.note?.includes("outside the component")));
+  const outside = differences.find((d) => d.kind === "reference" && d.note?.includes("outside the component"));
+  if (differences.some((d) => d.kind === "backdrop") && own.length === 0) return { where: "outside", reason: `its difference is the colour behind it (${rgb(live.backdrop)} on the page now, ${rgb(mine.backdrop)} here), not the component` };
+  if (live.nodes[0].tag !== mine.nodes[0].tag) return { where: "outside", reason: `its live element is another element now (a <${live.nodes[0].tag}>, not the <${mine.nodes[0].tag}> it was read from): the page changed under the selector` };
+  const animating = live.nodes.find((n) => (n.style["animation-name"] && n.style["animation-name"] !== "none") || (n.style["transition-property"] && n.style["transition-property"] !== "all" && n.style["transition-duration"] !== "0s" && pass.shifted?.mismatch < pass.mismatch / 2));
+  if (animating && own.length === 0) return { where: "outside", reason: `it is animating on the page (<${animating.tag}> ${animating.style["animation-name"] ?? "in transition"}); the capture is one frame of it` };
+  if (own.length === 0 && outside) return { where: "outside", reason: `it points at #${outside.id}, which the page defines outside the component` };
+  if (own.length === 0) return { where: "unknown", reason: "every value read the same; the pixels differ in the rendering itself (docs/cdp-traps.md)" };
+  return { where: "item", reason: `${own.length} of its own values differ` };
 }
 
 const round = (n) => Math.round(n * 100) / 100;
@@ -492,12 +520,22 @@ try {
       console.error(`${state.name}: ${pass.activity.toLowerCase()} (${pass.verdict}); nothing to fix`);
       continue;
     }
-    const live = await readLive(target.liveMatch, port, state);
+    let live;
+    try {
+      live = await readLive(target.liveMatch, port, state);
+    } catch (error) {
+      if (!/nothing on the live page matches/.test(error.message)) throw error;
+      entry.blame = { where: "outside", reason: `its live element is gone: nothing on the page matches ${state.live.selector} any more` };
+      console.error(`${state.name}: not its fault, ${entry.blame.reason}`);
+      continue;
+    }
     const mine = await readReplica(target.appUrl, slug, state, live.rootRect, { width: pass.viewport[0], height: pass.viewport[1] }, pass.display, options.theme);
     live.fonts = live.fonts ?? new Map();
     mine.fonts = mine.fonts ?? new Map();
     entry.differences = compare(live, mine, pass.clusters);
     if (live.backdrop) entry.backdrop = { product: rgb(live.backdrop), here: mine.backdrop ? rgb(mine.backdrop) : "none" };
+    entry.blame = blame(live, mine, entry.differences, pass);
+    if (entry.blame.where === "outside") console.error(`${state.name}: not its fault, ${entry.blame.reason}`);
     const inside = entry.differences.filter((d) => d.inCluster).length;
     console.error(`${state.name}: ${pass.activity.toLowerCase()} (${pass.mismatch} px in ${pass.clusters.length} cluster${pass.clusters.length === 1 ? "" : "s"}); ${entry.differences.length} difference${entry.differences.length === 1 ? "" : "s"}, ${inside} inside the differing area`);
     for (const d of entry.differences.slice(0, SHOWN)) console.error(`  ${line(d)}`);
