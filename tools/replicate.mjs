@@ -303,7 +303,8 @@ stage("library", libraryBegan);
 
 // ---- the gate: the copy is usable now; what is left is the tail ----
 const pageArea = viewport.width * viewport.height * display.dpr * display.dpr;
-const areaOf = (part) => Math.max(1, Math.round((part.node.rect?.[2] ?? 1) * (part.node.rect?.[3] ?? 1)));
+// A tree node's rect is { x, y, w, h }.
+const areaOf = (part) => Math.max(1, Math.round((part.node.rect?.w ?? 1) * (part.node.rect?.h ?? 1)));
 record(tailFile(codebase, briefId), {
   kind: "phase",
   phase: "copy",

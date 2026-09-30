@@ -274,6 +274,21 @@ export function decide(records, codebase, now = Date.now()) {
   return { action: "move-on", rule: "little-gain", line: `Moving on: ${of}; ${lastMinute}, ${minutes}. ${tail}`, ...base };
 }
 
+/**
+ * The page copy's forecast at its gate (tools/copy-gate.mjs), from the
+ * last two copy passes: `before` and `after` are the matched share of
+ * the page (0 to 1) either side of the last pass, which took `passMs`.
+ * Another pass helps when the last one gained a meaningful share of
+ * what was left; it would take about as long as the last one.
+ */
+export function copyForecast({ before, after, passMs }) {
+  const left = 1 - before;
+  const gain = after - before;
+  const minutes = Math.max(1, Math.round(passMs / 60_000));
+  const verdict = left > 0 && gain >= TAIL.MEANINGFUL_GAIN * left ? "another-pass-helps" : "little-gain";
+  return { verdict, gain, minutes };
+}
+
 const numbers = (here) => ({ matched: here.matched, total: here.total, P: Math.round(here.P * 1000) / 1000 });
 const pct = (fraction) => `${Math.round(fraction * 1000) / 10}%`;
 
