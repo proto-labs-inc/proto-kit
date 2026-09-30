@@ -11,6 +11,12 @@
  *   node tools/variant-set.mjs <workspace> <component> --title "<set title>"
  *        --variants "<id>=<Title>|<note>;<id>=<Title>|<note>" --default <id>
  *        [--baseline <id>=<Title>] [--state <state id>] [--overview "<what is being decided>"]
+ *        [--slot <class>]
+ *
+ * --slot names the part's slot class in App.tsx (`className={styles["part42"]}`):
+ * replicate pinned the copied part's height on that slot in App.module.css,
+ * and a variant of another height needs it freed, so the pin is removed
+ * (the copy keeps its height from its own content).
  *
  * <component> is the data-proto-id of the part the set varies: every
  * variant's root carries it, so the Frame's picker, the set and the
@@ -120,6 +126,17 @@ ${cases}
 `,
 );
 
+// ---- the slot: no pinned height for a part that will change size ----
+let slot = null;
+if (options.slot) {
+  const cssPath = join(workspace, "src", "App.module.css");
+  const css = readFileSync(cssPath, "utf8");
+  const block = new RegExp(`(\\.page \\.${options.slot} \\{[^}]*?)\\n  height: [^;]+;`, "m");
+  if (!block.test(css)) fail(`no pinned height on .page .${options.slot} in src/App.module.css`);
+  writeFileSync(cssPath, css.replace(block, "$1"));
+  slot = { class: options.slot, heightFreed: true };
+}
+
 // ---- the manifest ----
 const manifestPath = join(workspace, "public", "prototype.json");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -145,6 +162,7 @@ console.log(
     switch: { module: rel("index.tsx"), Name: SwitchName, usage: `<${SwitchName} className={...} baseline={<ThePart className={...} />} />` },
     variants: written,
     baseline,
+    slot,
     manifest: "public/prototype.json",
   }),
 );

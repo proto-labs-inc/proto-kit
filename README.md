@@ -49,6 +49,16 @@ The library and the import:
 - `verify-markers.mjs`: check a workspace's `data-proto-id` coverage.
 - `fake-import/run.mjs`: play a recorded import into a library app.
 
+A prototype build (`docs/build-read.md`):
+
+- `proto-build.mjs`: the whole copy of the reference page in one command, then the parts list.
+- `build-stream.mjs`: the build's events to the site (read, curate, name, phase, focus, question).
+- `scaffold.mjs`, `replicate.mjs`: the workspace from the read; every leaf copied, checked and composed.
+- `variant-set.mjs`: a variant set's skeleton, one stub per variant for the units.
+- `check-states.mjs`: every state and variant loaded headless; errors, rect sanity, the untouched parts against the read.
+- `previews.mjs`: the variant previews from real renders, into the manifest.
+- `check-part.mjs`: one copied part checked against the page, its passes streamed.
+
 Serving and publishing:
 
 - `serve.mjs`: static server, CORS and no-store, port 0.
@@ -103,6 +113,8 @@ The subagent roles, one file per harness format.
 - `importer.md`, `proto-importer.toml`, `proto-importer.md`: extract one design-system unit.
 - `builder.md`, `proto-builder.toml`, `proto-builder.md`: build inside one prototype workspace.
 - `verifier.md`, `proto-verifier.toml`, `proto-verifier.md`: read-only checks of markers, pixels, state URLs.
+- `part-fixer.md`, `proto-part-fixer.toml`, `proto-part-fixer.md`: fix one copied part of a prototype build.
+- `variant-builder.md`, `proto-variant-builder.toml`, `proto-variant-builder.md`: write one variant of a set.
 - `listen.md`, `proto-listen.toml`: the headless listen session, Claude Code and Codex.
 
 ### hooks/, codex-hooks/, cursor-hooks/, monitors/

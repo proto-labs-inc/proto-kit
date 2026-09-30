@@ -62,15 +62,18 @@ const outcome = await checkComponent({ unit, slug, appUrl: dev.url, liveMatch: l
 
 const reporter = createReporter({ codebase: options.codebase, briefId, runDir: buildDir, sink: options.noSend ? "file" : "site" });
 reporter.send([{ kind: "focus", id: part.id }]);
-for (const state of outcome.states) {
-  if (!state.result) continue;
-  reporter.send([{ kind: "pass", id: part.id, pass: nextPassFor(buildDir, part.id), mismatch: state.result.mismatch }]);
-}
+// Each pass with its crop (exactly the part's rect) and the red difference picture.
+const images = await Promise.all(
+  outcome.states.map(async (state) => {
+    if (!state.result) return null;
+    const [image, diff] = await Promise.all([reporter.upload(readFileSync(state.result.screenshot)), reporter.upload(readFileSync(state.result.diff))]);
+    reporter.send([{ kind: "pass", id: part.id, pass: nextPassFor(buildDir, part.id), mismatch: state.result.mismatch, image, diff }]);
+    return image;
+  }),
+);
 if (outcome.matched) {
-  const first = outcome.states[0].result;
-  const [x, y, w, h] = first.rect;
-  const image = await reporter.upload(readFileSync(first.screenshot));
-  reporter.send([{ kind: "matched", id: part.id, image, rect: { x, y, w, h } }]);
+  const [x, y, w, h] = outcome.states[0].result.rect;
+  reporter.send([{ kind: "matched", id: part.id, image: images[0], rect: { x, y, w, h } }]);
 }
 reporter.send([{ kind: "focus", id: null }]);
 await reporter.flush();

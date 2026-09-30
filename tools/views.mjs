@@ -14,6 +14,15 @@ import { evaluate } from "./cdp/cdp.mjs";
  */
 export function viewsOf(manifest, appUrl) {
   const views = [{ name: "default", url: `${appUrl}/`, state: null, component: null, variant: null }];
+  // The copy: the default state with every set at its baseline, the page
+  // as it was copied, so the untouched parts can be compared with the read
+  // without the variants' own sizes moving them.
+  const baselines = (manifest.variantSets ?? []).filter((set) => set.baseline);
+  if (baselines.length > 0) {
+    const params = new URLSearchParams();
+    for (const set of baselines) params.set(`v.${set.component}`, set.baseline);
+    views.push({ name: "copy", url: `${appUrl}/?${params}`, state: null, component: null, variant: null });
+  }
   for (const state of manifest.states ?? []) {
     if (state.id === "default") continue;
     views.push({ name: `state:${state.id}`, url: `${appUrl}/?state=${encodeURIComponent(state.id)}`, state: state.id, component: null, variant: null });

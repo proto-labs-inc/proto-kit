@@ -59,7 +59,12 @@ for (const file of files) {
     ids.get(id).push(rel);
   }
 
-  if (rendersComponents && markerCount === 0) {
+  // A file that renders no element of its own (a switch that picks
+  // another component, a hook file) has nothing to put a marker on.
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const rendersElements = /<[a-z][a-z0-9]*[\s/>]/.test(code);
+
+  if (rendersComponents && rendersElements && markerCount === 0) {
     console.error(`${rel}: renders components but has no data-proto-id markers`);
     failed = true;
   }

@@ -29,6 +29,7 @@ import { buildOfWorkspace, markerRects, nextPassFor } from "./build-folder.mjs";
 import { createReporter } from "./build-report.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
+import { cropPng, decodePng, encodePng } from "./cdp/png.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 import { framePaths } from "./cdp/live.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
@@ -65,6 +66,7 @@ mkdirSync(outDir, { recursive: true });
 
 const dev = await ensureDevServer({ workspace, logPath: join(outDir, "dev.log") });
 const views = viewsOf(manifest, dev.url);
+const copyView = views.some((view) => view.name === "copy") ? "copy" : "default";
 
 /** One view opened, listened to and measured. */
 async function checkView(view) {
@@ -77,7 +79,11 @@ async function checkView(view) {
     page.on("Runtime.exceptionThrown", (p) => errors.push({ kind: "exception", text: (p.exceptionDetails.exception?.description ?? p.exceptionDetails.text ?? "").split("\n")[0].slice(0, 300) }));
     page.on("Runtime.consoleAPICalled", (p) => {
       if (p.type !== "error") return;
-      errors.push({ kind: "console", text: p.args.map((a) => a.value ?? a.description ?? "").join(" ").split("\n")[0].slice(0, 300) });
+      const text = p.args.map((a) => a.value ?? a.description ?? "").join(" ").split("\n")[0].slice(0, 300);
+      // React's nesting warning is the reference page's own markup (a div
+      // in a p), copied as the page has it; the browser draws it the same.
+      if (text.startsWith("In HTML,")) return;
+      errors.push({ kind: "console", text });
     });
     page.on("Log.entryAdded", (p) => {
       if (p.entry.level !== "error") return;
@@ -141,6 +147,12 @@ function rectSanity(marks) {
   return { outside, overlap };
 }
 const toArray = (r) => [r.x, r.y, r.w, r.h];
+// The read's rects are clipped to the viewport; a measured one is clipped the same way before they are compared.
+function clipToViewport([x, y, w, h]) {
+  const x0 = Math.max(0, x);
+  const y0 = Math.max(0, y);
+  return [x0, y0, Math.min(viewport.width, x + w) - x0, Math.min(viewport.height, y + h) - y0];
+}
 const contains = (outer, inner) => inner.x >= outer.x - 2 && inner.y >= outer.y - 2 && inner.x + inner.w <= outer.x + outer.w + 2 && inner.y + inner.h <= outer.y + outer.h + 2;
 function intersection([ax, ay, aw, ah], [bx, by, bw, bh]) {
   const w = Math.min(ax + aw, bx + bw) - Math.max(ax, bx);
@@ -169,7 +181,7 @@ async function copyCheck(marks, opened) {
       missing.push(marker);
       continue;
     }
-    const [x, y, w, h] = now.rect;
+    const [x, y, w, h] = clipToViewport(now.rect);
     const entry = { marker, read: [read.x, read.y, read.w, read.h], now: [x, y, w, h].map((v) => Math.round(v * 10) / 10), holdsChange: holdsChange(read) };
     if (Math.abs(x - read.x) > 1 || Math.abs(y - read.y) > 1) moved.push(entry);
     else if (Math.abs(w - read.w) > 1 || Math.abs(h - read.h) > 1) resized.push(entry);
@@ -181,7 +193,7 @@ async function copyCheck(marks, opened) {
     const diff = join(outDir, "default-diff.png");
     await stableShot(opened.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, mine);
     const result = diffPngs(frame.png, mine, { diffPath: diff, threshold: THRESHOLD, dpr: display.dpr });
-    const outsideChange = result.clusters.filter((c) => !changedRects.some((r) => contains(r, { x: c.x, y: c.y, w: c.w, h: c.h })));
+    const outsideChange = result.clusters.filter((c) => !changedRects.some((r) => contains(r, { x: c.cssRect[0], y: c.cssRect[1], w: c.cssRect[2], h: c.cssRect[3] })));
     pixels = { mismatch: result.diffPixels, pct: result.pct, outsideChange: outsideChange.slice(0, 8), screenshot: mine, diff };
   }
   return { moved, resized, missing, pixels };
@@ -190,6 +202,7 @@ async function copyCheck(marks, opened) {
 // ---- every view, four at a time ----
 const results = [];
 let copy = null;
+let defaultMarks = null;
 const queue = [...views];
 async function lane() {
   for (let view = queue.shift(); view; view = queue.shift()) {
@@ -198,7 +211,8 @@ async function lane() {
     const problems = (result.blank ? 1 : 0) + result.errors.length + result.missing.length + result.outside.length + result.overlap.length;
     step(`${view.name}: ${result.blank ? "blank" : `${result.markers} markers`}, ${result.errors.length} errors, ${result.outside.length} outside, ${result.overlap.length} overlapping${problems === 0 ? "" : "  <-"}`);
     if (page) {
-      if (view.name === "default") copy = await copyCheck(marks, page).catch((error) => ({ error: error.message }));
+      if (view.name === "default") defaultMarks = marks?.marks ?? null;
+      if (view.name === copyView) copy = await copyCheck(marks, page).catch((error) => ({ error: error.message }));
       await page.close().catch(() => {});
     }
   }
@@ -214,8 +228,25 @@ if (options.brief && options.codebase && build) {
     if (!nodeId) continue;
     const mine = results.filter((r) => r.view === "default" || views.find((v) => v.name === r.view)?.component === marker);
     const problems = mine.reduce((n, r) => n + (r.blank ? 1 : 0) + r.errors.length + r.missing.length + r.outside.filter((o) => o.marker === marker || o.parent === marker).length + r.overlap.filter((o) => o.markers.includes(marker)).length, 0);
-    reporter.send([{ kind: "focus", id: nodeId }, { kind: "pass", id: nodeId, pass: nextPassFor(build.dir, nodeId), mismatch: problems }]);
-    if (problems === 0) reporter.send([{ kind: "matched", id: nodeId }]);
+    // The pass's picture: the part as the default view now draws it, cut
+    // from that view's screenshot at exactly the part's rect.
+    const drawn = defaultMarks?.find((m) => m.id === marker) ?? null;
+    let image;
+    if (drawn && copy?.pixels?.screenshot && drawn.rect[2] > 0 && drawn.rect[3] > 0) {
+      const crop = cropPng(decodePng(readFileSync(copy.pixels.screenshot)), { x: Math.round(drawn.rect[0] * display.dpr), y: Math.round(drawn.rect[1] * display.dpr), width: Math.round(drawn.rect[2] * display.dpr), height: Math.round(drawn.rect[3] * display.dpr) });
+      image = await reporter.upload(encodePng(crop));
+    }
+    const pass = { kind: "pass", id: nodeId, pass: nextPassFor(build.dir, nodeId), mismatch: problems };
+    if (image) pass.image = image;
+    reporter.send([{ kind: "focus", id: nodeId }, pass]);
+    if (problems === 0) {
+      const matched = { kind: "matched", id: nodeId };
+      if (image) {
+        matched.image = image;
+        matched.rect = { x: Math.round(drawn.rect[0]), y: Math.round(drawn.rect[1]), w: Math.round(drawn.rect[2]), h: Math.round(drawn.rect[3]) };
+      }
+      reporter.send([matched]);
+    }
   }
   reporter.send([{ kind: "focus", id: null }]);
   await reporter.flush();

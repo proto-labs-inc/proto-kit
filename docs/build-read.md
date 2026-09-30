@@ -19,11 +19,25 @@ read.json        every element of the page with its computed style, the
 assets/          the page's font files and images, as the page served them
 curation.json    the curation `curate` drafted and the agent reviewed
 workspace.json   { slug, path, port, framework, tailwind, title } from scaffold
+parts.json       the parts list proto-build.mjs prints: every part's node id,
+                 name, marker, files, library origin, status, rect and section,
+                 the sections, toFix, the page's verdict, replicate's own output
+steps.json       which one-off steps proto-build.mjs has taken (title)
+passes.json      the pass count per node, for the checks after the copy
 checks/<slug>/   every check of a part: <n>-live.png, <n>.png, <n>-diff.png
 checks/page.png, page-diff.png   the whole composed page against the frame
-dev.log          the workspace dev server's output while replicate ran
+checks/after/    check-states.mjs: the default view (default.png) and its
+                 difference from the frame (default-diff.png)
+dev.log          the workspace dev server's output while the tools ran
 events.jsonl, captures/          only with --no-send: what would have gone to the site
 ```
+
+`tools/proto-build.mjs` runs the tools below in order, skipping each
+whose output is already in the folder, so one command continues a
+build where it stopped; it stops once after `curate` for the review.
+After the copy, `tools/check-states.mjs`, `tools/previews.mjs` and
+`tools/check-part.mjs` find the build from the workspace path
+(`tools/build-folder.mjs`) and report their passes on the same stream.
 
 ## One read
 

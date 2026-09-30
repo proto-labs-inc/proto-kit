@@ -71,9 +71,9 @@ const timings = {};
 const say = (line) => console.error(`proto-build: ${line}`);
 
 /** One kit tool as its own process: its progress goes to stderr, its JSON line comes back. */
-function run(tool, toolArgs, { json = false } = {}) {
+function run(tool, toolArgs, { json = false, sends = true } = {}) {
   const began = Date.now();
-  const noSend = options["no-send"] ? ["--no-send"] : [];
+  const noSend = sends && options["no-send"] ? ["--no-send"] : [];
   const result = spawnSync(process.execPath, [join(tools, tool), ...toolArgs, ...noSend], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 });
   if (result.status !== 0) fail(`${tool} ${toolArgs[0]} failed (exit ${result.status})`);
   timings[`${tool.replace(/\.mjs$/, "")}${json ? "" : `:${toolArgs[0]}`}`] = Math.round((Date.now() - began) / 100) / 10;
@@ -124,7 +124,7 @@ if (!named) {
 
 // ---- scaffold ----
 say("scaffolding the workspace");
-const workspace = run("scaffold.mjs", [options.slug, "--codebase", codebase, "--brief", briefId, ...(options.title ? ["--title", options.title] : [])], { json: true });
+const workspace = run("scaffold.mjs", [options.slug, "--codebase", codebase, "--brief", briefId, ...(options.title ? ["--title", options.title] : [])], { json: true, sends: false });
 
 // ---- replicate ----
 let replicated;

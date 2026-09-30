@@ -198,17 +198,21 @@ stage("parts", partsBegan);
 async function check(part) {
   const unit = JSON.parse(readFileSync(join(part.folder, "component.json"), "utf8"));
   const outcome = await checkComponent({ unit, slug: part.slug, appUrl, liveMatch, out: join(checksDir, part.slug), codebase, port: Number(options.port) });
-  for (const state of outcome.states) {
-    if (!state.result) continue;
-    reporter.send([{ kind: "pass", id: part.id, pass: state.result.pass, mismatch: state.result.mismatch }]);
-  }
+  // Each pass goes up with its two pictures, the part as we draw it (the
+  // crop is exactly the part's rect) and the same crop with the pixels
+  // still differing painted red; the uploads of every state run at once.
+  const images = await Promise.all(
+    outcome.states.map(async (state) => {
+      if (!state.result) return null;
+      const [image, diff] = await Promise.all([reporter.upload(readFileSync(state.result.screenshot)), reporter.upload(readFileSync(state.result.diff))]);
+      reporter.send([{ kind: "pass", id: part.id, pass: state.result.pass, mismatch: state.result.mismatch, image, diff }]);
+      return image;
+    }),
+  );
   if (outcome.matched) {
     const first = outcome.states[0].result;
     const [x, y, w, h] = first.rect;
-    // The part as the prototype draws it, in the reference's place; the
-    // difference picture (<n>-diff.png) waits on the site taking one.
-    const image = await reporter.upload(readFileSync(first.screenshot));
-    reporter.send([{ kind: "matched", id: part.id, image, rect: { x, y, w, h } }]);
+    reporter.send([{ kind: "matched", id: part.id, image: images[0], rect: { x, y, w, h } }]);
   }
   return outcome;
 }
@@ -296,10 +300,17 @@ function adoptLibraryPart(part, twin) {
   rmSync(part.folder, { recursive: true, force: true });
   cpSync(twin.folder, part.folder, { recursive: true });
   const module = readdirSync(part.folder).find((name) => /^[A-Z][A-Za-z0-9]*\.tsx$/.test(name));
+  const TwinName = module.replace(/\.tsx$/, "");
   const source = readFileSync(join(part.folder, module), "utf8");
   const rootOpen = /className=\{cx\(styles\.root,[^}]*\}/;
   if (!rootOpen.test(source)) throw new Error(`${twin.slug} was not written by tools/snapshot.mjs; it cannot carry a marker`);
-  writeFileSync(join(part.folder, module), source.replace(rootOpen, (m) => `${m} data-proto-id=${JSON.stringify(part.marker)}`));
+  // The module takes this part's name, since App.tsx imports every part as
+  // <Name> from src/parts/<slug>/<Name>.tsx; the twin's name goes with its folder.
+  const renamed = source.replace(rootOpen, (m) => `${m} data-proto-id=${JSON.stringify(part.marker)}`).replaceAll(TwinName, part.Name);
+  rmSync(join(part.folder, module));
+  rmSync(join(part.folder, `${TwinName}.module.css`), { force: true });
+  writeFileSync(join(part.folder, `${part.Name}.tsx`), renamed);
+  if (existsSync(join(twin.folder, `${TwinName}.module.css`))) copyFileSync(join(twin.folder, `${TwinName}.module.css`), join(part.folder, `${part.Name}.module.css`));
   const unit = { ...twin.unit, states: twin.unit.states.map((state, i) => (i === 0 ? { ...state, live: { selector: part.node.selector } } : { name: state.name, props: state.props })) };
   writeFileSync(join(part.folder, "component.json"), JSON.stringify(unit, null, 2) + "\n");
   part.reused = twin.slug;
@@ -565,7 +576,10 @@ async function checkPage() {
   const diff = join(checksDir, "page-diff.png");
   const page = await headlessPage(`${appUrl}/`, { ...viewport, display });
   try {
-    await evaluate(page.page, "new Promise((done) => { const tick = () => document.querySelector('[data-node]') ? done() : setTimeout(tick, 50); tick(); })");
+    // Bounded: an App.tsx the dev server cannot serve (an import it cannot
+    // resolve) is the page's failure, not a hang.
+    const mounted = await evaluate(page.page, "new Promise((done) => { const until = Date.now() + 15000; const tick = () => { if (document.querySelector('[data-node]')) done(true); else if (Date.now() > until) done(false); else setTimeout(tick, 50); }; tick(); })");
+    if (!mounted) return { verdict: "failed", mismatch: null, pct: null, clusters: [], error: `the composed page did not mount within 15 s (${join(buildDir, "dev.log")} says why)` };
     await evaluate(page.page, "document.fonts.ready.then(() => document.fonts.status)");
     await stableShot(page.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, mine);
   } finally {
