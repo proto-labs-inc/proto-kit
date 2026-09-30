@@ -41,7 +41,7 @@ import { connect } from "./cdp/cdp.mjs";
 import { takeFrame } from "./cdp/live.mjs";
 import { createReporter } from "./build-report.mjs";
 import { draftCuration } from "./curate.mjs";
-import { captureAssets, readPage } from "./read-page.mjs";
+import { captureAssets, overlayLine, readPage } from "./read-page.mjs";
 
 const PHASES = ["attaching", "reading", "curating", "replicating", "composing", "serving", "ready", "needs-input", "failed"];
 
@@ -110,6 +110,7 @@ switch (command) {
       frame = await takeFrame(page, codebase, { also: () => readPage(page) });
       read = frame.read;
       console.error(`… read ${read.read.elements.length} elements and ${read.tree.nodes.length} boxes (${took()})`);
+      if (read.tree.overlay) console.error(`… ${overlayLine(read.tree.overlay)}`);
       const captured = await captureAssets(page, read.read, join(runDir, "assets"));
       read.read.faces = captured.faces;
       read.read.assets = captured.assets;
@@ -123,7 +124,7 @@ switch (command) {
     const { viewport, nodes } = read.tree;
     const events = [
       { kind: "reference", image, url: read.tree.url, width: viewport.width, height: viewport.height },
-      { kind: "phase", phase: "reading", line: "Reading the page's structure, root first" },
+      { kind: "phase", phase: "reading", line: read.tree.overlay ? `Reading the page's structure, root first; ${overlayLine(read.tree.overlay)}` : "Reading the page's structure, root first" },
     ];
     nodes.forEach((node, index) => {
       if (index % 3 === 0) events.push({ kind: "focus", id: node.id });
@@ -133,6 +134,7 @@ switch (command) {
     await report(events);
     const folded = nodes.filter((node) => node.collapsed).length;
     console.log(`read ${nodes.length} boxes (${folded} holding repeated parts) from ${read.tree.url} (viewport ${viewport.width}×${viewport.height}) in ${took()}; tree at ${treePath}`);
+    if (read.tree.overlay) console.log(`dialog: ${overlayLine(read.tree.overlay)} (backdrop ${read.tree.overlay.backdrop ?? "not in the tree"}, dialog ${read.tree.overlay.dialog ?? "not in the tree"})`);
     console.log("next: `curate` drafts curation.json; review it, then run `name`.");
     break;
   }

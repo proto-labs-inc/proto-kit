@@ -695,7 +695,11 @@ async function checkPage() {
   let verdict = "differs";
   if (result.diffPixels === 0) verdict = "match";
   else if (result.diffPixels <= 0.003 * result.width * result.height) verdict = "faint";
-  return { verdict, mismatch: result.diffPixels, pct: result.pct, clusters: result.clusters.slice(0, 6), screenshot: mine, diff };
+  // The page's dialog is part of the copy (its own state, open by default
+  // as the page shows it), so the whole-page diff compares like with like;
+  // the note says why the shading is in both pictures.
+  const overlay = tree.overlay ? { reason: "a dialog covers the live page", dialog: tree.overlay.dialog, backdrop: tree.overlay.backdrop, label: tree.overlay.label } : null;
+  return { verdict, mismatch: result.diffPixels, pct: result.pct, clusters: result.clusters.slice(0, 6), screenshot: mine, diff, overlay };
 }
 
 /**

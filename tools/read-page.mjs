@@ -35,10 +35,56 @@ export const MAX_DEPTH = 12;
 // Siblings this many of a kind, alike in size, are one repeating part.
 const REPEAT_FROM = 4;
 
+
+// The page-side look for a dialog over the page: an element fixed or
+// absolute that paints across most of the viewport (a backdrop), or an
+// open <dialog> whose ::backdrop paints, and the dialog itself (by role,
+// else the backdrop's largest painted child that does not cover the
+// viewport). A capture of anything under the backdrop is shaded by it,
+// so every check needs to know. `targetSelector` names the element a
+// check is about; `targetInside` says whether it is the dialog, in it,
+// or holds it (then nothing shades it). Returns null without a dialog.
+const FIND_OVERLAY = String.raw`(targetSelector) => {
+  const vw = innerWidth, vh = innerHeight;
+  const rectOf = (el) => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; };
+  const alphaOf = (color) => { const m = /rgba?\(([^)]+)\)/.exec(color); if (!m) return color === 'transparent' ? 0 : 1; const parts = m[1].split(/[\s,\/]+/).filter(Boolean); return parts.length > 3 ? parseFloat(parts[3]) : 1; };
+  const shown = (el) => { const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return false; const s = getComputedStyle(el); return s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) > 0; };
+  const coverage = (el) => { const r = el.getBoundingClientRect(); const w = Math.min(r.right, vw) - Math.max(r.left, 0); const h = Math.min(r.bottom, vh) - Math.max(r.top, 0); return Math.max(0, w) * Math.max(0, h) / (vw * vh); };
+  const selectorOf = (el) => { const parts = []; for (let e = el; e && e !== document.body; e = e.parentElement) { const parent = e.parentElement; const at = parent ? [...parent.children].indexOf(e) + 1 : 1; parts.unshift(e.tagName.toLowerCase() + ':nth-child(' + at + ')'); } return 'body > ' + parts.join(' > '); };
+  const paints = (s) => alphaOf(s.backgroundColor) > 0 || s.backgroundImage !== 'none' || (s.backdropFilter && s.backdropFilter !== 'none');
+  const dialogs = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]')].filter(shown);
+  // The backdrop: the topmost painting element over most of the viewport.
+  let backdropEl = null;
+  let backdropStyle = null;
+  const candidates = [...document.body.querySelectorAll('*')].filter((el) => { if (!shown(el) || coverage(el) < 0.8) return false; const s = getComputedStyle(el); return (s.position === 'fixed' || s.position === 'absolute') && paints(s); });
+  for (const el of document.elementsFromPoint(Math.min(4, vw - 1), Math.min(4, vh - 1))) { if (candidates.includes(el)) { backdropEl = el; backdropStyle = getComputedStyle(el); break; } }
+  if (!backdropEl) for (const el of candidates) { if (!backdropEl || el.compareDocumentPosition(backdropEl) & Node.DOCUMENT_POSITION_PRECEDING) { backdropEl = el; backdropStyle = getComputedStyle(el); } }
+  // An open <dialog> paints its ::backdrop as a pseudo-element, not an element.
+  let pseudoBackdrop = null;
+  if (!backdropEl) for (const d of dialogs) { if (d.tagName === 'DIALOG' && d.open) { const s = getComputedStyle(d, '::backdrop'); if (paints(s)) { pseudoBackdrop = d; backdropStyle = s; break; } } }
+  if (!backdropEl && !pseudoBackdrop) return null;
+  // The dialog: by role, inside the backdrop when there is one; else the backdrop's largest painted child under the viewport's size.
+  const under = backdropEl ?? pseudoBackdrop;
+  let dialogEl = dialogs.filter((d) => d !== backdropEl && (!backdropEl || backdropEl.contains(d) || d.contains(backdropEl))).sort((a, b) => coverage(b) - coverage(a))[0] ?? null;
+  if (dialogEl && dialogEl.contains(under) && dialogEl !== under) dialogEl = dialogs.find((d) => under.contains(d) && d !== under) ?? null;
+  if (!dialogEl && backdropEl) dialogEl = [...backdropEl.querySelectorAll('*')].filter((el) => shown(el) && coverage(el) < 0.8 && paints(getComputedStyle(el))).sort((a, b) => coverage(b) - coverage(a))[0] ?? null;
+  if (!dialogEl && pseudoBackdrop) dialogEl = pseudoBackdrop;
+  const target = targetSelector ? document.querySelector(targetSelector) : null;
+  const holds = (a, b) => a && b && (a === b || a.contains(b));
+  const targetInside = Boolean(target && (holds(dialogEl, target) || holds(target, dialogEl) || holds(target, under) || (backdropEl && target === backdropEl)));
+  return {
+    backdrop: { selector: selectorOf(under), rect: rectOf(under), color: backdropStyle.backgroundColor, blur: Boolean(backdropStyle.backdropFilter && backdropStyle.backdropFilter !== 'none'), pseudo: !backdropEl },
+    dialog: dialogEl ? { selector: selectorOf(dialogEl), rect: rectOf(dialogEl), label: (dialogEl.getAttribute('aria-label') || (dialogEl.querySelector('h1,h2,h3,h4') || {}).innerText || dialogEl.innerText || '').trim().split('\n')[0].slice(0, 60) } : null,
+    targetInside,
+    _els: [under, dialogEl],
+  };
+}`;
+
 // The page-side read. Written as one function so a single evaluate
 // gathers every element and the tree over the same element indices.
 const PAGE_READ = String.raw`(maxNodes, maxDepth, repeatFrom) => {
   const vw = innerWidth, vh = innerHeight;
+  const findOverlay = ${FIND_OVERLAY};
   const SKIP = new Set(["SCRIPT", "STYLE", "LINK", "META", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE"]);
   const skip = (el) => SKIP.has(el.tagName);
 
@@ -249,12 +295,28 @@ const PAGE_READ = String.raw`(maxNodes, maxDepth, repeatFrom) => {
     html: { fontSize: htmlStyle.fontSize, backgroundColor: htmlStyle.backgroundColor, color: htmlStyle.color, colorScheme: htmlStyle.colorScheme },
     body: Object.fromEntries(["background-color", "color", "font-family", "font-size", "font-weight", "line-height", "letter-spacing", "-webkit-font-smoothing", "text-rendering", "margin-top", "margin-right", "margin-bottom", "margin-left", "min-height", "overflow-x", "overflow-y"].map((k) => [k, bodyStyle.getPropertyValue(k)])),
     rootFontSize: parseFloat(htmlStyle.fontSize),
+    overlay: null,
   };
+  // A dialog over the page, with the element index of its backdrop and
+  // of the dialog, so the build keeps the dialog as its own part.
+  const found = findOverlay(null);
+  if (found) {
+    const [backdropEl, dialogEl] = found._els;
+    delete found._els;
+    delete found.targetInside;
+    found.backdrop.element = index.get(backdropEl) ?? null;
+    if (found.dialog) found.dialog.element = index.get(dialogEl) ?? null;
+    page.overlay = found;
+  }
   const images = [...new Set(elements.filter((el) => el.tagName === "IMG" && el.currentSrc && !el.currentSrc.startsWith("data:")).map((el) => el.currentSrc))];
 
+  // The tree names the overlay's boxes too, when the tree has them.
+  const nodeOfElement = (i) => (i === null ? null : (depthFirst.find((n) => n.element === i) || {}).id || null);
+  const overlay = page.overlay ? { backdrop: nodeOfElement(page.overlay.backdrop.element), dialog: page.overlay.dialog ? nodeOfElement(page.overlay.dialog.element) : null, label: page.overlay.dialog ? page.overlay.dialog.label : null } : null;
   window.__protoRead = JSON.stringify({
     viewport: { width: vw, height: vh, dpr: devicePixelRatio },
     url: location.href,
+    overlay,
     nodes: depthFirst,
     read: { props, pool, elements: records, page, images },
   });
@@ -275,8 +337,29 @@ export async function readPage(live, { maxNodes = MAX_NODES, maxDepth = MAX_DEPT
   let text = "";
   for (let at = 0; at < length; at += SLICE) text += await evaluate(live, `window.__protoRead.slice(${at}, ${at + SLICE})`);
   await evaluate(live, "delete window.__protoRead; true");
-  const { viewport, url, nodes, read } = JSON.parse(text);
-  return { tree: { viewport, url, nodes }, read };
+  const { viewport, url, overlay, nodes, read } = JSON.parse(text);
+  return { tree: { viewport, url, overlay, nodes }, read };
+}
+
+/**
+ * Whether a dialog covers the live page right now, and whether the
+ * element `targetSelector` names is under its backdrop: -> null, or
+ * { backdrop: { selector, rect, color, blur }, dialog: { selector,
+ * rect, label } | null, targetInside }. Called under the window's lock
+ * by every check (tools/verify-replica.mjs).
+ */
+export async function liveOverlay(live, targetSelector = null) {
+  const found = await evaluate(live, `(() => { const found = (${FIND_OVERLAY})(${JSON.stringify(targetSelector)}); if (found) delete found._els; return found; })()`);
+  return found ?? null;
+}
+
+/** One line about a dialog over the page, for the read's log and the site. */
+export function overlayLine(overlay) {
+  if (!overlay) return null;
+  // The tree's record names the dialog's label directly; the page's read names the dialog itself.
+  const label = overlay.label ?? overlay.dialog?.label ?? null;
+  const what = label ? `a dialog ("${label}")` : "a dialog";
+  return `${what} covers the live page: parts outside it are compared with its shading accounted for, and the copy keeps the dialog as its own state`;
 }
 
 /**

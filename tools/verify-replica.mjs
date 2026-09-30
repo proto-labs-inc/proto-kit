@@ -36,10 +36,18 @@
  * holds the window's lock, so lanes never see each other's held states. `activity` is
  * the verdict in the product's words, ready for the library.
  *
+ * A dialog over the page (tools/read-page.mjs liveOverlay) shades every
+ * element under its backdrop in the live capture. Our capture of such
+ * an element is shaded with the backdrop's colour before the diff, so
+ * the element itself is compared (`overlay.shaded`); a backdrop that
+ * blurs cannot be applied, and every difference under it is then the
+ * page's: verdict "context", `overlay.reason` "a dialog covers the
+ * live page".
+ *
  * tools/check.mjs runs this for every state of a component and lands
  * each pass in the library; units use that, not this, directly.
  */
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findPage } from "./cdp/attach.mjs";
@@ -48,7 +56,8 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { frameCrop, withLive } from "./cdp/live.mjs";
-import { decodePng } from "./cdp/png.mjs";
+import { decodePng, encodePng } from "./cdp/png.mjs";
+import { liveOverlay } from "./read-page.mjs";
 
 export const FORCEABLE = ["hover", "focus", "active", "focus-visible"];
 
@@ -365,6 +374,7 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
   const live = await connect(tab.webSocketDebuggerUrl);
   let rect;
   let context = { images: [], covers: [] };
+  let overlay = null;
   let width;
   let height;
   let display;
@@ -374,6 +384,9 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     const readTarget = async () => {
       rect = await liveRect(live, target);
       if (target.selector) context = await liveContext(live, target.selector, rect);
+      // A dialog over the page shades everything under its backdrop; the
+      // capture of an element under it is not the element's own look.
+      if (target.selector) overlay = await liveOverlay(live, target.selector);
     };
     const clip = () => ({ x: rect.x, y: rect.y, width: rect.w, height: rect.h });
     // A resting state is cut from the import's one frame of the resting
@@ -428,12 +441,25 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     await replica.close();
   }
 
+  // Under a dialog's backdrop the live capture is the element shaded by
+  // the backdrop's colour: our capture is shaded the same before the
+  // diff, so the comparison is of the element itself. A backdrop that
+  // blurs cannot be applied here; then any difference is the page's.
+  const shade = overlay && !overlay.targetInside ? shadeOf(overlay.backdrop) : null;
+  let under = null;
+  if (overlay && !overlay.targetInside) {
+    under = { reason: "a dialog covers the live page", shaded: shade.applicable ? overlay.backdrop.color : null, blur: overlay.backdrop.blur };
+    if (shade.applicable) shadePng(files.screenshot, shade);
+  }
   // Outside the element's rounded corners the page shows through: those pixels are not compared.
   const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr, ignore: outsideCorners(rect, display.dpr) });
   let verdict = "match";
   let shifted = null;
   let photos = [];
-  if (result.diffPixels > 0) {
+  if (result.diffPixels > 0 && under && !shade.applicable) {
+    // The backdrop blurs or its colour cannot be read: the pixels under it are the page's.
+    verdict = "context";
+  } else if (result.diffPixels > 0) {
     shifted = bestShift(files.live, files.screenshot);
     // A move uncovers a one-pixel rim; a residue no bigger than that rim is a placement.
     const rim = Math.round((rect.w + rect.h) * display.dpr);
@@ -447,6 +473,8 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     else verdict = "differs";
   }
   if (rect.cut && verdict !== "differs") verdict = "offscreen";
+  let activity = activityFor(verdict, result.clusters, rect, photos);
+  if (under && verdict === "context" && !shade.applicable) activity = "Matches the product where its dialog does not shade it; a dialog covers the live page";
   return {
     pass: n,
     verdict,
@@ -454,12 +482,40 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     shifted,
     maxDelta: result.maxDelta,
     clusters: result.clusters,
-    activity: activityFor(verdict, result.clusters, rect, photos),
+    activity,
+    overlay: under,
     rect: [rect.x, rect.y, rect.w, rect.h],
     ...files,
     viewport: [width, height],
     display,
   };
+}
+
+/**
+ * The backdrop's colour as a shade to lay over a capture: { applicable,
+ * r, g, b, a }. Not applicable when the backdrop blurs (a filter we
+ * cannot apply to a picture) or its colour is not a plain rgb(a).
+ */
+function shadeOf(backdrop) {
+  const match = /^rgba?\(([^)]+)\)$/.exec(backdrop.color ?? "");
+  if (backdrop.blur || !match) return { applicable: false };
+  const parts = match[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
+  const [r, g, b] = parts;
+  const a = parts.length > 3 ? parts[3] : 1;
+  if (![r, g, b, a].every(Number.isFinite) || a >= 1) return { applicable: false };
+  return { applicable: true, r, g, b, a };
+}
+
+/** The picture at `path` with the shade composited over every pixel, written back. */
+function shadePng(path, { r, g, b, a }) {
+  const image = decodePng(readFileSync(path));
+  const data = image.data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = Math.round(data[i] * (1 - a) + r * a);
+    data[i + 1] = Math.round(data[i + 1] * (1 - a) + g * a);
+    data[i + 2] = Math.round(data[i + 2] * (1 - a) + b * a);
+  }
+  writeFileSync(path, encodePng(image));
 }
 
 export function nextPass(dir) {

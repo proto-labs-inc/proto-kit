@@ -103,7 +103,14 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
      (tabs and steps, empty/loading/error branches, overlays, toggles)
      is a state in `public/prototype.json` (id, title, one-line
      description, `parent` for branches) and a branch in the code via
-     `usePreviewState` from `@proto/rig`; the ids in both must match. The
+     `usePreviewState` from `@proto/rig`; the ids in both must match.
+     When the read said a dialog covers the page (`tree.json` carries
+     `overlay` with the backdrop's and the dialog's node ids, and the
+     read printed one line about it), the dialog is a state of its
+     own: the copy shows it as the page does, the page under it is
+     the default state, and the dialog's own close control moves
+     between them. The checks already compare parts under the
+     backdrop with its shading accounted for. The
      rig owns the URL (`?state=<id>`); wire the product's own controls to
      move between states. Hover and focus are CSS, not states.
    - **Variants**: step 8.
