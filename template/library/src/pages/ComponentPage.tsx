@@ -124,7 +124,7 @@ function States({ component, view, state, courier }: StatesProps) {
         )}
         {component.states.map((look) => (
           <TabsContent key={look.name} value={look.name}>
-            <Stage holds="component" backdrop={component.backdrop}>
+            <Stage holds="component" backdrop={look.backdrop ?? component.backdrop}>
               <Fit width={look.width ?? productWidth ?? undefined} className="p-5">
                 <Rendered name={component.name} module={component.module} state={look} />
               </Fit>

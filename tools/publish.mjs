@@ -284,7 +284,18 @@ if (!finished.publishedUrl) {
 console.log(`published: ${finished.publishedUrl}`);
 if (kind === "library") console.log(`the app loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}manifest.json`);
 else console.log(`the Frame loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}prototype.json`);
-
+// The site hears the prototype is published from the tool itself: the
+// build's last phase line is never left to the agent to remember.
+if (kind === "prototype") {
+  const { buildOfWorkspace } = await import("./build-folder.mjs");
+  const build = buildOfWorkspace(workspace);
+  if (build) {
+    const { createReporter } = await import("./build-report.mjs");
+    const reporter = createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: "site" });
+    reporter.send([{ kind: "phase", phase: "ready", line: `Published: ${finished.publishedUrl}` }]);
+    await reporter.flush().catch((error) => console.error(`the site did not take the published line: ${error.message}`));
+  }
+}
 // The adapter is the workspace's own dependency; rig-core is the
 // adapter's, so it is resolved from there, wherever the package
 // manager put it.

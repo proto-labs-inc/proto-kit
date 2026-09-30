@@ -11,6 +11,11 @@
  *   flush()        send what is waiting now (await it before exiting)
  *   upload(bytes)  one PNG, up now; -> the address events use
  * Everything is in-process: no node process per event.
+ *
+ * A site that cannot be reached does not stop a build: the first call
+ * that fails switches the reporter to the build folder, says so once,
+ * and every event and picture after it lands there (events.jsonl,
+ * captures/), the same as --no-send.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,16 +30,26 @@ export function createReporter({ codebase, briefId, runDir, sink = "site" }) {
   let timer = null;
   let sending = Promise.resolve();
 
+  const toFile = (error) => {
+    if (sink === "file") return;
+    sink = "file";
+    console.error(`… the site could not be reached (${error.message.split("\n")[0]}); the build's events and pictures are kept in ${runDir} from here`);
+  };
+  const toFolder = (events) => {
+    mkdirSync(runDir, { recursive: true });
+    const lines = events.map((event) => JSON.stringify({ at: new Date().toISOString(), event })).join("\n");
+    writeFileSync(join(runDir, "events.jsonl"), lines + "\n", { flag: "a" });
+  };
   const deliver = async (events) => {
-    if (sink === "file") {
-      mkdirSync(runDir, { recursive: true });
-      const lines = events.map((event) => JSON.stringify({ at: new Date().toISOString(), event })).join("\n");
-      writeFileSync(join(runDir, "events.jsonl"), lines + "\n", { flag: "a" });
-      return;
-    }
-    for (let i = 0; i < events.length; i += BATCH) {
-      const result = await callTool("report_build_events", { codebase, briefId, events: events.slice(i, i + BATCH) });
-      if (result?.isError) throw new Error(`report_build_events: ${result?.content?.[0]?.text ?? ""}`);
+    if (sink === "file") return toFolder(events);
+    try {
+      for (let i = 0; i < events.length; i += BATCH) {
+        const result = await callTool("report_build_events", { codebase, briefId, events: events.slice(i, i + BATCH) });
+        if (result?.isError) throw new Error(`report_build_events: ${result?.content?.[0]?.text ?? ""}`);
+      }
+    } catch (error) {
+      toFile(error);
+      toFolder(events);
     }
   };
 
@@ -56,25 +71,31 @@ export function createReporter({ codebase, briefId, runDir, sink = "site" }) {
     else if (!timer) timer = setTimeout(flush, FLUSH_MS);
   };
 
+  const toCaptures = (bytes) => {
+    const dir = join(runDir, "captures");
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`);
+    writeFileSync(path, bytes);
+    return `file://${path}`;
+  };
   const upload = async (bytes, contentType = "image/png") => {
-    if (sink === "file") {
-      const dir = join(runDir, "captures");
-      mkdirSync(dir, { recursive: true });
-      const path = join(dir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`);
-      writeFileSync(path, bytes);
-      return `file://${path}`;
+    if (sink === "file") return toCaptures(bytes);
+    try {
+      const result = await callTool("begin_build_capture", { codebase, briefId, contentType, size: bytes.length });
+      const text = result?.content?.[0]?.text ?? "";
+      if (result?.isError) throw new Error(`begin_build_capture: ${text}`);
+      const { uploadUrl, url } = JSON.parse(text);
+      const res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": contentType, "Content-Length": String(bytes.length) },
+        body: bytes,
+      });
+      if (!res.ok) throw new Error(`the capture upload answered ${res.status}`);
+      return url;
+    } catch (error) {
+      toFile(error);
+      return toCaptures(bytes);
     }
-    const result = await callTool("begin_build_capture", { codebase, briefId, contentType, size: bytes.length });
-    const text = result?.content?.[0]?.text ?? "";
-    if (result?.isError) throw new Error(`begin_build_capture: ${text}`);
-    const { uploadUrl, url } = JSON.parse(text);
-    const res = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": contentType, "Content-Length": String(bytes.length) },
-      body: bytes,
-    });
-    if (!res.ok) throw new Error(`the capture upload answered ${res.status}`);
-    return url;
   };
 
   return { send, flush, upload };

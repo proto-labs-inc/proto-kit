@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { Rendered } from "@/components/Rendered";
 import type { ComponentState, Library } from "@/library";
-// The unit's own component.json: its states, and the colour it sat on
-// in the product (its nearest painted ancestor), when the product
-// painted one. Read from the folder, not the manifest, so a unit
-// verifies before anything is landed.
 import { moduleOf, unitOf } from "@/modules";
 import type { Placement } from "@/route";
 
@@ -39,7 +35,7 @@ export function RenderPage({ slug, state, placement, library }: Props) {
       if (!current) return;
       const look = unit?.states.find((s) => s.name === state);
       if (!look) setLookup({ kind: "missing", why: `no state "${state}" in src/components/${slug}/component.json` });
-      else setLookup({ kind: "ready", module, look, backdrop: unit?.backdrop ?? null });
+      else setLookup({ kind: "ready", module, look, backdrop: look.backdrop ?? unit?.backdrop ?? null });
     });
     return () => {
       current = false;

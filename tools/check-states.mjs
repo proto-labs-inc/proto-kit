@@ -220,9 +220,13 @@ async function lane() {
 await Promise.all(Array.from({ length: 4 }, lane));
 results.sort((a, b) => views.findIndex((v) => v.name === a.view) - views.findIndex((v) => v.name === b.view));
 
+const problems = results.reduce((n, r) => n + (r.blank ? 1 : 0) + r.errors.length + r.missing.length + r.outside.length + r.overlap.length, 0) + (copy?.moved?.length ?? 0) + (copy?.missing?.length ?? 0);
+
 // ---- the site: a pass per changed node, matched when clean ----
 if (options.brief && options.codebase && build) {
   const reporter = createReporter({ codebase: options.codebase, briefId: options.brief, runDir: build.dir, sink: options.noSend ? "file" : "site" });
+  // The phase line is the tool's to send: the site never sits on the copy's last line while the states are checked.
+  reporter.send([{ kind: "phase", phase: "composing", line: `Checked ${results.length} view${results.length === 1 ? "" : "s"} of the prototype: ${problems === 0 ? "every one draws" : `${problems} problem${problems === 1 ? "" : "s"} to fix`}` }]);
   for (const marker of changed) {
     const nodeId = nodeIds.get(marker);
     if (!nodeId) continue;
@@ -253,6 +257,5 @@ if (options.brief && options.codebase && build) {
 }
 
 dev.stop();
-const problems = results.reduce((n, r) => n + (r.blank ? 1 : 0) + r.errors.length + r.missing.length + r.outside.length + r.overlap.length, 0) + (copy?.moved?.length ?? 0) + (copy?.missing?.length ?? 0);
 console.log(JSON.stringify({ ok: problems === 0, problems, seconds: Math.round((Date.now() - started) / 100) / 10, views: results, copy }));
 process.exit(0);

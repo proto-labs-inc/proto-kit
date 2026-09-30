@@ -120,6 +120,7 @@ writeFileSync(manifestPath, JSON.stringify(fresh, null, 2) + "\n");
 
 // ---- the site: the part as the prototype now draws it ----
 if (reporter) {
+  reporter.send([{ kind: "phase", phase: "composing", line: `Pictured ${previews.length} variant${previews.length === 1 ? "" : "s"} of ${(fresh.variantSets ?? []).length} set${(fresh.variantSets ?? []).length === 1 ? "" : "s"}` }]);
   for (const set of fresh.variantSets ?? []) {
     const nodeId = nodeIds.get(set.component);
     const made = previews.find((p) => p.component === set.component && p.variant === set.default);

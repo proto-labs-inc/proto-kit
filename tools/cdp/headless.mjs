@@ -64,16 +64,51 @@ function launchedDisplay() {
 const sameDisplay = (a, b) => a !== null && a.dpr === b.dpr && a.colorProfile === b.colorProfile;
 
 /**
+ * The display the headless Chrome on `port` is running at, asked of
+ * the Chrome itself (a blank tab's devicePixelRatio and colour gamut),
+ * not of a file: the record under one HOME says nothing to a process
+ * under another, and two homes taking turns stopped and relaunched
+ * the one shared Chrome under each other's captures.
+ */
+async function runningDisplay(port) {
+  const info = await version(port);
+  if (!info) return null;
+  let browser;
+  try {
+    browser = await connect(info.webSocketDebuggerUrl);
+    const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
+    try {
+      const tabs = await (await fetch(`http://localhost:${port}/json/list`)).json();
+      const tab = tabs.find((t) => t.id === targetId);
+      const page = await connect(tab.webSocketDebuggerUrl);
+      try {
+        return await displayOf(page);
+      } finally {
+        page.close();
+      }
+    } finally {
+      await browser.send("Target.closeTarget", { targetId }).catch(() => {});
+    }
+  } catch {
+    return launchedDisplay();
+  } finally {
+    browser?.close();
+  }
+}
+
+/**
  * Find or start the headless Chrome for a display; resolves once its
  * debug port answers. A Chrome already up for another display is
- * stopped and launched again. Launched through `open`, like the
- * visible window, so it belongs to launchd and no shell waits on it.
+ * stopped and launched again once its port is free. Launched through
+ * `open`, like the visible window, so it belongs to launchd and no
+ * shell waits on it.
  */
 export async function ensureHeadless(display, port = HEADLESS_PORT) {
   if (await version(port)) {
-    if (sameDisplay(launchedDisplay(), display)) return port;
+    if (sameDisplay(await runningDisplay(port), display)) return port;
     await stopHeadless(port);
-    for (let i = 0; i < 40 && (await version(port)); i++) await new Promise((r) => setTimeout(r, 100));
+    // The port must be free before the launch, or the new Chrome dies on it and nothing comes up.
+    for (let i = 0; i < 150 && (await version(port)); i++) await new Promise((r) => setTimeout(r, 100));
   }
   mkdirSync(PROFILE, { recursive: true });
   execFileSync("open", [

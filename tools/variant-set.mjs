@@ -16,7 +16,9 @@
  * --slot names the part's slot class in App.tsx (`className={styles["part42"]}`):
  * replicate pinned the copied part's height on that slot in App.module.css,
  * and a variant of another height needs it freed, so the pin is removed
- * (the copy keeps its height from its own content).
+ * (the copy keeps its height from its own content). A slot with no pin
+ * has nothing to free; the set is written the same and `slot.heightFreed`
+ * is false.
  *
  * <component> is the data-proto-id of the part the set varies: every
  * variant's root carries it, so the Frame's picker, the set and the
@@ -29,13 +31,16 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { buildOfWorkspace } from "./build-folder.mjs";
+import { createReporter } from "./build-report.mjs";
 
 const USAGE = 'usage: node tools/variant-set.mjs <workspace> <component> --title "<t>" --variants "id=Title|note;..." --default <id> [--baseline id=Title] [--state <id>] [--overview "<sentence>"]';
 const options = {};
 const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
-  if (args[i].startsWith("--")) {
+  if (args[i] === "--no-send") options.noSend = true;
+  else if (args[i].startsWith("--")) {
     options[args[i].slice(2)] = args[i + 1];
     i += 1;
   } else positional.push(args[i]);
@@ -127,14 +132,21 @@ ${cases}
 );
 
 // ---- the slot: no pinned height for a part that will change size ----
+// A slot replicate did not pin (the part came out at its own height)
+// has nothing to free: the set is written all the same, and `slot`
+// says so. Stopping here left the manifest unwritten and the set half
+// made for a part that happened to fit.
 let slot = null;
 if (options.slot) {
   const cssPath = join(workspace, "src", "App.module.css");
   const css = readFileSync(cssPath, "utf8");
   const block = new RegExp(`(\\.page \\.${options.slot} \\{[^}]*?)\\n  height: [^;]+;`, "m");
-  if (!block.test(css)) fail(`no pinned height on .page .${options.slot} in src/App.module.css`);
-  writeFileSync(cssPath, css.replace(block, "$1"));
-  slot = { class: options.slot, heightFreed: true };
+  if (block.test(css)) {
+    writeFileSync(cssPath, css.replace(block, "$1"));
+    slot = { class: options.slot, heightFreed: true };
+  } else {
+    slot = { class: options.slot, heightFreed: false, note: `no pinned height on .page .${options.slot} in src/App.module.css; nothing to free` };
+  }
 }
 
 // ---- the manifest ----
@@ -156,6 +168,13 @@ if (options.overview) entry.overview = { title: options.title, description: opti
 manifest.variantSets = [...(manifest.variantSets ?? []).filter((set) => set.component !== component), entry];
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 
+// The site hears the set is being written from the tool itself, so it never sits on the copy's last line.
+const build = buildOfWorkspace(workspace);
+if (build) {
+  const reporter = createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: options.noSend ? "file" : "site" });
+  reporter.send([{ kind: "phase", phase: "composing", line: `Writing the "${options.title}" variant set (${variants.length} variant${variants.length === 1 ? "" : "s"})` }]);
+  await reporter.flush();
+}
 console.log(
   JSON.stringify({
     component,

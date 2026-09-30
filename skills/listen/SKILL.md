@@ -94,7 +94,12 @@ checkout root.
      run when a chat picks this protocol up again.
 2. **Act on each event line** `{"offset": N, "command": {…}}`, one at
    a time, in arrival order (your notifications are already serial:
-   that IS the one-run-at-a-time queue):
+   that IS the one-run-at-a-time queue). First mark it in hand: `node
+   <kit>/tools/tail.mjs handling <codebase> N` (the line's offset). The
+   offset is committed only after acting (step 3), so without this
+   mark the tail's rule 6 would count the command you are handling as
+   one waiting behind you, and a build would say a site command is
+   waiting about its own brief. Then:
    - `{"run": "<name>", "briefId"?}`: handle command `<name>`
      in-session. It names the kit skill to follow (create-prototype,
      import-design-system, serve), scoped to this codebase's
@@ -188,7 +193,11 @@ what you are doing first; the command waits its turn:
 - when the current work is done, take the waiting commands oldest
   first, exactly as step 2 describes.
 
-The site shows such a brief as sent, not started, until you start it.
+The import's current work ends at its Finish (`complete` and the
+publish), not when the units it dispatched to fix components report:
+they run in the background and land on their own, so a brief never
+waits on them. The site shows such a brief as sent, not started,
+until you start it.
 
 ## Restart protocol
 

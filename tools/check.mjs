@@ -32,28 +32,30 @@
  * out. --activity replaces the pass's line (a unit saying what it changed).
  *
  * Prints one JSON line: { slug, states: [{ state, verdict, mismatch,
- * shifted, clusters, differences?, activity }], matched, budget } where
- * matched is true when every checked state's verdict is match, shifted,
- * context, faint or offscreen (tools/verify-replica.mjs says what each
- * means). A state that differs carries `differences`: at each cluster,
- * the element the product paints there and the element our copy paints
- * there, with the computed properties that differ (verify-replica.mjs
- * reads both pages in the same pass). `budget` counts the passes since
- * the component was written against six checks after the import's
- * own; past it the check still runs and says so on stderr.
+ * area, shifted, clusters, activity, tail }], matched, typecheck,
+ * stop, restored } where matched is true when every checked state's
+ * verdict is match, shifted, context, faint or offscreen
+ * (tools/verify-replica.mjs says what each means); `stop` is not a
+ * match. `typecheck` lists the component's own type errors. Every pass
+ * is recorded in the run's tail.jsonl (tools/tail.mjs); a state's
+ * `tail` says when a unit should stop on it and why (its difference is
+ * small, the last passes did not help, the unit's budget is spent),
+ * and `stop` when that holds for every state that still differs: the
+ * unit reports then, instead of another pass, and the component is put
+ * back as the import wrote it (`restored`, tools/unit-restore.mjs).
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyState, passTrend, readRecords, record, tailFile, unitBudget } from "./tail.mjs";
+import { restoreFolder } from "./unit-restore.mjs";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 // Verdicts that count as the product's look: identical, a one-pixel
 // placement, or identical where the page shows it.
 export const ACCEPTED = ["match", "shifted", "context", "faint", "offscreen"];
-// Checks a component gets after the import's own: six fixes.
-const CHECKS_ALLOWED = 7;
 const USAGE = 'usage: node tools/check.mjs <codebase> <slug> [--theme <light|dark>] [--state <name>] [--no-land] [--activity "<line>"] [--app <url> --unit <component.json> --live <page-url> --out <dir>]';
 
 /** The part of a page address a tab is found by: its host and path. */
@@ -157,13 +159,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error(`check gave up after ${patience / 1000}s: a capture never completed; check the live tab is still open and try again`);
     process.exit(2);
   }, patience).unref();
-  // The passes this component has had since the tools wrote it: the
-  // import's own check and the fixes after it. A fix loop that has not
-  // converged in six rounds is nudging numbers, not reading the page;
-  // past the limit the check still runs, and says so.
-  const written = statSync(target.unitPath).mtimeMs;
-  const limit = CHECKS_ALLOWED * 2 * unit.states.filter((s) => s.live).length;
-
   let checked;
   try {
     checked = await checkComponent({ unit, slug, appUrl: target.appUrl, liveMatch: liveMatchOf(target.liveUrl), out: target.out, codebase, only: options.state ?? null, theme: options.theme });
@@ -177,29 +172,65 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     entry.activity = options.activity ?? label(unit, entry.state, entry.result.activity);
     if (target.land) land(library, slug, entry.result, entry.activity, options.theme);
   }
+  // Every pass goes on the run's record, and the unit's own budget
+  // counts from its first check after the import's gate.
+  const tail = tailFile(codebase);
+  const before = readRecords(tail);
+  const phaseAt = [...before].reverse().find((r) => r.kind === "phase")?.at ?? 0;
+  const own = before.filter((r) => r.at >= phaseAt && r.item === slug);
+  const checks = own.filter((r) => r.kind === "check").length + 1;
+  const startedAt = own.find((r) => r.kind === "check")?.at ?? Date.now();
+  record(tail, { kind: "check", item: slug });
   const summary = checked.states.map((entry) => {
     if (!entry.result) return entry;
     const { result, activity } = entry;
-    return {
-      state: entry.state,
-      verdict: result.verdict,
-      mismatch: result.mismatch,
-      shifted: result.shifted,
-      clusters: result.clusters.slice(0, 4),
-      ...(result.differences ? { differences: result.differences } : {}),
-      activity,
-    };
+    const area = Math.round(result.rect[2] * result.rect[3] * result.display.dpr * result.display.dpr);
+    record(tail, { kind: "pass", item: slug, state: entry.state, verdict: result.verdict, mismatch: result.mismatch, area });
+    const history = [...own.filter((r) => r.kind === "pass" && r.state === entry.state).map((r) => r.mismatch), result.mismatch];
+    const stop = stopReason({ verdict: result.verdict, mismatch: result.mismatch, area, history, checks, startedAt });
+    return { state: entry.state, verdict: result.verdict, mismatch: result.mismatch, area, shifted: result.shifted, clusters: result.clusters.slice(0, 4), activity, tail: stop };
   });
-  const passes = passesSince(target.out, written);
-  const budget = { passes, limit, spent: passes > limit };
-  if (budget.spent) console.error(`${slug} has had its ${CHECKS_ALLOWED} checks since it was written (${passes} passes): report it skipped with the last verdicts, or write it again with tools/snapshot.mjs`);
-  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched, budget }));
+  // A state whose check failed outright (the render route did not mount) has no tail verdict: it is checked again, not stopped on.
+  const differing = summary.filter((s) => s.tail && !ACCEPTED.includes(s.verdict));
+  const stop = differing.length > 0 && differing.every((s) => s.tail.stop);
+  for (const s of differing) if (s.tail.stop) console.error(`${slug} ${s.state}: stop here, ${s.tail.reason}`);
+  // A library component's own type errors, from the library's tsc; a
+  // component with errors of its own is not done, whatever the pixels say.
+  const typecheck = target.land ? typecheckFolder(library, `src/components/${slug}/`) : { ok: true, errors: [] };
+  if (!typecheck.ok) console.error(`${slug}: ${typecheck.errors.length} type error${typecheck.errors.length === 1 ? "" : "s"} in the component's own files; the component is not done until they are gone`);
+  // The budget spent without a match: the component goes back to how the
+  // import wrote it, from the copy explain-diff kept (tools/unit-restore.mjs).
+  let restored = false;
+  if (stop && !checked.matched && target.land) {
+    const back = restoreFolder({ folder: dirname(target.unitPath), slug, runDir: join(home, "run") });
+    restored = back.restored;
+    if (restored) console.error(`${slug}: restored ${dirname(target.unitPath)} to how the import wrote it (from ${back.path})`);
+  }
+  console.log(JSON.stringify({ slug, states: summary, matched: checked.matched, typecheck, stop, restored }));
 }
 
-// Pass pictures made since the component was written (a state that
-// differs makes two a check).
-function passesSince(out, written) {
-  return readdirSync(out).filter((name) => /^\d+\.png$/.test(name) && statSync(join(out, name)).mtimeMs >= written).length;
+/** A folder's tsc errors, from the app's own typecheck script, kept to the files under `prefix`. */
+function typecheckFolder(app, prefix) {
+  const result = spawnSync("pnpm", ["-s", "typecheck"], { cwd: app, encoding: "utf8" });
+  if (result.error) return { ok: false, errors: [`typecheck could not run: ${result.error.message}`] };
+  const errors = `${result.stdout}\n${result.stderr}`.split("\n").filter((line) => line.startsWith(prefix) && /error TS\d+/.test(line));
+  return { ok: errors.length === 0, errors: errors.slice(0, 12) };
+}
+
+/**
+ * Whether a unit should stop on this state, and why (tools/tail.mjs
+ * rules 2, 4 and 5): a difference too small to chase, passes that no
+ * longer help, or a budget spent. Never on a state that matches.
+ */
+function stopReason({ verdict, mismatch, area, history, checks, startedAt }) {
+  if (ACCEPTED.includes(verdict)) return { stop: false, reason: null };
+  const small = classifyState({ verdict, mismatch, area });
+  if (small.tail) return { stop: true, rule: small.rule, reason: small.reason };
+  const trend = passTrend(history);
+  if (trend.stop) return { stop: true, rule: "diminishing", reason: trend.reason };
+  const budget = unitBudget({ checks, startedAt });
+  if (budget.stop) return { stop: true, rule: "budget", reason: budget.reason };
+  return { stop: false, reason: null };
 }
 
 // The pass's line names the state when the component has more than one.
