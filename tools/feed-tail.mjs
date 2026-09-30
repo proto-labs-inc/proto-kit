@@ -13,21 +13,32 @@
  * gaps, agent restarts, and reboots (see docs/harness-mechanics.md,
  * "Lines emitted while no watch is armed are LOST to the watch").
  *
- * Usage: node feed-tail.mjs <run-dir> [--once]
+ * Usage: node feed-tail.mjs <run-dir> [--once] [--harness claude|codex|cursor]
  *   --once: print anything pending past the committed offset, then
  *   exit — the poll-style check for harnesses without a push wake
  *   (a Codex session runs this whenever it wants to know "anything
  *   waiting?").
+ *   --harness: the coding agent this watch runs in, stamped beside the
+ *   heartbeat so the site can name it (watch-stamp.mjs). The listen
+ *   skill passes it; without it the site says "your harness".
  */
-import { openSync, readSync, readFileSync, statSync, closeSync, writeFileSync } from "node:fs";
+import { openSync, readSync, readFileSync, statSync, closeSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { harnessFromArgs, writeWatchStamp } from "./watch-stamp.mjs";
 
 const runDir = resolve(process.argv[2] ?? "");
 if (!process.argv[2]) {
-  console.error("usage: node feed-tail.mjs <run-dir>");
+  console.error("usage: node feed-tail.mjs <run-dir> [--once] [--harness claude|codex|cursor]");
   process.exit(1);
 }
 const feed = join(runDir, "commands.jsonl");
+let harness;
+try {
+  harness = harnessFromArgs(process.argv.slice(3));
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
 
 let offset = 0;
 try {
@@ -65,14 +76,15 @@ function drain() {
   offset = consumed;
 }
 
-// Heartbeat: the courier's status reports agentListening from this
-// file's freshness — a live watch means a live consumer.
+// Heartbeat: the courier reports agentListening from the stamp's
+// freshness (a live watch means a live consumer) and names the harness
+// from it.
 let lastBeat = 0;
 function beat() {
   if (Date.now() - lastBeat < 5000) return;
   lastBeat = Date.now();
   try {
-    writeFileSync(join(runDir, "watch-heartbeat.json"), JSON.stringify({ at: new Date().toISOString() }));
+    writeWatchStamp(runDir, harness);
   } catch {}
 }
 

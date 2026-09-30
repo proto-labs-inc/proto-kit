@@ -33,6 +33,7 @@ import { randomUUID } from "node:crypto";
 import { serveHttp } from "./courier-http.mjs";
 import { connectRelay, relayConfig } from "./courier-relay.mjs";
 import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
+import { readWatchStamp } from "./watch-stamp.mjs";
 
 const runDir = resolve(process.argv[2] ?? "");
 if (!process.argv[2]) {
@@ -60,21 +61,11 @@ function validated(cmd) {
   return null;
 }
 
-// agentListening: the listening session's feed watch stamps
-// watch-heartbeat.json in the run dir; a fresh stamp means someone is
-// consuming commands. Local to this laptop: the feed watchers write
-// the stamp every few seconds, and this is how old it may be before
-// the watcher counts as gone.
-const WATCH_STALE_MS = 15_000;
-function agentState() {
-  try {
-    const beat = JSON.parse(readFileSync(join(runDir, "watch-heartbeat.json"), "utf8"));
-    const age = Date.now() - Date.parse(beat.at);
-    return { agentListening: age < WATCH_STALE_MS, lastSeenAt: beat.at };
-  } catch {
-    return { agentListening: false, lastSeenAt: null };
-  }
-}
+// agentListening and harness: the listening session's feed watch stamps
+// watch-heartbeat.json in the run dir (watch-stamp.mjs); a fresh stamp
+// means someone is consuming commands, and it names the harness they
+// run in.
+const agentState = () => readWatchStamp(runDir);
 
 export async function handle(cmd) {
   const accepted = validated(cmd);
@@ -146,7 +137,7 @@ if (config.courierId) {
         courierId: config.courierId,
         token,
         handle,
-        listening: () => agentState().agentListening,
+        listening: agentState,
         log: (text) => console.log(text),
       });
     } catch (error) {

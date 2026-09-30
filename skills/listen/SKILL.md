@@ -41,11 +41,14 @@ checkout root.
    and one whose courier stopped.
 1. **Arm the watch.** How depends on the harness:
    - **Claude Code**: arm the Monitor tool on
-     `node <kit>/tools/feed-tail.mjs <run-dir>`, description
-     `"<codebase> command feed"`, a long timeout: it wakes you per
-     line, idle costs nothing; re-arm when it ends. (The plugin also
-     declares a `courier-feed` monitor that delivers the same lines
+     `node <kit>/tools/feed-tail.mjs <run-dir> --harness claude`,
+     description `"<codebase> command feed"`, a long timeout: it wakes
+     you per line, idle costs nothing; re-arm when it ends. (The plugin
+     also declares a `courier-feed` monitor that delivers the same lines
      automatically when the harness honors skill-invoke monitors.)
+     `--harness` names the coding agent in the watch stamp, which the
+     courier reports to the site: the site then says "Claude Code" on
+     the path to your laptop instead of "your harness". Always pass it.
    - **Codex**: there is no push wake, so instead of watching, you
      **tell the courier where to find you** and it wakes you per
      command:
@@ -84,10 +87,12 @@ checkout root.
      conversation headlessly per command — the last resort, because
      nobody sees it happen.
    - **Cursor**: no push wake and no plugin monitor either. Run the
-     same feed-tail in a background terminal and check it on a
-     relaxed interval while the chat is open; `node
+     same feed-tail in a background terminal, `node
+     <kit>/tools/feed-tail.mjs <run-dir> --harness cursor`, and check
+     it on a relaxed interval while the chat is open; `node
      <kit>/tools/feed-tail.mjs <run-dir> --once` drains anything
-     pending for a spot check. There is no unattended path on Cursor
+     pending for a spot check. (`--harness cursor` is what makes the
+     site say "Cursor" on the path to your laptop.) There is no unattended path on Cursor
      yet (`feed-queue.mjs` and `feed-drive.mjs` drive Codex
      sessions and `agent-launch.mjs` Claude Code sessions), so tell the user
      plainly: commands queue in the feed while the chat is closed and

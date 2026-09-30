@@ -18,7 +18,10 @@
  * guards the courier's local port only, stays on this laptop and is never
  * printed. The relay token comes from the site and is kept beside it.
  *
- * Prints one JSON line: { courierId, local: bool, relay, agentListening }.
+ * Prints one JSON line: { courierId, local: bool, relay, agentListening, harness }.
+ * harness is the coding agent the listening session named in its watch
+ * stamp ("claude", "codex" or "cursor"), or null when nothing listens
+ * or the watch named none.
  * relay is the courier's own word on its connection: "connected",
  * "connecting" or "waiting" (between attempts), "unsupported" on a Node
  * without WebSocket (older than 22), or "none" when it has no relay
@@ -172,5 +175,5 @@ if (relay === "unsupported") {
   const node = readJson(specPath)?.processes?.find((p) => p.name === "listener")?.command?.[0] ?? "node";
   console.error(`${NEEDS_NODE_22}, and it runs on ${node}, which has none. Point the listener in ${specPath} at Node 22 or newer, then run this again.`);
 }
-console.log(JSON.stringify({ courierId: courier.courierId, local: Boolean(local), relay, agentListening: local?.agentListening ?? false }));
+console.log(JSON.stringify({ courierId: courier.courierId, local: Boolean(local), relay, agentListening: local?.agentListening ?? false, harness: local?.harness ?? null }));
 process.exit(local ? 0 : 1);

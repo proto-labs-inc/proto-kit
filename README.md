@@ -78,6 +78,7 @@ The courier and the feed:
 - `courier-http.mjs`: the courier's local-only port, for this laptop's own checks.
 - `feed-tail.mjs`: follow one codebase's feed from the committed offset.
 - `feed-watch-all.mjs`: follow every codebase's feed at once, for monitors.
+- `watch-stamp.mjs`: the watch heartbeat those write and the courier reads: a session listens, and in which harness.
 - `agent-launch.mjs`: resume-aware headless launcher for a listen session.
 - `codex-thread.mjs`: which live Codex thread is this session (by a token it printed).
 - `feed-queue.mjs`: the Codex wake, queueing each command into the session the user has open.

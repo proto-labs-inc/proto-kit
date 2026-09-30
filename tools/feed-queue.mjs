@@ -32,6 +32,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { managedCodex, threadIsLive } from "./codex-thread.mjs";
+import { writeWatchStamp } from "./watch-stamp.mjs";
 
 const runDir = resolve(process.argv[2] ?? "");
 if (!process.argv[2]) {
@@ -113,10 +114,11 @@ function deliver({ offset, line }, bin, threadId) {
 // The courier reports agentListening from this stamp's freshness. On
 // Codex the live thread IS the listening session, so stamp it while
 // the thread holds its lock — otherwise the site would tell the user
-// their agent isn't running while it plainly is.
+// their agent isn't running while it plainly is. The stamp names Codex,
+// so the site names it too.
 function beat() {
   try {
-    writeFileSync(join(runDir, "watch-heartbeat.json"), JSON.stringify({ at: new Date().toISOString() }));
+    writeWatchStamp(runDir, "codex");
   } catch {}
 }
 
