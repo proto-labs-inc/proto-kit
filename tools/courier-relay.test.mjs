@@ -154,3 +154,75 @@ test("a command whose handling throws does not stop the ones after it", async ()
   assert.deepEqual(JSON.parse(socket.sent.at(-1)), { type: "reply", id: "c2" });
   line.close();
 });
+
+class SilentCloseSocket extends FakeSocket {
+  // A black-holed path: close() only starts the closing handshake, and no close event comes.
+  close() {
+    this.closed = true;
+  }
+}
+
+test("a dead socket is replaced at once, and its late close starts no second reconnect", async () => {
+  FakeSocket.made = [];
+  let clock = 0;
+  const timers = [];
+  const line = connectRelay(
+    base({
+      WebSocketImpl: SilentCloseSocket,
+      now: () => clock,
+      every: (fn, ms) => (timers.push({ fn, ms }), timers.length),
+      stopEvery: () => {},
+    }),
+  );
+  const first = FakeSocket.made[0];
+  first.emit("open");
+  const ping = timers.find((t) => t.ms === PING_EVERY_MS);
+  clock += DEAD_AFTER_MS + 1;
+  ping.fn();
+  assert.equal(first.closed, true);
+  assert.equal(line.state(), "waiting");
+  await tick();
+  assert.equal(FakeSocket.made.length, 2);
+  first.emit("close", { code: 1006 });
+  first.emit("message", { data: JSON.stringify({ type: "command", id: "late", command: {} }) });
+  await tick();
+  assert.equal(FakeSocket.made.length, 2);
+  line.close();
+});
+
+test("a relay address the WebSocket refuses is retried with backoff, not thrown", async () => {
+  FakeSocket.made = [];
+  let calls = 0;
+  class RefusingOnce extends FakeSocket {
+    constructor(url) {
+      calls += 1;
+      if (calls === 1) throw new SyntaxError("Invalid URL");
+      super(url);
+    }
+  }
+  const line = connectRelay(base({ WebSocketImpl: RefusingOnce }));
+  assert.equal(line.state(), "waiting");
+  await tick();
+  assert.equal(FakeSocket.made.length, 1);
+  line.close();
+});
+
+test("a reply goes only on the socket its command came in on", async () => {
+  FakeSocket.made = [];
+  let finish;
+  const line = connectRelay(base({ handle: () => new Promise((r) => (finish = r)) }));
+  const first = FakeSocket.made[0];
+  first.emit("open");
+  first.emit("message", { data: JSON.stringify({ type: "command", id: "c1", command: {} }) });
+  await tick();
+  first.emit("close", { code: 1006 });
+  await tick();
+  const second = FakeSocket.made[1];
+  second.emit("open");
+  finish({ status: 202 });
+  await tick();
+  const replies = (socket) => socket.sent.filter((s) => s.includes('"reply"')).length;
+  assert.equal(replies(first), 0);
+  assert.equal(replies(second), 0);
+  line.close();
+});

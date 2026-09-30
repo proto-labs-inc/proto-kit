@@ -56,10 +56,15 @@ export function connectRelay({
   let lastPong = 0;
   let timers = [];
 
-  const send = (message) => {
+  const sendOn = (target, message) => {
     try {
-      socket?.send(typeof message === "string" ? message : JSON.stringify(message));
+      target?.send(typeof message === "string" ? message : JSON.stringify(message));
     } catch {}
+  };
+  const send = (message) => sendOn(socket, message);
+  const stopTimers = () => {
+    for (const id of timers) stopEvery(id);
+    timers = [];
   };
   const reportListening = () => {
     const current = Boolean(listening());
@@ -67,22 +72,21 @@ export function connectRelay({
     lastListening = current;
     send({ type: "state", agentListening: current });
   };
-  const keepAlive = () => {
-    if (now() - lastPong > DEAD_AFTER_MS) {
-      log("relay: no pong, dropping the connection");
-      socket?.close();
-      return;
-    }
-    send("ping");
-  };
-  // One command at a time, in the order they arrive.
+  // One command at a time, in the order they arrive. A reply goes back only
+  // on the socket the command came in on; if that socket has been replaced,
+  // the reply is dropped and the site sees no-reply.
   let queue = Promise.resolve();
-  const onCommand = (message) => {
+  const onCommand = (from, message) => {
     queue = queue.then(async () => {
       log(`relay: command ${message.id}`);
       try {
         const { status } = await handle(message.command);
-        if (status >= 200 && status < 300) send({ type: "reply", id: message.id });
+        if (status < 200 || status >= 300) return;
+        if (from !== socket) {
+          log(`relay: command ${message.id} handled after its connection was replaced, no reply`);
+          return;
+        }
+        sendOn(from, { type: "reply", id: message.id });
       } catch (error) {
         // No reply, so the site sees no-reply; the commands behind it still run.
         log(`relay: command ${message.id} failed: ${error?.message ?? error}`);
@@ -90,10 +94,48 @@ export function connectRelay({
     });
   };
 
+  // Every way a connection ends comes here once: a close event from the
+  // current socket, no pong in time, or a socket that could not be made.
+  const reconnect = (reason) => {
+    stopTimers();
+    socket = null;
+    if (stopped) return;
+    state = "waiting";
+    const wait = delay(attempt);
+    attempt += 1;
+    log(`relay: disconnected (${reason}), reconnecting in ${Math.round(wait / 1000)}s`);
+    setTimeout(() => {
+      if (!stopped) open();
+    }, wait);
+  };
+  // A dead socket's close() only starts the closing handshake; on a path
+  // that went dark (a laptop that slept, a NAT entry that expired) its close
+  // event can take minutes. So the courier lets it go and reconnects now;
+  // anything the old socket says later is ignored.
+  const keepAlive = () => {
+    if (now() - lastPong > DEAD_AFTER_MS) {
+      const dead = socket;
+      reconnect("no pong");
+      try {
+        dead?.close();
+      } catch {}
+      return;
+    }
+    send("ping");
+  };
+
   const open = () => {
     state = "connecting";
-    socket = new WebSocketImpl(address);
-    socket.addEventListener("open", () => {
+    let current;
+    try {
+      current = new WebSocketImpl(address);
+    } catch (error) {
+      reconnect(`cannot connect: ${error?.message ?? error}`);
+      return;
+    }
+    socket = current;
+    current.addEventListener("open", () => {
+      if (current !== socket) return;
       state = "connected";
       attempt = 0;
       lastListening = null;
@@ -103,7 +145,8 @@ export function connectRelay({
       timers.push(every(keepAlive, PING_EVERY_MS));
       timers.push(every(reportListening, LISTENING_CHECK_MS));
     });
-    socket.addEventListener("message", (event) => {
+    current.addEventListener("message", (event) => {
+      if (current !== socket) return;
       const data = String(event.data);
       if (data === "pong") {
         lastPong = now();
@@ -115,19 +158,13 @@ export function connectRelay({
       } catch {
         return;
       }
-      if (message?.type === "command" && typeof message.id === "string") onCommand(message);
+      if (message?.type === "command" && typeof message.id === "string") onCommand(current, message);
     });
-    socket.addEventListener("close", (event) => {
-      for (const id of timers) stopEvery(id);
-      timers = [];
-      if (stopped) return;
-      state = "waiting";
-      const wait = delay(attempt);
-      attempt += 1;
-      log(`relay: disconnected (${event?.code ?? "?"}), reconnecting in ${Math.round(wait / 1000)}s`);
-      setTimeout(() => !stopped && open(), wait);
+    current.addEventListener("close", (event) => {
+      if (current !== socket) return;
+      reconnect(event?.code ?? "?");
     });
-    socket.addEventListener("error", () => {
+    current.addEventListener("error", () => {
       // A close always follows an error; the close reconnects.
     });
   };
@@ -137,8 +174,7 @@ export function connectRelay({
     state: () => state,
     close() {
       stopped = true;
-      for (const id of timers) stopEvery(id);
-      timers = [];
+      stopTimers();
       try {
         socket?.close();
       } catch {}
