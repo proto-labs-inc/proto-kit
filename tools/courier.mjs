@@ -20,6 +20,8 @@
  *
  * Commands v1 (validated, then appended verbatim + envelope):
  *   { "run": "<prompt-name>", "briefId"?: "…" }
+ *   { "run": "answer", "briefId", "questionId", "option" | "text" | "hold": true }
+ *       a person's answer to a build's question (tools/questions.mjs)
  *   { "status": true }
  *   { "restart-serving": "<slug>" | true }
  *
@@ -33,6 +35,7 @@ import { randomUUID } from "node:crypto";
 import { serveHttp } from "./courier-http.mjs";
 import { connectRelay, relayConfig } from "./courier-relay.mjs";
 import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
+import { answerCommand } from "./questions.mjs";
 
 const runDir = resolve(process.argv[2] ?? "");
 if (!process.argv[2]) {
@@ -44,6 +47,9 @@ const feed = join(runDir, "commands.jsonl");
 
 function validated(cmd) {
   if (!cmd || typeof cmd !== "object") return null;
+  // An answer carries the question it answers and what was said; the
+  // build waiting on it needs every field, so it is checked whole.
+  if (cmd.run === "answer") return answerCommand(cmd);
   if (typeof cmd.run === "string" && cmd.run.length > 0) {
     const out = { run: cmd.run };
     if (cmd.briefId !== undefined) {

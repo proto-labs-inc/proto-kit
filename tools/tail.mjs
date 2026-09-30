@@ -18,7 +18,8 @@
  *      by under a fifth, or a pass made it worse;
  *   5. the unit's budget: three checks or two minutes;
  *   6. someone is waiting: a site command is queued (one being handled
- *      right now is not queued: `handling` marks it).
+ *      right now is not queued: `handling` marks it; nor is an answer
+ *      to a build's question, which its build takes).
  * And a phase (the import's tail, a build's copy) is weighed as a
  * whole from two minutes in: P(t), the matched share of the work by
  * weight, sampled at every check pass; every thirty seconds the gain
@@ -181,7 +182,14 @@ export function waiting(codebase) {
   const offset = Math.max(offsetIn(join(run, "offset.json")), offsetIn(handlingFile(codebase)));
   const size = statSync(feed).size;
   if (size <= offset) return { waiting: false, what: null };
-  const pending = readFileSync(feed, "utf8").slice(offset).split("\n").filter(Boolean);
+  // An answer to a build's question is never work waiting: its build
+  // takes it, or the listen skill drops it.
+  const pending = readFileSync(feed, "utf8")
+    .slice(offset)
+    .split("\n")
+    .filter(Boolean)
+    .filter((line) => !isAnswer(line));
+  if (pending.length === 0) return { waiting: false, what: null };
   let what = "a site command";
   try {
     const command = JSON.parse(pending[0]);
@@ -190,6 +198,14 @@ export function waiting(codebase) {
     // An unreadable line still waits.
   }
   return { waiting: true, what, count: pending.length };
+}
+
+function isAnswer(line) {
+  try {
+    return JSON.parse(line).run === "answer";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -256,6 +272,21 @@ export function decide(records, codebase, now = Date.now()) {
   const meaningful = gain >= TAIL.MEANINGFUL_GAIN * remaining || gain * totalWeight >= smallest;
   if (meaningful && eta <= TAIL.ETA_CONTINUE_MS) return { action: "continue", rule: "forecast", line: `Fixing in the background: ${of}; ${lastMinute}, ${minutes}.`, ...base };
   return { action: "move-on", rule: "little-gain", line: `Moving on: ${of}; ${lastMinute}, ${minutes}. ${tail}`, ...base };
+}
+
+/**
+ * The page copy's forecast at its gate (tools/copy-gate.mjs), from the
+ * last two copy passes: `before` and `after` are the matched share of
+ * the page (0 to 1) either side of the last pass, which took `passMs`.
+ * Another pass helps when the last one gained a meaningful share of
+ * what was left; it would take about as long as the last one.
+ */
+export function copyForecast({ before, after, passMs }) {
+  const left = 1 - before;
+  const gain = after - before;
+  const minutes = Math.max(1, Math.round(passMs / 60_000));
+  const verdict = left > 0 && gain >= TAIL.MEANINGFUL_GAIN * left ? "another-pass-helps" : "little-gain";
+  return { verdict, gain, minutes };
 }
 
 const numbers = (here) => ({ matched: here.matched, total: here.total, P: Math.round(here.P * 1000) / 1000 });

@@ -25,12 +25,21 @@
  *   name       tree.json carries the curation     build-stream.mjs name
  *   scaffold   workspace.json                     scaffold.mjs (idempotent)
  *   replicate  parts.json                         replicate.mjs (--again redoes it)
+ *   gate       steps.json records the decision    copy-gate.mjs
+ *              A copy over its gate (the page differs by more than
+ *              TAIL.PAGE_PROCEED_PCT, or did not mount) is copied once
+ *              more after the page settles; still over, the person is
+ *              asked on the site whether to start building anyway, and
+ *              the command waits for the answer (30 seconds, then the
+ *              recommended option).
  *
  * Then it sends `phase composing` and prints parts.json: one JSON
  * line with the workspace, every part (its node id, name, marker, the
  * files in src/parts/<slug>/, whether it came from the library, its
  * check's status, its rect on the page and the section it sits in),
- * every section, what is left to fix, and the page's own verdict.
+ * every section, what is left to fix, the page's own verdict, and the
+ * gate: { outcome: proceed | build | reply, line, answer?, instruction? },
+ * where a reply's instruction is what the person wrote, to follow as given.
  * --keep-dev leaves the workspace's dev server up for the checks that
  * follow; without it the serve skill's run starts it again.
  */
@@ -39,11 +48,21 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFolder } from "./build-folder.mjs";
+import { ask, waitForAnswer } from "./ask.mjs";
 import { createReporter } from "./build-report.mjs";
+import { findPage } from "./cdp/attach.mjs";
+import { connect } from "./cdp/cdp.mjs";
+import { takeFrame } from "./cdp/live.mjs";
+import { liveMatchOf } from "./check.mjs";
+import { passGate } from "./copy-gate.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const tools = join(kit, "tools");
 const started = Date.now();
+// Long enough for what the page animates on its own (a carousel's
+// turn, a toast leaving) to finish before it is captured again.
+const SETTLE_MS = 3_000;
+
 const USAGE = 'usage: node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>" [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--no-send]';
 
 const options = { lanes: "12", port: "9333" };
@@ -127,14 +146,36 @@ say("scaffolding the workspace");
 const workspace = run("scaffold.mjs", [options.slug, "--codebase", codebase, "--brief", briefId, ...(options.title ? ["--title", options.title] : [])], { json: true, sends: false });
 
 // ---- replicate ----
+const replicate = () => run("replicate.mjs", [briefId, "--codebase", codebase, "--lanes", options.lanes, "--port", options.port, ...(options["keep-dev"] ? ["--keep-dev"] : [])], { json: true });
 let replicated;
 if (existsSync(at("parts.json")) && !options.again) {
   say("replicate: parts.json exists, kept (--again redoes it)");
   replicated = JSON.parse(readFileSync(at("parts.json"), "utf8")).replicate;
 } else {
   say("replicating the page");
-  replicated = run("replicate.mjs", [briefId, "--codebase", codebase, "--lanes", options.lanes, "--port", options.port, ...(options["keep-dev"] ? ["--keep-dev"] : [])], { json: true });
+  replicated = replicate();
+  delete steps.gate;
 }
+
+// ---- the gate: a copy over it is tried once more, then the person is asked ----
+const sink = options["no-send"] ? "file" : "site";
+const gated = await (async () => {
+  // A build continued after its gate was passed keeps that decision.
+  if (steps.gate) return { outcome: steps.gate.outcome, replicated, answer: steps.gate.answer };
+  const build = { codebase, briefId, runDir: buildDir, sink };
+  return passGate({
+    replicated,
+    tree: JSON.parse(readFileSync(at("tree.json"), "utf8")),
+    copy: async () => replicate(),
+    settle: () => settlePage(),
+    ask: (fields) => ask(build, fields),
+    wait: (questionId) => waitForAnswer(build, questionId),
+    say,
+  });
+})();
+replicated = gated.replicated;
+steps.gate = { outcome: gated.outcome, ...(gated.answer ? { answer: gated.answer } : {}) };
+remember("gateAt");
 
 // ---- the parts list ----
 const curated = JSON.parse(readFileSync(at("tree.json"), "utf8"));
@@ -186,14 +227,47 @@ const record = {
   toFix: parts.filter((part) => part.status === "differs").map((part) => part.slug),
   failed: parts.filter((part) => part.status === "failed").map((part) => part.slug),
   page: replicated.page ?? null,
+  gate: gateOf(gated, replicated),
   replicate: replicated,
 };
 writeFileSync(at("parts.json"), JSON.stringify(record, null, 2) + "\n");
 
 // The site: the copy is done, the change comes next.
-const reporter = createReporter({ codebase, briefId, runDir: buildDir, sink: options["no-send"] ? "file" : "site" });
+const reporter = createReporter({ codebase, briefId, runDir: buildDir, sink });
 reporter.send([{ kind: "phase", phase: "composing", line: `Building the change on top of the copy of ${workspace.title}` }]);
 await reporter.flush();
 
 const { replicate: _, ...printed } = record;
 console.log(JSON.stringify({ ...printed, timings: { ...timings, total: Math.round((Date.now() - started) / 100) / 10 }, partsFile: at("parts.json") }));
+
+// ---- helpers ----
+
+/**
+ * The reference page captured afresh once it has come to rest: the
+ * frame every check compares against. The tree and the read are kept:
+ * their node ids and names are the build's, already on the site.
+ */
+async function settlePage() {
+  await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+  const url = JSON.parse(readFileSync(at("tree.json"), "utf8")).url;
+  const tab = await findPage(liveMatchOf(url), Number(options.port)).catch(() => null);
+  if (!tab) fail(`the reference page (${liveMatchOf(url)}) is not open in the Proto window`);
+  const page = await connect(tab.webSocketDebuggerUrl);
+  try {
+    await takeFrame(page, codebase);
+  } finally {
+    page.close();
+  }
+}
+
+/**
+ * What the gate decided, for the agent: proceed (the copy passed),
+ * build (the person, or nobody in time, said start on this copy), or
+ * reply (the person wrote what to do: `instruction`, followed as given).
+ */
+function gateOf(gate, result) {
+  const out = { outcome: gate.outcome, line: result.gate?.line ?? null };
+  if (gate.answer) out.answer = gate.answer;
+  if (gate.outcome === "reply") out.instruction = gate.answer.text;
+  return out;
+}

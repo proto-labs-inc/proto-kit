@@ -26,7 +26,16 @@
 //   node tools/build-stream.mjs pass     <briefId> --codebase <id> <nodeId> <pass> [pixelsOff]
 //   node tools/build-stream.mjs matched  <briefId> --codebase <id> <nodeId> [--image <png> --rect x,y,w,h]
 //   node tools/build-stream.mjs focus    <briefId> --codebase <id> <nodeId|none>
-//   node tools/build-stream.mjs question <briefId> --codebase <id> "<question>"
+//   node tools/build-stream.mjs question <briefId> --codebase <id> --kind copy-gate|generic "<question>"
+//                                [--detail "…"] [--impact "…"] --option id="Label" --option id="Label" [--option …]
+//                                [--recommended <id>] [--default-after <seconds>] [--suggest "…"]…
+//                                [--copied <0-100>] [--missing <nodeId>,…]
+//       asks the person watching; prints the question id
+//   node tools/build-stream.mjs await-answer <briefId> <questionId> --codebase <id>
+//       waits for the answer on the site; prints one JSON line
+//       { by: option|reply|default, option?, text? }
+//   node tools/build-stream.mjs answered <briefId> <questionId> --codebase <id> --text "<what they said>"
+//       the person answered in the terminal instead: the site hears it
 // Every command takes --no-send: events go to <build>/events.jsonl and
 // images to <build>/captures/ instead of the site (a build under test).
 //
@@ -34,11 +43,18 @@
 // with role one of section, leaf, packaging, and marker the data-proto-id
 // the part becomes in the prototype (none for packaging). Name every node
 // read; the site strikes packaging through and replicates leaves.
+//
+// A question is answered on the site with one of its 2 or 3 options, a
+// suggested reply or a reply of the person's own (tools/questions.mjs
+// says how the answer comes back). With --recommended and
+// --default-after, the laptop goes with the recommended option once
+// that long has passed with no answer and no hold.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findPage } from "./cdp/attach.mjs";
 import { connect } from "./cdp/cdp.mjs";
 import { takeFrame } from "./cdp/live.mjs";
+import { answeredInTerminal, ask, waitForAnswer } from "./ask.mjs";
 import { createReporter } from "./build-report.mjs";
 import { draftCuration } from "./curate.mjs";
 import { captureAssets, overlayLine, readPage } from "./read-page.mjs";
@@ -50,18 +66,38 @@ function fail(message) {
   process.exit(1);
 }
 
+// Flags a command takes more than once: each one adds to a list.
+const REPEATED = new Set(["option", "suggest"]);
+
 function parseArgs(argv) {
   const positional = [];
-  const flags = {};
+  const flags = { option: [], suggest: [] };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--no-send") flags.noSend = true;
     else if (arg.startsWith("--")) {
-      flags[arg.slice(2)] = argv[i + 1];
+      const key = arg.slice(2);
+      if (REPEATED.has(key)) flags[key].push(argv[i + 1]);
+      else flags[key] = argv[i + 1];
       i++;
     } else positional.push(arg);
   }
   return { positional, flags };
+}
+
+/** "id=Label" -> { id, label }. */
+function optionOf(spec) {
+  const at = spec?.indexOf("=") ?? -1;
+  if (at <= 0) fail(`--option takes id="Label", not ${spec}`);
+  return { id: spec.slice(0, at), label: spec.slice(at + 1) };
+}
+
+/** A numeric flag, or undefined when it was not given. */
+function numberFlag(name) {
+  if (flags[name] === undefined) return undefined;
+  const value = Number(flags[name]);
+  if (!Number.isFinite(value)) fail(`--${name} takes a number, not ${flags[name]}`);
+  return value;
 }
 
 const [command, briefId, ...rest] = process.argv.slice(2);
@@ -223,7 +259,36 @@ switch (command) {
   case "question": {
     const [text] = positional;
     if (!text) fail("question needs the question");
-    await report([{ kind: "question", text }]);
+    if (!flags.kind) fail("question needs --kind copy-gate or --kind generic");
+    const fields = {
+      form: flags.kind,
+      text,
+      detail: flags.detail,
+      impact: flags.impact,
+      options: flags.option.map(optionOf),
+      recommended: flags.recommended,
+      defaultAfterSeconds: numberFlag("default-after"),
+      suggestions: flags.suggest,
+      copied: numberFlag("copied"),
+      missing: flags.missing === undefined ? undefined : flags.missing.split(",").map((id) => id.trim()).filter(Boolean),
+    };
+    const questionId = await ask({ codebase, briefId, runDir, sink }, fields).catch((error) => fail(error.message));
+    console.error(`asked ${questionId}; next: await-answer ${briefId} ${questionId} --codebase ${codebase}`);
+    console.log(questionId);
+    break;
+  }
+  case "await-answer": {
+    const [questionId] = positional;
+    if (!questionId) fail("await-answer needs the question id `question` printed");
+    const answer = await waitForAnswer({ codebase, briefId, runDir, sink }, questionId);
+    console.log(JSON.stringify(answer));
+    break;
+  }
+  case "answered": {
+    const [questionId] = positional;
+    if (!questionId || !flags.text) fail('answered needs the question id and --text "<what the person said>"');
+    await answeredInTerminal({ codebase, briefId, runDir, sink }, questionId, flags.text).catch((error) => fail(error.message));
+    console.log(JSON.stringify({ by: "reply", text: flags.text }));
     break;
   }
   default:
