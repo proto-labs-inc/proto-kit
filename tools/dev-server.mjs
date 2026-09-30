@@ -113,6 +113,10 @@ export async function ensureDevServer({ workspace, logPath, keep = false, timeou
     stdio: ["ignore", log, log],
     detached: true,
   });
+  // The server outlives a tool that keeps it; the handle must not keep
+  // that tool's event loop alive until its watchdog fires (explain-diff
+  // said it gave up a minute after printing its answer).
+  child.unref();
   const stop = () => {
     if (keep) return;
     try {
