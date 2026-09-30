@@ -107,19 +107,29 @@ serveHttp({ port: config.port, secret: config.secret, handle }, () =>
 // the heartbeat (courier-relay.mjs), so nothing here beats to the site.
 // A courier set up before the relay existed has no relay block, so it
 // asks for one itself and keeps it in courier.json.
+const ADDRESS_TIMEOUT_MS = 15_000;
 async function relaySettings() {
   const known = relayConfig(config);
   if (known) return known;
-  const result = await callTool("register_courier", { courierId: config.courierId }, targetFor(readConfig(), { codebase: config.codebase }));
+  // A network that swallows packets would otherwise hold one attempt for
+  // minutes; better to fail it and let the backoff below try again.
+  const result = await callTool("register_courier", { courierId: config.courierId }, targetFor(readConfig(), { codebase: config.codebase }), {
+    signal: AbortSignal.timeout(ADDRESS_TIMEOUT_MS),
+  });
   const text = result?.content?.[0]?.text ?? "";
   if (result?.isError) throw new Error(text || "register_courier failed");
   const answer = JSON.parse(text || "{}");
   if (!answer.relayUrl || !answer.relayToken) throw new Error("the site sent no relay address");
   config.relay = { url: answer.relayUrl, token: answer.relayToken };
-  // The relay token now sits beside the secret, so the file stays the
+  // Other tools write this file while the courier runs (codex-thread.mjs
+  // records the Codex thread here, and feed-queue.mjs reads it back), and
+  // this fetch can retry for minutes, so the file is read again now and
+  // only relay is set: the copy read at startup would erase what they
+  // wrote. The relay token sits beside the secret, so the file stays the
   // owner's alone even when it was written before it held one.
   const path = join(runDir, "courier.json");
-  writeFileSync(path, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+  const current = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(path, JSON.stringify({ ...current, relay: config.relay }, null, 2) + "\n", { mode: 0o600 });
   chmodSync(path, 0o600);
   return config.relay;
 }

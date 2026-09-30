@@ -33,8 +33,10 @@ checkout root.
 ## The loop
 
 0. **Make sure the courier is up.** `node <kit>/tools/courier-up.mjs
-   <codebase>` (add `--codex` on Codex). It starts a stopped courier and
-   prints whether it reached the relay. This is why the one prompt the site
+   <codebase>` (add `--codex` on Codex). It starts a stopped courier,
+   moves one set up by an older kit onto the relay (restarting the
+   courier alone, never the codebase's other runs), and prints whether
+   it reached the relay. This is why the one prompt the site
    offers, "run /proto:listen", fixes both a laptop nobody is listening on
    and one whose courier stopped.
 1. **Arm the watch.** How depends on the harness:

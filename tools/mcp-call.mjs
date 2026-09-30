@@ -1,7 +1,7 @@
 /**
  * Minimal MCP-over-HTTP client for the kit's plain node processes
- * (the courier's heartbeat, publish, the prototype heartbeat; agents
- * use their harness's MCP instead) and the transport under
+ * (the courier fetching its relay address, publish, the prototype
+ * heartbeat; agents use their harness's MCP instead) and the transport under
  * mcp-stdio.mjs, the Cursor plugin's stdio bridge. Speaks just enough
  * Streamable HTTP: POST one JSON-RPC message, carry the session header
  * when the server issues one, read answers that come as plain JSON or
@@ -259,7 +259,7 @@ export function parseMessages(text) {
  * `secret` is the laptop token, sent as the bearer; null sends none,
  * which only link_laptop accepts.
  */
-export async function post({ app, secret }, body, sessionId) {
+export async function post({ app, secret }, body, sessionId, { signal } = {}) {
   const headers = {
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
@@ -270,6 +270,7 @@ export async function post({ app, secret }, body, sessionId) {
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    signal,
   });
   const text = await res.text();
   return {
@@ -287,8 +288,9 @@ export async function post({ app, secret }, body, sessionId) {
 /** Call one tool. The credential is chosen by the codebase in `args`,
  *  so a laptop linked to several teams acts as the right member without
  *  anything upstream knowing they are the same person. Pass `target`
- *  explicitly for a call that has no credential yet (link_laptop). */
-export async function callTool(name, args, target) {
+ *  explicitly for a call that has no credential yet (link_laptop).
+ *  `signal` bounds the call for a caller that retries on its own. */
+export async function callTool(name, args, target, { signal } = {}) {
   let chosen = null;
   if (!target) {
     const config = readConfig();
@@ -306,12 +308,13 @@ export async function callTool(name, args, target) {
       capabilities: {},
       clientInfo: { name: "proto-kit", version: "0" },
     },
-  });
+  }, undefined, { signal });
 
   const res = await post(
     target,
     { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } },
     init.sessionId,
+    { signal },
   );
   if (res.status === 401) throw new Error(STALE_CREDENTIAL);
   const body = res.messages.find((m) => m.id === 2) ?? res.messages[0];

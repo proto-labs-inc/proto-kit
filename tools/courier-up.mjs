@@ -4,8 +4,11 @@
  * skill's "The courier" steps, idempotent. A courier that is already up
  * is only checked; one that has its files but is stopped is started; a
  * missing one is registered, given a local port, a secret and its relay
- * address, written and started. Then it is checked locally and at the
- * relay.
+ * address, written and started. A courier set up by an older kit has its
+ * own spec brought up to this one first (run-repair.mjs, the rules
+ * repair-runs.mjs applies: no tunnel, this copy of the kit's tools), and
+ * is restarted when it is up on a spec older than that; no other run is
+ * touched. Then it is checked locally and at the relay.
  *
  * Usage: node tools/courier-up.mjs <codebase> [--codex]
  *   --codex adds the Codex wake process (tools/feed-queue.mjs), which
@@ -22,11 +25,12 @@
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callTool, targetFor, readConfig } from "./mcp-call.mjs";
+import { alive, courierHarness, describeChange, readJson, readableSpec, repairProcesses, restartRun } from "./run-repair.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = process.argv.slice(2);
@@ -84,9 +88,38 @@ if (!existsSync(courierPath) || !existsSync(specPath)) {
   chmodSync(specPath, 0o600);
 }
 
+// ---- this kit's shape: the same rules repair-runs applies, this run only ----
+const spec = readJson(specPath);
+let specChanged = false;
+if (readableSpec(spec)) {
+  const harness = courierHarness(dir, spec, codex ? "codex" : null);
+  const repair = repairProcesses({ name: "courier", spec, kit, runDir: dir, harness });
+  if (repair.changes.length > 0) {
+    const written = `${specPath}.new`;
+    writeFileSync(written, JSON.stringify({ ...spec, processes: repair.processes }, null, 2) + "\n", { mode: 0o600 });
+    renameSync(written, specPath);
+    chmodSync(specPath, 0o600);
+    specChanged = true;
+    const past = (_verb, done) => done;
+    console.error(`courier: ${repair.changes.map((change) => describeChange(change, past)).join(", and ")}`);
+  }
+}
+
 // ---- running ----
-const status = supervise("status");
-if (!/running/.test(status.stdout)) {
+// The supervisor reads the spec once, at start, so a courier that is up
+// on a spec older than the file (rewritten just now, or by repair-runs
+// earlier without --restart) is still running the old one: restart it.
+const state = readJson(join(dir, "state.json"));
+const up = state !== null && alive(state.pid);
+const startedFromOlderSpec = up && statSync(specPath).mtimeMs > Date.parse(state.startedAt);
+let restarted = false;
+if (up && (specChanged || startedFromOlderSpec)) {
+  if (!restartRun(dir, kit)) {
+    console.error("the courier did not come back after its restart; see the run dir's daemon.log");
+    process.exit(1);
+  }
+  restarted = true;
+} else if (!up) {
   const started = supervise("start");
   if (started.status !== 0) {
     console.error(`the courier did not start: ${(started.stderr || started.stdout).trim().split("\n").pop()}`);
@@ -109,15 +142,25 @@ const ask = async (url) => {
     return null;
   }
 };
-let local = null;
-for (let i = 0; i < 20 && !local; i++) {
-  local = await ask(`http://127.0.0.1:${courier.port}`);
-  if (!local) await new Promise((r) => setTimeout(r, 250));
+const askLocal = async () => {
+  let answer = null;
+  for (let i = 0; i < 20 && !answer; i++) {
+    answer = await ask(`http://127.0.0.1:${courier.port}`);
+    if (!answer) await new Promise((r) => setTimeout(r, 250));
+  }
+  return answer;
+};
+let local = await askLocal();
+// A listener whose answer carries no relay at all is running code from
+// before the relay, whatever its spec says (a kit updated in place under
+// a running courier). One restart puts it on this code.
+if (local && local.relay === undefined && !restarted) {
+  if (restartRun(dir, kit)) local = await askLocal();
 }
 // The relay state comes from the local answer: the courier is the one
 // holding the connection, so it is the one that knows. Every ask is a
-// status command in the feed, so a listener started from an older kit,
-// whose answer has no relay at all, is asked once and not twenty times.
+// status command in the feed, so a listener that still answers without
+// a relay is asked once and not twenty times.
 let relay = local?.relay ?? "none";
 for (let i = 0; local?.relay !== undefined && i < 20 && relay !== "connected"; i++) {
   await new Promise((r) => setTimeout(r, 500));
