@@ -451,12 +451,19 @@ codebase id is in the document), then:
 Setup ends by continuing, not by stopping (an Edit prompt ends at
 "Editing a prototype" above instead):
 
+0. Start listening, before anything slow. Start `node
+   tools/courier-up.mjs <codebase>` in the background (`--codex` on
+   Codex; it needs only the codebase id, which the steps above just
+   made), then arm the listen skill's watch (its step 1) and keep it
+   armed for the rest of this session.
+   Both are light: the watch costs nothing until a command lands. From
+   here on the site shows this laptop as listening, so the user can
+   press Build while the import below is still running; a command
+   that arrives mid-import waits its turn (the listen skill's "Busy
+   when a command lands").
 1. Run **import-design-system** against the found source + the Proto
    window's live page: the library filling in is the first thing the
-   user watches. The courier (the serve skill's "The courier" section)
-   comes up inside the import, while its units run, so the run's
-   tail is nothing: when the library is published, the courier is
-   already listening.
+   user watches.
 2. If the document carried a `brief`, hand it to **create-prototype**
    verbatim: title, description, the brief document URL, the
    reference page (`productUrl`), the reference HTML (structure
@@ -466,7 +473,8 @@ Setup ends by continuing, not by stopping (an Edit prompt ends at
    your codebase's agent.** And one more sentence once the first
    import has finished: the library is published, so it stays
    viewable after this laptop closes. This very session (in the terminal, the
-   Claude Code desktop app, the Codex app, or Cursor's chat) is what receives the site's commands;
-   continue into the listen skill. Closing it doesn't lose
+   Claude Code desktop app, the Codex app, or Cursor's chat) is what receives the site's commands,
+   and it has been listening since step 0: carry on with the listen
+   skill's loop. Closing it doesn't lose
    anything: commands queue in the feed, but nothing runs until a
    session picks the protocol up again.

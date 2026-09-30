@@ -76,6 +76,17 @@ straight after.
    local address, publishing goes over 443); say the serve skill's
    sentence once and carry on.
 
+   **Listen from here on.** In the same turn, start `node
+   tools/courier-up.mjs <codebase>` in the background (`--codex` on
+   Codex) and arm the listen skill's watch (its step 1), unless setup
+   already did both. `courier-up` does the serve skill's courier steps
+   in one call (registering, tunnel, secret, supervisor, a status
+   check through the edge) and never prints the secret; do not build
+   the courier by hand. Both are light, and from then on the site
+   shows this laptop as listening: a Build the user presses mid-import
+   lands in the feed and waits its turn (the listen skill's "Busy when
+   a command lands").
+
 2. **The page's state: one question at most.** If the page is showing
    a welcome screen, an empty list or a sign-in wall instead of the
    product, ask the user one plain question naming what to do ("Open
@@ -112,8 +123,7 @@ straight after.
      [{ "name", "selector", "force"?, "of"? }] }`.
 
 4. **Run it.** `node tools/import.mjs <codebase>` (it reads the plan
-   `plan.mjs` wrote), with `node tools/courier-up.mjs <codebase>` in
-   the background beside it.
+   `plan.mjs` wrote).
    It writes the palette, the type styles and the inventory with each
    component's picture, then writes and checks every component, eight
    at a time; each check lands in the library as it is made (the user
@@ -123,13 +133,7 @@ straight after.
    is left to fix, with each failing state's verdict and where the
    difference sits.
 
-5. **The courier, while it runs**: `node tools/courier-up.mjs
-   <codebase>` in the background, started with the runner. It does the
-   serve skill's courier steps in one call (registering, tunnel, secret,
-   supervisor, a status check through the edge) and never prints the
-   secret. Do not build the courier by hand.
-
-6. **Nothing left to fix? Finish at once.** When the runner lists no
+5. **Nothing left to fix? Finish at once.** When the runner lists no
    `toFix` and no `failed`, go straight to the Finish: `complete` and the
    final publish come before anything else, so the import's time is the
    import's. Otherwise:
@@ -142,7 +146,7 @@ straight after.
    on one state) and land it: `status done`, or `status skipped` with
    its kind, reason and picture. Publish after each landing.
 
-7. **Finish**, per the checklist below.
+6. **Finish**, per the checklist below.
 
 If anything interrupts you (a question, a crash, a resumed session):
 do that, then come back here. `init` resumes an open run without
@@ -247,8 +251,9 @@ Every line, in order, before you say the import is done:
   `edge: false`; say the serve skill's sentence);
 - one sentence to the user: the library is published and stays
   viewable after this laptop closes;
-- then listen: continue into the next thing setup asked for (a
-  prototype brief, or the listen skill), and keep taking the queue.
+- keep listening: take any command that queued up during the import
+  (oldest first), then continue into the next thing setup asked for
+  (a prototype brief), and keep taking the queue.
 
 ## Activity voice
 

@@ -159,6 +159,27 @@ checkout root.
    way the feed file means commands were never lost while the port was
    dark: the site's POSTs failed fast and it knows to retry.
 
+## Busy when a command lands
+
+Setup and the import arm the watch before their own slow work, so a
+command can wake you while you are still in the middle of something
+else in this session (a design-system import, another build). Finish
+what you are doing first; the command waits its turn:
+
+- say one line in the conversation: what arrived ("A prototype
+  build came in from the site") and that it starts once the current
+  work is done;
+- don't report `started` for its brief, and don't commit its offset:
+  it is not acted on yet, and an uncommitted offset is what replays
+  it if this session dies before getting to it (on Codex the courier
+  commits, as step 3 says; only hold the `started`);
+- keep the current work's own checkpoints (landing, publishing) as
+  they were; don't interleave the waiting command's steps with them;
+- when the current work is done, take the waiting commands oldest
+  first, exactly as step 2 describes.
+
+The site shows such a brief as sent, not started, until you start it.
+
 ## Restart protocol
 
 If you are told you were restarted (the launcher resumed you, or your
