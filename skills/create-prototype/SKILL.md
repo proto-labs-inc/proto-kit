@@ -40,18 +40,50 @@ slug (lowercase letters, digits, hyphens; it becomes the subdomain label, so
 pick something a person could read aloud). Do not ask the user for a title
 merely because the field is absent.
 
+## Creation is isolated and additive
+
+A create request creates exactly one new prototype. It must never update,
+reuse, replace, re-register, restart, republish, or otherwise mutate an
+existing prototype, even when an earlier prototype has the same title, brief,
+or reference page.
+
+Before calling `begin_prototype_build` or writing a workspace, confirm that the
+candidate slug is unused in both places:
+
+- the local workspace `~/.proto/<codebase>/prototypes/<slug>/`; and
+- the codebase's registered prototypes in the gallery, using a read-only
+  listing or lookup.
+
+Either match is a collision. Keep the title, choose the first readable unused
+slug by adding a numeric suffix (`<slug>-2`, then `<slug>-3`, and so on), and
+repeat both checks. Do not ask merely because the base slug is taken. If the
+gallery cannot be checked read-only, stop with `needs-input` instead of risking
+an upsert into an existing prototype.
+
+Once allocated, confine every write and serving action to the new prototype's
+workspace, run directory, brief, tunnel target, and gallery row. Existing
+prototype workspaces and supervised runs may be inspected read-only to choose
+a port or slug, but must not be edited, stopped, restarted, registered,
+published, or deleted. Registration's upsert behavior is not permission to
+reuse a slug during creation.
+
 Resolve `contextUrl` before scaffolding:
 
-1. Check whether a connector for that link's service is available to the
-   current agent.
-2. If no connector is available, open `contextUrl` in a browser and read it
-   there. Do not ask about connector setup.
-3. If a connector is available and already connected, confirm it can access
-   this link and use it.
-4. If the connector is available but not connected, ask the user whether they
-   want to set it up. If they agree, use the harness's supported connector
-   setup and then read the link through it. If they decline, open the link in
-   a browser and read it there.
+1. Identify the link's service and check both the connector tools callable by
+   the current agent and matching plugins listed as available to install. Do
+   not conclude that no connector is available merely because no connector
+   tool is currently callable.
+2. If the connector is callable and connected, confirm it can access this link
+   and use it.
+3. If a matching connector plugin is available to install but is not installed
+   or connected, stop and ask whether the user wants to install or connect it.
+   Do not open `contextUrl` in a browser before they answer. If they agree, use
+   the harness's supported plugin installation and connection flow, then read
+   the link through the connector. If they decline, open the link in a browser
+   and read it there.
+4. Only treat the connector as unavailable when neither callable tools nor a
+   matching installable plugin exists. In that case, open `contextUrl` in a
+   browser and read it there without asking about connector setup.
 
 `contextUrl` is product context, not the visual source. `referenceUrl` is the
 live screen whose appearance and interactions govern the prototype. A brief
@@ -141,15 +173,26 @@ value against the live or published prototype base.
 When there is a source URL, the prototype must look like that page,
 not like the source code's idea of it, not like your memory of it.
 
-1. Confirm the URL is reachable first. If it doesn't load (auth wall,
-   404, connection refused), **stop and tell the user**: never invent
-   the page from memory or source alone. If it's behind their login,
-   read it through their own Chrome over CDP exactly as the
-   import-design-system skill does (attach, never steal focus).
-2. Walk the page before building: hover the controls, open the menus,
+1. Before opening a browser window or tab, inspect every open tab the current
+   coding host can already read, including the in-app browser, the user's
+   Chrome, and an already-running Proto Chrome on port 9333. Prefer an exact
+   `referenceUrl` match, then the same product path, then the same origin. Reuse
+   a matching signed-in tab whenever it provides the DOM and capture access
+   this work needs. Do not launch a dedicated Proto Chrome, open a duplicate
+   tab, or ask the user to sign in until this existing-tab check is complete.
+2. Confirm the URL is reachable from the selected existing browser context.
+   If no usable matching tab exists, only then start the dedicated Proto Chrome
+   and reuse any matching tab in it before opening another. Ask the user to sign
+   in only after every readable browser context has been checked and none has a
+   usable signed-in session. If the URL still doesn't load (auth wall, 404,
+   connection refused), **stop and tell the user**: never invent the page from
+   memory or source alone. When authentication is required, attach to the
+   selected browser through its supported browser tool or over CDP exactly as
+   the import-design-system skill does, and never steal focus.
+3. Walk the page before building: hover the controls, open the menus,
    dropdowns, sheets. Capture what each interaction reveals. The
    resting screenshot is not the page.
-3. Find the matching page in the source repo and read its
+4. Find the matching page in the source repo and read its
    layout and components: the source explains mechanisms (why a
    toolbar wraps, what an active state looks like). Copy render
    structure and mechanisms into the prototype; never import the
@@ -193,6 +236,16 @@ source styles itself and reproduce that chain:
 Either way, verify a chromatic token early: one element using a brand
 color must render the source's hue, not a default. Catching a
 dead style chain before building the page is minutes; after, hours.
+
+**Carry both imported themes into the prototype.** The rig sets
+`data-proto-theme="light|dark"`, the conventional `.dark` class and
+`color-scheme` on the document root before the app renders. Use the library's
+light and dark token collections and make every prototype-authored surface
+respond to that root contract. Preserve the product's own theme mechanism when
+its CSS already has one; bridge the standard root attribute to it in the
+workspace's theme layer instead of adding a second theme system. Check both
+themes during the paired screenshot pass. Never infer a dark palette by
+inverting or algorithmically modifying the light palette.
 
 Mock data by default: typed constants in the prototype, realistic copy
 (real-sounding names, plausible timestamps: the inbox example's

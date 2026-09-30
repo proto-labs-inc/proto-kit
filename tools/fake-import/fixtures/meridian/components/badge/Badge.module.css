@@ -18,3 +18,12 @@
 .flagged .dot { background: #ef4444; }
 .reimbursed { background: #eef2ff; color: #4338ca; }
 .reimbursed .dot { background: #6366f1; }
+
+:global([data-proto-theme="dark"]) .approved { background: #064e3b; color: #6ee7b7; }
+:global([data-proto-theme="dark"]) .approved .dot { background: #34d399; }
+:global([data-proto-theme="dark"]) .pending { background: #451a03; color: #fde68a; }
+:global([data-proto-theme="dark"]) .pending .dot { background: #fbbf24; }
+:global([data-proto-theme="dark"]) .flagged { background: #450a0a; color: #fca5a5; }
+:global([data-proto-theme="dark"]) .flagged .dot { background: #f87171; }
+:global([data-proto-theme="dark"]) .reimbursed { background: #312e81; color: #a5b4fc; }
+:global([data-proto-theme="dark"]) .reimbursed .dot { background: #818cf8; }

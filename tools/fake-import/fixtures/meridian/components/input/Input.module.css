@@ -21,3 +21,12 @@
 .hint { font-size: 11.5px; color: #64748b; }
 .error .input { border-color: #ef4444; }
 .error .hint { color: #b91c1c; }
+
+:global([data-proto-theme="dark"]) .label { color: #e2e8f0; }
+:global([data-proto-theme="dark"]) .input { color: #f8fafc; border-color: #475569; background: #111827; }
+:global([data-proto-theme="dark"]) .input:focus,
+:global([data-proto-theme="dark"]) .input.focused { outline-color: #312e81; border-color: #818cf8; }
+:global([data-proto-theme="dark"]) .input:disabled { background: #1f2937; color: #94a3b8; }
+:global([data-proto-theme="dark"]) .hint { color: #94a3b8; }
+:global([data-proto-theme="dark"]) .error .input { border-color: #f87171; }
+:global([data-proto-theme="dark"]) .error .hint { color: #fca5a5; }

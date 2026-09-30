@@ -1,6 +1,6 @@
 ---
 name: proto-importer
-description: Extracts one design-system unit (a component, the tokens, the type styles) for a Proto import. Reads the live page over CDP and the source repo, authors a verified replica, writes only inside its assigned unit folder. Dispatch one per unit, all units in parallel.
+description: Extracts one design-system unit (a component, the tokens, the type styles) for a Proto import. Reads the live page over CDP and source when available, authors a verified light/dark replica, and writes only inside its assigned unit folder. Dispatch one per unit, all units in parallel.
 model: inherit
 ---
 

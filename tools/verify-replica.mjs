@@ -10,7 +10,7 @@
  * files, and prints the numbers and clusters to debug from. Nothing
  * it renders appears on screen, and nobody writes a diff page again.
  *
- * Usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <rect> [--out <dir>] [--pass <n>] [--port <visible-cdp-port>]
+ * Usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <rect> --theme <light|dark> [--out <dir>] [--pass <n>] [--port <visible-cdp-port>]
  *   <app-url>       the library app's dev server, http://localhost:5210.
  *   <slug> <state>  the component and the name of the state to render,
  *                   from its src/components/<slug>/component.json.
@@ -27,7 +27,7 @@
  *   { pass, mismatch, pct, maxDelta, clusters, screenshot, diff, live,
  *     viewport: [w, h], dpr }
  * The orchestrator lands the pass with:
- *   node tools/library.mjs history <library> <slug> --screenshot <n>.png --diff <n>-diff.png --mismatch <mismatch> --activity "..."
+ *   node tools/library.mjs history <library> <slug> --theme <light|dark> --screenshot <n>.png --diff <n>-diff.png --mismatch <mismatch> --activity "..."
  */
 import { mkdirSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -37,7 +37,7 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 
-const USAGE = "usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <x,y,w,h> [--out <dir>] [--pass <n>] [--port 9333]";
+const USAGE = "usage: node verify-replica.mjs <app-url> <slug> <state> <live-tab-url> <x,y,w,h> --theme <light|dark> [--out <dir>] [--pass <n>] [--port 9333]";
 const options = { out: ".", port: "9333" };
 const positional = [];
 const args = process.argv.slice(2);
@@ -51,7 +51,7 @@ for (let i = 0; i < args.length; i += 1) {
 }
 const [appUrl, slug, stateName, liveMatch, rectArg] = positional;
 const rect = (rectArg ?? "").split(",").map(Number);
-if (!appUrl || !slug || !stateName || !liveMatch || rect.length !== 4 || rect.some((n) => !Number.isFinite(n))) {
+if (!appUrl || !slug || !stateName || !liveMatch || !["light", "dark"].includes(options.theme) || rect.length !== 4 || rect.some((n) => !Number.isFinite(n))) {
   console.error(USAGE);
   process.exit(1);
 }
@@ -91,7 +91,10 @@ live.close();
 // The replica side: the app's render route, headless, same metrics,
 // same clip. The route answers with a sentence instead of the
 // component when the state is not there; that is a failed pass.
-const url = `${appUrl.replace(/\/+$/, "")}/#/render/${encodeURIComponent(slug)}/${encodeURIComponent(stateName)}?x=${x}&y=${y}&w=${w}`;
+const replicaUrl = new URL(`${appUrl.replace(/\/+$/, "")}/`);
+replicaUrl.searchParams.set("__protoTheme", options.theme);
+replicaUrl.hash = `/render/${encodeURIComponent(slug)}/${encodeURIComponent(stateName)}?x=${x}&y=${y}&w=${w}`;
+const url = replicaUrl.toString();
 step(`rendering ${slug}/${stateName} headlessly at ${width}x${height} @${dpr}x`);
 const replica = await headlessPage(url, { width, height, dpr });
 try {
@@ -124,6 +127,7 @@ console.log(
     live: files.live,
     viewport: [width, height],
     dpr,
+    theme: options.theme,
   }),
 );
 

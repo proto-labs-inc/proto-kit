@@ -4,7 +4,10 @@
   "product": null,
   "startedAt": null,
   "completedAt": null,
-  "tokens": [],
+  "themes": {
+    "light": [],
+    "dark": []
+  },
   "type": [],
   "components": []
 }

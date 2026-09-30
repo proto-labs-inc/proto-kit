@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
 import { activityFor, pixelsDiffer, type Component, type Library, type Pass } from "@/library";
+import { usePreviewTheme } from "@/theme";
 import { Crisp } from "./ProductCrop";
 import { clock } from "@/time";
 
@@ -18,6 +19,8 @@ type Props = { component: Component; library: Library; moving: boolean };
  * still moving, since that is when there is something to watch.
  */
 export function MatchedView({ component, library, moving }: Props) {
+  const theme = usePreviewTheme();
+  const history = component.history.filter((pass) => pass.theme === theme);
   return (
     <Collapsible defaultOpen={moving} className="group/matched">
       <CollapsibleTrigger
@@ -25,11 +28,11 @@ export function MatchedView({ component, library, moving }: Props) {
       >
         <ChevronDownIcon className="size-4 transition-transform group-data-[panel-open]/matched:rotate-180" />
         <span className="font-medium text-foreground">How this was matched</span>
-        <span>{summary(component)}</span>
+        <span>{summary(component, history)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="mt-3 flex flex-col gap-10 rounded-xl bg-muted/50 p-5">
-          <Passes component={component} moving={moving} />
+          <Passes component={component} history={history} moving={moving} />
           <Activity component={component} library={library} moving={moving} />
         </div>
       </CollapsibleContent>
@@ -38,8 +41,7 @@ export function MatchedView({ component, library, moving }: Props) {
 }
 
 /** One phrase after the heading: what the passes add up to. */
-function summary(component: Component): string {
-  const { history } = component;
+function summary(component: Component, history: Pass[]): string {
   if (history.length === 0) {
     if (component.status === "skipped") return "not built";
     if (component.unverified) return "not checked";
@@ -55,8 +57,7 @@ function tries(n: number): string {
   return `${n} tries`;
 }
 
-function Passes({ component, moving }: { component: Component; moving: boolean }) {
-  const { history } = component;
+function Passes({ component, history, moving }: { component: Component; history: Pass[]; moving: boolean }) {
   // Opens on the finished pass; a pass landing while the import runs
   // is followed only when the finished one was showing.
   const [index, setIndex] = useState(Math.max(0, history.length - 1));
@@ -76,7 +77,7 @@ function Passes({ component, moving }: { component: Component; moving: boolean }
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
         <span className="text-2xl font-medium tabular-nums">{pixelsDiffer(pass.mismatch)}</span>
         <span className="text-sm text-muted-foreground">
-          try {index + 1} of {history.length} · <span className="tabular-nums">{clock(pass.at)}</span>
+          try {index + 1} of {history.length} · {pass.theme === "dark" ? "Dark" : "Light"} · <span className="tabular-nums">{clock(pass.at)}</span>
         </span>
         <div className="ml-auto flex items-center gap-1">
           <Button size="icon-sm" variant="ghost" aria-label="Earlier try" onClick={() => go(index - 1)} disabled={index === 0}>
@@ -98,7 +99,7 @@ function Passes({ component, moving }: { component: Component; moving: boolean }
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <figure className="m-0 flex flex-col gap-1">
-          <Crisp src={pass.screenshot} alt={`${component.name} as the library built it, try ${index + 1}`} className={PANEL} />
+          <Crisp src={pass.screenshot} alt={`${component.name} as the library built it, try ${index + 1}`} className={panelClass(pass)} />
           <figcaption className="text-xs text-muted-foreground">As the library built it</figcaption>
         </figure>
         <figure className="m-0 flex flex-col gap-1">
@@ -112,13 +113,14 @@ function Passes({ component, moving }: { component: Component; moving: boolean }
 }
 
 /** A pass's two captures share one frame: white, at 1x, with the same ring. */
-const PANEL = "flex-1 rounded-lg bg-white py-3 ring-1 ring-foreground/10";
+const panelClass = (pass: Pass) =>
+  `flex-1 rounded-lg py-3 ring-1 ring-foreground/10 ${pass.theme === "dark" ? "bg-neutral-950" : "bg-white"}`;
 
 /** The diff image, or a plain "no difference" panel when the pass was clean. */
 function Difference({ pass, index }: { pass: Pass; index: number }) {
-  if (pass.mismatch > 0) return <Crisp src={pass.diff} alt={`What differs from the product, try ${index + 1}`} className={PANEL} />;
+  if (pass.mismatch > 0) return <Crisp src={pass.diff} alt={`What differs from the product, try ${index + 1}`} className={panelClass(pass)} />;
   return (
-    <div className={`${PANEL} flex min-h-24 items-center justify-center gap-2 text-sm text-muted-foreground`}>
+    <div className={`${panelClass(pass)} flex min-h-24 items-center justify-center gap-2 text-sm text-muted-foreground`}>
       <CheckIcon className="size-4" />
       No difference
     </div>

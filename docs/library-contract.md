@@ -45,11 +45,11 @@ library/                          the app, scaffolded from template/library/
 
 ```
 node tools/library.mjs init <library> <codebase> <source> --page-url <url> --page-title "…" [--product-name "…"] [--favicon <file>]
-node tools/library.mjs token <library> '<json>'
+node tools/library.mjs token <library> <light|dark> '<json>'
 node tools/library.mjs type <library> '<json>'
 node tools/library.mjs inventory <library> '<json array>'
 node tools/library.mjs component <library> <slug> status <found|extracting|done|skipped|queued> [--kind <skipKind>] [--reason "…"] [--screenshot <png>]
-node tools/library.mjs history <library> <slug> --screenshot <png> --diff <png> --mismatch <n> --activity "…"
+node tools/library.mjs history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> --mismatch <n> --activity "…"
 node tools/library.mjs event <library> [slug] "<activity>"
 node tools/library.mjs take-queued <library>
 node tools/library.mjs complete <library>
@@ -93,15 +93,21 @@ import, never rewritten from scratch mid-run.
   "startedAt": "…ISO…",           // null until start
   "completedAt": "…ISO…",         // null while anything is still being extracted: this is the done bit;
                                   //   the app dates the import by it
-  "tokens": [
-    { "name": "slate-50", "value": "#f8fafc", "group": "gray", "role": "surface" },
-    { "name": "slate-900", "value": "#0f172a", "group": "gray", "role": "text" },
-    { "name": "indigo-600", "value": "#4f46e5", "group": "brand" }
+  "themes": {
+    "light": [
+      { "name": "surface", "value": "#f8fafc", "group": "gray", "role": "surface" },
+      { "name": "text", "value": "#0f172a", "group": "gray", "role": "text" },
+      { "name": "brand", "value": "#4f46e5", "group": "brand" }
+    ],
+    "dark": [
+      { "name": "surface", "value": "#111827", "group": "gray", "role": "surface" },
+      { "name": "text", "value": "#f8fafc", "group": "gray", "role": "text" },
+      { "name": "brand", "value": "#818cf8", "group": "brand" }
+    ]
+    // Both palettes expose the same lowercase, dash-delimited semantic names.
     // group: freeform bucket the app groups swatches by ("gray", "brand", "semantic", …)
-    // role: at most one "surface" (the product's page background: the app
-    //   paints its page with it) and one "text" (the product's page text:
-    //   the app uses it when it reads on the surface, else black or white)
-  ],
+    // role: at most one "surface" and one "text" inside each theme.
+  },
   "type": [
     {
       "name": "Heading L", "family": "Inter", "size": "24px",
@@ -120,8 +126,10 @@ import, never rewritten from scratch mid-run.
         { "name": "Hover", "props": { "hover": true } },
         { "name": "Disabled", "props": { "disabled": true } }
       ],
-      "tokens": ["indigo-600", "slate-50", "slate-900"],   // the manifest tokens the component uses,
-                                                           //   from its component.json; empty until done
+      "tokens": {                                         // the manifest tokens the component uses in each theme,
+        "light": ["brand", "surface", "text"],          // from its component.json; empty until done
+        "dark": ["brand", "surface", "text"]
+      },
       "unverified": "…",              // only when done with no passes: one sentence on why, from component.json
       "history": [                    // every verification pass, in order; may be empty
         {
@@ -129,7 +137,8 @@ import, never rewritten from scratch mid-run.
           "activity": "Padding is 2px short on the right; widening",
           "screenshot": "components/button/history/2.png",   // the replica as rendered
           "diff": "components/button/history/2-diff.png",    // the pixel diff against the product
-          "mismatch": 388                                    // differing pixels
+          "mismatch": 388,                                   // differing pixels
+          "theme": "light"                                  // the product theme checked in this pass
         }
       ],
       "skipKind": "could-not-isolate", // only while skipped or queued: why, one of the kinds below
@@ -148,7 +157,7 @@ import, never rewritten from scratch mid-run.
 - `found`: listed in the inventory, not started. `states`, `tokens` and `history` are empty.
 - `extracting`: being read, authored and verified. `history` grows as passes land.
 - `done`: `module` names the component, `states` holds one prop set
-  per state and `tokens` the names of the manifest tokens it uses,
+  per state and `tokens` the names of the manifest tokens it uses in each theme,
   all copied from its `component.json`: the default state first, then
   the hover and disabled states where the product has them, then every
   other state the product shows. A component lists as many states as
@@ -255,19 +264,27 @@ a markup dump.
   The app's own base styles sit under the component, so the module sets
   every property the product's base sets differently (box-sizing,
   font, line-height, borders). Webfonts are copied beside it and
-  declared with `@font-face` in the module.
+  declared with `@font-face` in the module. Every palette colour is read from
+  `var(--proto-token-<name>)`; the library replaces those root variables when
+  its active light/dark theme changes. Components do not repeat resolved light
+  and dark colour values or use theme selectors for colour alone.
 - `component.json`:
 
   ```jsonc
   {
     "states": [ { "name": "Default", "props": {} }, … ],  // every state the product shows, the default first, each name once
-    "tokens": ["indigo-600", "slate-50", "slate-900"],     // the manifest tokens the component's values come from
+    "tokens": {                                                // the manifest tokens the component's values come from
+      "light": ["brand", "surface", "text"],
+      "dark": ["brand", "surface", "text"]
+    },
     "unverified": "…"                                       // only when no pass was made: one sentence on why
   }
   ```
 
-  `status done` copies it into the manifest, and refuses a token the
-  manifest does not hold, so push the tokens before landing the unit.
+  `status done` copies it into the manifest, and refuses a token its
+  corresponding manifest theme does not hold, so push both palettes before
+  landing the unit. `complete` also refuses palettes with different token-name
+  sets, because one stable CSS variable must resolve in both themes.
 - `notes.md`: the unit's working notes; the app never reads it.
 
 The app finds modules by a glob over `src/components/*/`, so a new
@@ -303,7 +320,7 @@ experience:
 
 1. Append the first event ("Reading the source") before doing anything slow:
    it is what tells the user the import is alive.
-2. Flush `manifest.json` after **every** item (each token, each type style,
+2. Flush `manifest.json` after **every** item (each themed token, each type style,
    each component transition, each verification pass), and append an event
    for it. The library filling in piece by piece is the product.
 3. List all components as `found` as soon as the inventory exists, before

@@ -50,7 +50,7 @@ const lib = (...args) => {
 };
 const libOut = (...args) => execFileSync(process.execPath, [LIBRARY_MJS, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
 
-const TOKENS = [
+const LIGHT_TOKENS = [
   { name: "slate-50", value: "#f8fafc", group: "gray", role: "surface" },
   { name: "slate-100", value: "#f1f5f9", group: "gray" },
   { name: "slate-200", value: "#e2e8f0", group: "gray" },
@@ -69,7 +69,42 @@ const TOKENS = [
   { name: "amber-700", value: "#b45309", group: "semantic" },
   { name: "red-500", value: "#ef4444", group: "semantic" },
   { name: "red-700", value: "#b91c1c", group: "semantic" },
+  { name: "primary-foreground", value: "#ffffff", group: "semantic" },
+  { name: "control-surface", value: "#ffffff", group: "semantic" },
+  { name: "control-hover", value: "#f8fafc", group: "semantic" },
+  { name: "danger-border", value: "#fecaca", group: "semantic" },
+  { name: "danger-hover", value: "#fef2f2", group: "semantic" },
 ];
+
+const DARK_VALUES = {
+  "slate-50": "#111827",
+  "slate-100": "#1f2937",
+  "slate-200": "#334155",
+  "slate-300": "#475569",
+  "slate-500": "#94a3b8",
+  "slate-600": "#cbd5e1",
+  "slate-700": "#e2e8f0",
+  "slate-900": "#f8fafc",
+  "indigo-100": "#312e81",
+  "indigo-500": "#818cf8",
+  "indigo-600": "#6366f1",
+  "indigo-700": "#a5b4fc",
+  "emerald-500": "#34d399",
+  "emerald-700": "#6ee7b7",
+  "amber-500": "#fbbf24",
+  "amber-700": "#fde68a",
+  "red-500": "#f87171",
+  "red-700": "#fca5a5",
+  "primary-foreground": "#111827",
+  "control-surface": "#111827",
+  "control-hover": "#1f2937",
+  "danger-border": "#7f1d1d",
+  "danger-hover": "#450a0a",
+};
+const DARK_TOKENS = LIGHT_TOKENS.map((token) => ({
+  ...token,
+  value: DARK_VALUES[token.name] ?? token.value,
+}));
 
 const TYPE = [
   { name: "Heading L", family: "Inter", size: "24px", weight: 650, lineHeight: "32px", sample: "Expense report: September" },
@@ -150,22 +185,25 @@ const moduleOf = (slug) => join(libraryDir, "src", "components", slug);
 const unitFile = (slug) => JSON.parse(readFileSync(join(FIXTURES, "components", slug, "component.json"), "utf8"));
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-async function build(spec, history) {
+async function build(spec, history, tokensReady = Promise.resolve()) {
   const unit = unitOf(spec.slug);
   await mkdir(join(unit, "passes"), { recursive: true });
   lib("component", libraryDir, spec.slug, "status", "extracting");
   await sleep(900);
   lib("event", libraryDir, spec.slug, `Rebuilding ${spec.name} from what the page shows`);
   await sleep(700);
-  for (const [i, pass] of history.entries()) {
-    const n = i + 1;
-    const screenshot = join(unit, "passes", `${n}.png`);
-    const diff = join(unit, "passes", `${n}-diff.png`);
-    await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}.png`), screenshot);
-    await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}-diff.png`), diff);
-    lib("history", libraryDir, spec.slug, "--screenshot", screenshot, "--diff", diff, "--mismatch", String(pass.mismatch), "--activity", pass.activity);
-    await sleep(1100);
+  for (const theme of ["light", "dark"]) {
+    for (const [i, pass] of history.entries()) {
+      const n = i + 1;
+      const screenshot = join(unit, "passes", `${theme}-${n}.png`);
+      const diff = join(unit, "passes", `${theme}-${n}-diff.png`);
+      await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}.png`), screenshot);
+      await copyFile(join(FIXTURES, "components", spec.slug, "history", `${n}-diff.png`), diff);
+      lib("history", libraryDir, spec.slug, "--theme", theme, "--screenshot", screenshot, "--diff", diff, "--mismatch", String(pass.mismatch), "--activity", `${theme === "dark" ? "Dark" : "Light"}: ${pass.activity}`);
+      await sleep(550);
+    }
   }
+  await tokensReady;
   await cp(join(FIXTURES, "components", spec.slug), moduleOf(spec.slug), {
     recursive: true,
     filter: (source) => !/\.png$/.test(source) && !/[\/]history$/.test(source),
@@ -175,7 +213,11 @@ async function build(spec, history) {
     lib("event", libraryDir, spec.slug, `Captured the ${state.name.toLowerCase()} state of ${spec.name}`);
     await sleep(500);
   }
-  lib("event", libraryDir, spec.slug, `${spec.name} uses ${plural(tokens.length, "colour")} from the palette`);
+  let tokenCount = tokens.length;
+  if (!Array.isArray(tokens)) {
+    tokenCount = new Set([...tokens.light, ...tokens.dark]).size;
+  }
+  lib("event", libraryDir, spec.slug, `${spec.name} uses ${plural(tokenCount, "colour")} from the palette`);
   await sleep(400);
   lib("component", libraryDir, spec.slug, "status", "done");
 }
@@ -195,28 +237,32 @@ async function play() {
   lib("inventory", libraryDir, JSON.stringify(COMPONENTS.map((c) => ({ slug: c.slug, name: c.name }))));
   await sleep(600);
 
-  // One lane per component, every one of them started at once, each a
-  // beat behind the last, the way the real import fans out.
-  const lanes = Promise.all(
-    COMPONENTS.map(async (spec, i) => {
-      await sleep(i * 350);
-      if (spec.skip) await skip(spec, spec.skip);
-      else await build(spec, spec.history);
-    }),
-  );
-
-  const stream = async () => {
+  const stream = (async () => {
     await sleep(400);
-    for (const t of TOKENS) {
-      lib("token", libraryDir, JSON.stringify(t));
-      await sleep(200);
+    for (const [theme, tokens] of [["light", LIGHT_TOKENS], ["dark", DARK_TOKENS]]) {
+      for (const token of tokens) {
+        lib("token", libraryDir, theme, JSON.stringify(token));
+        await sleep(10);
+      }
     }
     for (const s of TYPE) {
       lib("type", libraryDir, JSON.stringify(s));
       await sleep(550);
     }
-  };
-  await Promise.all([lanes, stream()]);
+  })();
+
+  // One lane per component, every one of them started at once, each a
+  // beat behind the last, the way the real import fans out. A fast unit
+  // waits at landing until both palettes have finished streaming.
+  const lanes = Promise.all(
+    COMPONENTS.map(async (spec, i) => {
+      await sleep(i * 350);
+      if (spec.skip) await skip(spec, spec.skip);
+      else await build(spec, spec.history, stream);
+    }),
+  );
+
+  await Promise.all([lanes, stream]);
   complete();
 }
 

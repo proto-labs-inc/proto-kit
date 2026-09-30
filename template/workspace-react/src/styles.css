@@ -1,6 +1,8 @@
+:root { --preview-background: #fafafa; --preview-foreground: #1a1a1a; }
+:root[data-proto-theme="dark"] { --preview-background: #171717; --preview-foreground: #fafafa; }
 * { box-sizing: border-box; margin: 0; }
-body { font: 15px/1.5 -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; background: #fafafa; }
+body { font: 15px/1.5 -apple-system, "Segoe UI", sans-serif; color: var(--preview-foreground); background: var(--preview-background); }
 .app { max-width: 640px; margin: 0 auto; padding: 32px 20px; }
 .app header { margin-bottom: 20px; }
 .app h1 { font-size: 20px; }
-.empty { text-align: center; padding: 56px 20px; color: #666; }
+.empty { text-align: center; padding: 56px 20px; color: color-mix(in srgb, var(--preview-foreground) 60%, transparent); }

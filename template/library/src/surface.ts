@@ -6,7 +6,7 @@
  * colour is mixed from those two, so the library's own UI stays
  * legible on a light, dark or saturated surface.
  */
-import type { Token } from "./library";
+import type { ThemeId, Token } from "./library";
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -45,11 +45,14 @@ const READABLE = 4.5;
 
 export type Surface = { background: string; foreground: string };
 
-const NEUTRAL: Surface = { background: "#ffffff", foreground: "#171717" };
+const NEUTRAL: Record<ThemeId, Surface> = {
+  light: { background: "#ffffff", foreground: "#171717" },
+  dark: { background: "#171717", foreground: "#fafafa" },
+};
 
-export function surfaceFromTokens(tokens: Token[]): Surface {
+export function surfaceFromTokens(tokens: Token[], theme: ThemeId = "light"): Surface {
   const surface = tokens.find((t) => t.role === "surface");
-  if (!surface || !parseColor(surface.value)) return NEUTRAL;
+  if (!surface || !parseColor(surface.value)) return NEUTRAL[theme];
   const text = tokens.find((t) => t.role === "text");
   if (text && contrast(surface.value, text.value) >= READABLE) {
     return { background: surface.value, foreground: text.value };
@@ -59,7 +62,16 @@ export function surfaceFromTokens(tokens: Token[]): Surface {
   return { background: surface.value, foreground };
 }
 
-export function paintSurface(root: HTMLElement, { background, foreground }: Surface): void {
+/** The stable CSS custom property an imported component uses for a manifest token. */
+export function tokenVariable(name: string): string {
+  return `--proto-token-${name}`;
+}
+
+export function paintSurface(
+  root: HTMLElement,
+  { background, foreground }: Surface,
+  tokens: Token[] = [],
+): void {
   const mix = (amount: number, base = "transparent") =>
     `color-mix(in oklab, ${foreground} ${amount}%, ${base})`;
   const vars: Record<string, string> = {
@@ -82,4 +94,14 @@ export function paintSurface(root: HTMLElement, { background, foreground }: Surf
     "--ring": mix(40),
   };
   for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+
+  // A theme owns the entire token namespace. Remove the previous theme's
+  // names before applying the next one so a partial import cannot leave a
+  // light value behind after switching to dark (or vice versa).
+  for (const name of [...root.style]) {
+    if (name.startsWith("--proto-token-")) root.style.removeProperty(name);
+  }
+  for (const token of tokens) {
+    root.style.setProperty(tokenVariable(token.name), token.value);
+  }
 }

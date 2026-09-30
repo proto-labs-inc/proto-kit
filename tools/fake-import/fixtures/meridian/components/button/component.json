@@ -51,14 +51,8 @@
       }
     }
   ],
-  "tokens": [
-    "indigo-600",
-    "indigo-700",
-    "slate-50",
-    "slate-100",
-    "slate-300",
-    "slate-600",
-    "slate-900",
-    "red-700"
-  ]
+  "tokens": {
+    "light": ["indigo-600", "indigo-700", "slate-300", "slate-600", "slate-900", "red-700", "primary-foreground", "control-surface", "control-hover", "danger-border", "danger-hover"],
+    "dark": ["indigo-600", "indigo-700", "slate-300", "slate-600", "slate-900", "red-700", "primary-foreground", "control-surface", "control-hover", "danger-border", "danger-hover"]
+  }
 }

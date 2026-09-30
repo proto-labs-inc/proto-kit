@@ -12,6 +12,11 @@ restart a tunnel, or register the prototype.
 
 ## Make the edit
 
+Preserve the prototype's light and dark behavior. The rig supplies
+`data-proto-theme="light|dark"` and `.dark` on the document root. Use the
+imported token value for each theme rather than adding one-theme literal
+colours, and verify the edited variant in both themes.
+
 1. Read `public/prototype.json`, the target view, and the variant's recorded
    `sourceFiles` before searching more broadly.
 2. Change only the target variant's module and scoped styles. Preserve its ID,

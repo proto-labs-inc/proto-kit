@@ -3,10 +3,12 @@ import { ArrowLeftIcon } from "lucide-react";
 import { ComponentBlock } from "@/components/ComponentBlock";
 import { ImportLine } from "@/components/ImportLine";
 import { ImportQueue } from "@/components/ImportQueue";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { TokenSwatches } from "@/components/TokenSwatches";
 import { TypeSpecimens } from "@/components/TypeSpecimens";
-import { componentView, headingStyle, importInProgress, type Component, type Courier, type Library } from "@/library";
+import { componentView, headingStyle, importInProgress, tokensFor, type Component, type Courier, type Library } from "@/library";
 import { galleryUrl } from "@/route";
+import { usePreviewTheme } from "@/theme";
 
 type Props = { library: Library; courier: Courier };
 
@@ -22,20 +24,25 @@ type Props = { library: Library; courier: Courier };
 // this frame says only where it is served from.
 export function Overview({ library, courier }: Props) {
   const { manifest } = library;
+  const theme = usePreviewTheme();
+  const tokens = tokensFor(manifest, theme);
   const started = manifest.startedAt !== null;
   const justAdded = useArrivals(library);
   const heading = headingStyle(manifest);
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10 md:grid md:grid-cols-[1fr_16rem] md:gap-x-12">
       <div className="flex min-w-0 flex-col gap-14">
-        <header className="flex flex-col gap-2">
-          <h1
-            className="m-0 text-3xl font-semibold tracking-tight"
-            style={heading ? { fontFamily: `"${heading.family}", var(--font-sans)`, fontWeight: heading.weight } : undefined}
-          >
-            {manifest.product?.name ?? "Design system"}
-          </h1>
-          {started && <ImportLine library={library} courier={courier} />}
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-2">
+            <h1
+              className="m-0 text-3xl font-semibold tracking-tight"
+              style={heading ? { fontFamily: `"${heading.family}", var(--font-sans)`, fontWeight: heading.weight } : undefined}
+            >
+              {manifest.product?.name ?? "Design system"}
+            </h1>
+            {started && <ImportLine library={library} courier={courier} />}
+          </div>
+          <ThemeToggle />
         </header>
 
         {!started && (
@@ -47,8 +54,8 @@ export function Overview({ library, courier }: Props) {
             <Section title="Type styles" filled={manifest.type.length > 0} reading="Reading the type styles" reserve="min-h-40">
               <TypeSpecimens styles={manifest.type} />
             </Section>
-            <Section title="Colours" filled={manifest.tokens.length > 0} reading="Reading the colours" reserve="min-h-24">
-              <TokenSwatches tokens={manifest.tokens} components={manifest.components} />
+            <Section title="Colours" filled={tokens.length > 0} reading="Reading the colours" reserve="min-h-24">
+              <TokenSwatches tokens={tokens} components={manifest.components} theme={theme} />
             </Section>
             <Section title="Components" filled={manifest.components.length > 0} reading="Finding the components" reserve="min-h-24" gap="gap-6">
               {manifest.components.map((component) => (

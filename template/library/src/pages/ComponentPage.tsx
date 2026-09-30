@@ -14,8 +14,10 @@ import { MatchedView } from "@/components/MatchedView";
 import { NotBuilt } from "@/components/NotBuilt";
 import { ProductCrop } from "@/components/ProductCrop";
 import { Rendered } from "@/components/Rendered";
-import { componentView, rebuiltNote, type Component, type ComponentView, type Courier, type Library, type Token } from "@/library";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { componentView, rebuiltNote, tokensFor, type Component, type ComponentView, type Courier, type Library, type ThemeId, type Token } from "@/library";
 import { href } from "@/route";
+import { usePreviewTheme } from "@/theme";
 
 type Props = {
   slug: string;
@@ -27,6 +29,8 @@ type Props = {
 
 export function ComponentPage({ slug, state, library, courier }: Props) {
   const { manifest } = library;
+  const theme = usePreviewTheme();
+  const tokens = tokensFor(manifest, theme);
   const component = manifest.components.find((c) => c.slug === slug);
   if (!component) {
     return (
@@ -41,23 +45,26 @@ export function ComponentPage({ slug, state, library, courier }: Props) {
   return (
     <main className="mx-auto grid max-w-5xl gap-10 px-6 py-10 md:grid-cols-[1fr_12rem]">
       <div className="flex min-w-0 flex-col gap-8">
-        <header className="flex flex-col gap-3">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink href={href.overview()}>Design system</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{component.name}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <h1 className="text-2xl font-medium">{component.name}</h1>
-          {note && <p className="m-0 text-sm text-muted-foreground">{note}</p>}
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-3">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href={href.overview()}>Design system</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{component.name}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+            <h1 className="text-2xl font-medium">{component.name}</h1>
+            {note && <p className="m-0 text-sm text-muted-foreground">{note}</p>}
+          </div>
+          <ThemeToggle />
         </header>
         <States component={component} view={view} state={state} courier={courier} />
-        {component.tokens.length > 0 && <Colours component={component} tokens={manifest.tokens} />}
+        {component.tokens[theme].length > 0 && <Colours component={component} tokens={tokens} theme={theme} />}
         <MatchedView component={component} library={library} moving={moving} />
       </div>
       <SubNavigation components={manifest.components} current={slug} />
@@ -134,12 +141,12 @@ function States({ component, view, state, courier }: StatesProps) {
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
-  return <div className="overflow-hidden rounded-xl bg-white ring-1 ring-foreground/10">{children}</div>;
+  return <div className="overflow-hidden rounded-xl bg-background ring-1 ring-foreground/10">{children}</div>;
 }
 
 /** The colours the component is made of, from the palette, each a swatch with its name. */
-function Colours({ component, tokens }: { component: Component; tokens: Token[] }) {
-  const used = component.tokens.map((name) => tokens.find((t) => t.name === name)).filter((t): t is Token => t !== undefined);
+function Colours({ component, tokens, theme }: { component: Component; tokens: Token[]; theme: ThemeId }) {
+  const used = component.tokens[theme].map((name) => tokens.find((t) => t.name === name)).filter((t): t is Token => t !== undefined);
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-medium text-muted-foreground">Colours it uses</h2>

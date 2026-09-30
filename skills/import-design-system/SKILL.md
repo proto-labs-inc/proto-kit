@@ -1,6 +1,6 @@
 ---
 name: import-design-system
-description: Import your product's design system into Proto. Reads your codebase and a live page of your product in your own browser, and fills the library with its colours, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
+description: Import your product's design system into Proto. Reads a live page of your product in your own browser, plus its source code when available, and fills the library with its light and dark colours, type styles, and notable components, one of each, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
 ---
 
 # Import a design system
@@ -29,22 +29,28 @@ through `tools/library.mjs`, every hosting step through
 `tools/verify-replica.mjs`. If you find yourself composing more than
 one line to do one thing, stop: the line exists.
 
-## Two inputs, one output
+## The live product is required; source is optional
 
-You have both of these. Use both:
+Always use the live product. Use the source too when it is available:
 
-- **The source repo**: path in `~/.proto/<codebase>/codebase.json`.
+- **The source repo, when available**: path in
+  `~/.proto/<codebase>/codebase.json`.
   This is where names live: token definitions (CSS custom properties,
   Tailwind `@theme`/config, design-token files), font faces, the
   component inventory, and the mechanism behind every look.
-- **A live page**: the product page setup recorded
-  (`codebase.json`'s `source.liveUrl`), open and signed in in the
-  Proto window; setup confirmed the sign-in, so don't ask again. Read
-  it over CDP. This is ground truth for values: deployed builds drift
+- **A live page, always**: the product page setup recorded
+  (`codebase.json`'s `source.liveUrl`), open and signed in in a browser
+  the current host can already read; setup confirmed the sign-in, so don't
+  ask again. Reuse that existing tab before starting Proto Chrome or opening
+  any tab. This is ground truth for values: deployed builds drift
   from checkouts (feature flags, hotfixes, build-time changes). The
   source explains mechanisms; the live page arbitrates values.
 
-When source and live page disagree, the live page wins.
+An absent or unreadable source path does not block the import. Read structure,
+matched styles, CSS custom properties, fonts and states from the live page;
+give inferred semantic token and component names plain product-language names,
+and say in `notes.md` that the name was inferred from its live use. When source
+exists and disagrees with the live page, the live page wins.
 
 ## The one rule
 
@@ -74,11 +80,12 @@ the app's folder; JSON is a literal or `@file`):
 
 ```
 node tools/library.mjs init <library> <codebase> <source> --page-url <liveUrl> --page-title "<the page's title, verbatim>" --favicon <icon file>
-node tools/library.mjs token <library> '{"name":"slate-900","value":"#0f172a","group":"gray","role":"text"}'
+node tools/library.mjs token <library> light '{"name":"text","value":"#0f172a","group":"gray","role":"text"}'
+node tools/library.mjs token <library> dark '{"name":"text","value":"#f8fafc","group":"gray","role":"text"}'
 node tools/library.mjs type <library> '{"name":"Heading L","family":"Inter","size":"24px","weight":650,"lineHeight":"32px","sample":"Expense report: September"}'
 node tools/library.mjs inventory <library> '[{"slug":"button","name":"Button"}, …]'
 node tools/library.mjs component <library> <slug> status extracting
-node tools/library.mjs history <library> <slug> --screenshot <n>.png --diff <n>-diff.png --mismatch <n> --activity "Padding is 2px short on the right; widening"
+node tools/library.mjs history <library> <slug> --theme <light|dark> --screenshot <n>.png --diff <n>-diff.png --mismatch <n> --activity "Padding is 2px short on the right; widening"
 node tools/library.mjs component <library> <slug> status done
 node tools/library.mjs component <library> <slug> status skipped --kind <could-not-isolate|did-not-match|not-tried> --reason "<one plain sentence, at most 140 characters>" --screenshot <crop.png>
 node tools/library.mjs event <library> [slug] "<activity>"
@@ -103,8 +110,13 @@ The readers and renderers:
 - `node tools/host-library.mjs <codebase>`: scaffold, install, tunnel,
   supervised run, edge check, in one call; prints the public and local
   addresses. Idempotent.
-- `tools/cdp/chrome.mjs`: the visible Proto window (port 9333), where
-  the product page is signed in. You read it, only.
+- An available in-app browser or user-Chrome tool: inspect its already-open
+  tabs first and reuse a matching signed-in product page when it provides the
+  DOM and capture access the import needs.
+- `tools/cdp/chrome.mjs`: the fallback visible Proto window (port 9333), used
+  only when no usable matching tab exists in any browser the host can read.
+  Read it, and interact only with the product's own light/dark control while
+  capturing both themes; restore the original theme before the run ends.
 - `tools/cdp/headless.mjs`: the headless Chrome (port 9444) that
   renders every replica. Nothing it draws is on screen.
 - `tools/cdp/cdp.mjs`: `connect(wsUrl)`, `evaluate(page, expression)`.
@@ -114,7 +126,7 @@ The readers and renderers:
   as labeled boxes. The map, not the understanding.
 - `tools/cdp/capture.mjs`: `stableShot(page, probeExpr, out, clip)`,
   clip screenshots behind the stability gate.
-- `node tools/verify-replica.mjs http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h> --out <dir>`:
+- `node tools/verify-replica.mjs http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h> --theme <light|dark> --out <dir>`:
   one verification pass: captures the live element, renders the
   library app's `#/render/<slug>/<state>` (the component alone, at
   those coordinates) headlessly at the same viewport and ratio, diffs
@@ -148,16 +160,25 @@ The readers and renderers:
 
 ## Setup
 
-Two Chromes, one visible and one not:
+One reference browser plus one headless Chrome:
 
-- **The Proto window** (`node tools/cdp/chrome.mjs`, port 9333) is
-  where the product page is open and the user is signed in; setup
-  put it there. You attach and read. Never navigate their tab, never
-  open your own pages in this window, never sleep-and-hope. If you
-  need the page in a different state, ask them to put it there. Find
-  the tab with `findPage(urlSubstring)`; an empty tab list right
-  after launch means try again, not broken. Never steal focus: `PUT
+- **The reference browser comes first.** Before running
+  `node tools/cdp/chrome.mjs` or calling `openBackground`, inspect every
+  browser and tab the current host can already read: the in-app browser, the
+  user's Chrome through an available Chrome tool, and an already-running
+  Proto Chrome on port 9333. Match `source.liveUrl` by exact URL first, then
+  project or product path, then origin. Prefer the active matching tab. Reuse
+  a signed-in match when it provides the DOM and capture access the import
+  needs. Do not start a browser or open a duplicate tab when a usable match
+  exists.
+- **The Proto window is fallback only.** When no usable existing match exists,
+  run `node tools/cdp/chrome.mjs`, then call `findPage(urlSubstring)` before
+  considering `openBackground`. An empty tab list right after launch means try
+  again, not broken. Never navigate a user-owned tab. Never steal focus: `PUT
   /json/new` raises the window every time, so it is never used.
+- In either browser, the one allowed UI change is using the product's own
+  light/dark control while capturing its themes; restore the original theme
+  afterward. If you need any other page state, ask the user to put it there.
 - **The headless Chrome** (`node tools/cdp/headless.mjs`, port 9444)
   renders every replica and every capture of one. Nothing it draws
   appears on screen. `verify-replica.mjs` starts it when it is not
@@ -191,9 +212,10 @@ call; chain the short ones in one shell line.
    Meridian" names Meridian), and when the page has no title the
    codebase's display name is used, never its id. Make a run folder
    `~/.proto/<codebase>/imports/<UTC stamp>/units/`.
-2. **Read.** The source's component directories, token files and
-   font faces; the live page's outline, class names and computed
-   styles (see **Reading the page**). Small reads, printed, looked at.
+2. **Read.** When source is available, read its component directories,
+   token files and font faces. Always read the live page's outline,
+   class names and computed styles (see **Reading the page**). Small
+   reads, printed, looked at.
 3. **The page's state: one question at most.** A page with obvious
    states hides its components behind them: a start button, a sign-in
    wall, an empty list, a welcome screen before the real thing. The
@@ -264,7 +286,49 @@ with dashes; names are what the product's own code calls the thing.
 
 ## Reading the page
 
-Work in small reads against the live tab in the Proto window. Each
+### Read both product themes
+
+Light and dark are one extraction axis, not two separate imports. Before the
+first component read, inspect the live document and, when available, the source
+theme provider and token stylesheets. Record the original active theme and the
+mechanism that changes it.
+
+The hosted library page owns its light/dark toggle. Render the control inside
+the library app itself so it is present on both the live and published design
+system pages; never rely on the surrounding Frame or another host page to
+provide it.
+
+Find the live switch before asking the user. Read the accessibility tree and
+visible controls for `theme`, `appearance`, `light`, `dark` and `system`.
+A theme control may sit inside the account or settings menu: opening only the
+menu needed to reach that control is allowed. Toggle only theme controls; do
+not submit forms or change any unrelated product state. After each change,
+confirm the root class or attribute and a representative surface and text
+colour actually changed. If the product follows `prefers-color-scheme`, use
+CDP media emulation. Do not write a guessed local-storage key or cookie. If no
+safe switch can be found, ask the user to put the live page in the other theme
+once, then continue from that state.
+
+For every token and component read, activate light and dark one at a time using
+that product control or media emulation and wait for the page to settle before
+reading or capturing. Do not derive one palette from the other. If the product
+genuinely has only one theme, stop and report that plainly rather than
+inventing the missing theme.
+
+Write tokens with `token <library> <light|dark> '<json>'`. Use the same semantic
+token names in both palettes: lowercase letters, digits and dashes. The library
+exposes the active palette as `--proto-token-<name>` on its root, so component
+modules use `var(--proto-token-surface)`, `var(--proto-token-text)` and their
+peers instead of hardcoded light/dark colours. Theme selectors are only for a
+real non-colour mechanism that differs between themes. `component.json` lists
+`{ "tokens": { "light": [...], "dark": [...] } }` so the library can explain
+which palette entries the component uses in each theme.
+Verify each component's default and important interactive states in both
+themes with `verify-replica.mjs --theme <light|dark>`, then land each pass with
+the same `--theme`. Restore the live page's original theme in a `finally`
+cleanup, including when a read or verification fails.
+
+Work in small reads against the selected existing live tab. Each
 read is a couple of lines over the websocket. Print the result. Look
 at it before deciding the next read. Reads and captures work on the
 occluded window (capture forces a frame commit); waiting on anything
@@ -278,8 +342,10 @@ that paints does not, which is one reason replicas render headlessly.
 4. Matched rules tell you how a look is achieved.
    CSS.getMatchedStylesForNode is the DevTools styles panel as data.
    Use it when you need the mechanism behind a box.
-5. Read the component's source file. It answers questions the rendered
-   page can't, like why a container wraps at 4 buttons.
+5. When source is available, read the component's source file. It answers
+   questions the rendered page cannot, like why a container wraps at 4
+   buttons. Without source, use matched rules and the live DOM and mark the
+   inferred mechanism in `notes.md`.
 6. When source and live page disagree, the live page wins.
 
 Before your first read, and again before your first pixel diff,
@@ -321,9 +387,12 @@ under the run). The loop:
      font, line-height and borders explicitly (the traps doc).
      Webfonts the product uses are copied beside it and declared with
      `@font-face` in the module, with a real fallback stack: a
-     component that silently falls back to Helvetica fails the bar.
+     component that silently falls back to Helvetica fails the bar. Every
+     palette colour is a `var(--proto-token-<name>)` reference; the resolved
+     values live once in the light and dark manifest palettes, never repeated
+     as hardcoded theme colours in the component.
    - `component.json`: `{ "states": [{ "name": "Default", "props": {} },
-     …], "tokens": ["slate-900", …] }`. The states: the default first,
+     …], "tokens": { "light": ["slate-900", …], "dark": ["slate-100", …] } }`. The states: the default first,
      then hover, focus, disabled, open, empty and loading where the
      product has them, then every other state it shows, as many as the
      product has, each name used once. The tokens: the names of the
@@ -335,9 +404,10 @@ under the run). The loop:
    A generative component (a canvas, a chart, a p5 sketch) renders
    several variations side by side in its default state rather than
    one frozen instance.
-3. **Verify, one call per pass.** `node tools/verify-replica.mjs
+3. **Verify, one call per pass and theme.** Put the live page in the named
+   theme, then run `node tools/verify-replica.mjs
    http://localhost:5210 <slug> <state> <live-tab-url> <x,y,w,h>
-   --out passes`. It mounts your state alone at the instance's
+   --theme <light|dark> --out passes`. It mounts your state alone at the instance's
    absolute coordinates (position matters for dash phase and
    gradient dithering; the traps doc says why) and diffs the clip.
    Read the numbers, not the red map: rects must agree exactly (a
@@ -400,9 +470,11 @@ this shape:
 > `component.json` (states, and the palette tokens it uses, from this
 > list: `<token names>`), `notes.md`; passes go to
 > `<run>/units/<slug>/passes/`.
-> This skill, `docs/cdp-traps.md` and the source files are already in
-> your context: do not search for them or read them again. Live tab:
-> `<liveUrl>` in the Proto window on port 9333, read only; the
+> This skill and `docs/cdp-traps.md` are already in your context; source
+> files are included when the codebase is available. Do not search for or
+> re-read those inputs. Live tab:
+> `<liveUrl>` in the selected existing browser tab, read only; when it is in
+> Proto Chrome its port is 9333, otherwise use the available browser tool; the
 > instance is `<selector>` at `<x,y,w,h>`; the states the product
 > shows are `<list>`. Tools, complete signatures:
 > `node <kit>/tools/verify-replica.mjs http://localhost:5210 <slug> <state> <liveUrl> <x,y,w,h> --out <run>/units/<slug>/passes`
@@ -429,8 +501,8 @@ belong in `docs/cdp-traps.md`.
 One shell line, chained, the moment the report arrives:
 
 ```
-node tools/library.mjs history <library> <slug> --screenshot passes/1.png --diff passes/1-diff.png --mismatch 4212 --activity "…" \
-&& node tools/library.mjs history <library> <slug> --screenshot passes/2.png --diff passes/2-diff.png --mismatch 0 --activity "…" \
+node tools/library.mjs history <library> <slug> --theme light --screenshot passes/1.png --diff passes/1-diff.png --mismatch 4212 --activity "…" \
+&& node tools/library.mjs history <library> <slug> --theme dark --screenshot passes/2.png --diff passes/2-diff.png --mismatch 0 --activity "…" \
 && node tools/library.mjs component <library> <slug> status done \
 && node tools/publish-library.mjs <library>
 ```

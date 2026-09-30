@@ -8,6 +8,9 @@ import { EVERYTHING, ask, withdraw, type SendOutcome } from "./courier";
 
 export type TokenRole = "surface" | "text";
 export type Token = { name: string; value: string; group: string; role?: TokenRole };
+export type ThemeId = "light" | "dark";
+export type ThemeTokens = Record<ThemeId, Token[]>;
+export type ComponentTokens = Record<ThemeId, string[]>;
 
 export type TypeStyle = {
   name: string;
@@ -29,6 +32,7 @@ export type Pass = {
   screenshot: string;
   diff: string;
   mismatch: number;
+  theme: ThemeId;
 };
 export type Component = {
   slug: string;
@@ -39,7 +43,7 @@ export type Component = {
   /** Every state the product shows, the default first, each name used once; as many as it has. */
   states: ComponentState[];
   /** The names of the manifest tokens the component uses; filled once done. */
-  tokens: string[];
+  tokens: ComponentTokens;
   /** One sentence on why the import made no pass for it, when it made none. */
   unverified?: string;
   skipKind?: SkipKind;
@@ -60,7 +64,7 @@ export type Manifest = {
   product: Product | null;
   startedAt: string | null;
   completedAt: string | null;
-  tokens: Token[];
+  themes: ThemeTokens;
   type: TypeStyle[];
   components: Component[];
 };
@@ -106,7 +110,7 @@ async function readLibrary(): Promise<Library> {
     fresh("queue.json"),
   ]);
   if (!manifestRes.ok) throw new Error(`manifest.json: ${manifestRes.status}`);
-  const manifest = (await manifestRes.json()) as Manifest;
+  const manifest = normalizeManifest(await manifestRes.json());
   let events: ActivityEvent[] = [];
   if (eventsRes.ok) {
     const text = await eventsRes.text();
@@ -118,6 +122,38 @@ async function readLibrary(): Promise<Library> {
   let requests: QueueRequest[] = [];
   if (queueRes.ok) requests = ((await queueRes.json()) as { requests: QueueRequest[] }).requests;
   return { manifest, events, requests };
+}
+
+type LegacyManifest = Omit<Manifest, "themes" | "components"> & {
+  themes?: ThemeTokens;
+  tokens?: Token[];
+  components: Array<Omit<Component, "tokens" | "history"> & {
+    tokens: ComponentTokens | string[];
+    history: Array<Omit<Pass, "theme"> & { theme?: ThemeId }>;
+  }>;
+};
+
+/** One read boundary for pre-theme libraries. New manifests never write the legacy shape. */
+export function normalizeManifest(value: unknown): Manifest {
+  const raw = value as LegacyManifest;
+  const legacyTokens = Array.isArray(raw.tokens) ? raw.tokens : [];
+  const themes = raw.themes ?? { light: legacyTokens, dark: legacyTokens };
+  const components = (raw.components ?? []).map((component) => {
+    const legacy = Array.isArray(component.tokens) ? component.tokens : null;
+    const tokens = legacy
+      ? { light: legacy, dark: legacy }
+      : component.tokens;
+    const history = component.history.map((pass) => ({
+      ...pass,
+      theme: pass.theme ?? "light",
+    }));
+    return { ...component, tokens, history };
+  });
+  return { ...raw, themes, components } as Manifest;
+}
+
+export function tokensFor(manifest: Manifest, theme: ThemeId): Token[] {
+  return manifest.themes[theme];
 }
 
 export const settled = (component: Component) => component.status === "done" || component.status === "skipped";

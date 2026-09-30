@@ -24,6 +24,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { syncLibraryTemplate } from "./library-template.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // A build and an upload take tens of seconds, so a waiting publish
@@ -86,6 +87,7 @@ for (;;) {
 // holding every later publish for STALE_MS.
 process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
 
+syncLibraryTemplate(libraryDir);
 const build = spawnSync("pnpm", ["build"], { cwd: libraryDir, stdio: ["ignore", "inherit", "inherit"] });
 if (build.status !== 0) fail(`pnpm build failed in ${libraryDir}`);
 const publishArgs = [join(HERE, "publish.mjs"), "--kind", "library", "--codebase", codebase, "--dir", join(libraryDir, "dist")];

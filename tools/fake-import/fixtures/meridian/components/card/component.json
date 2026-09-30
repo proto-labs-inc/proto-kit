@@ -17,14 +17,8 @@
       }
     }
   ],
-  "tokens": [
-    "slate-100",
-    "slate-200",
-    "slate-500",
-    "slate-900",
-    "indigo-100",
-    "indigo-500",
-    "indigo-600",
-    "amber-700"
-  ]
+  "tokens": {
+    "light": ["slate-100", "slate-200", "slate-500", "slate-900", "indigo-100", "indigo-500", "indigo-600", "amber-700"],
+    "dark": ["slate-100", "slate-200", "slate-500", "slate-900", "indigo-100", "indigo-500", "indigo-600", "amber-700"]
+  }
 }

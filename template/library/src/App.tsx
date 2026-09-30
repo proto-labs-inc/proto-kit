@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { useLibrary, type Library } from "./library";
+import { tokensFor, useLibrary, type Library } from "./library";
+import { usePreviewTheme } from "./theme";
 import { placeOf, useRoute, type Route } from "./route";
 import { paintSurface, surfaceFromTokens } from "./surface";
 import { Overview } from "./pages/Overview";
@@ -10,11 +11,12 @@ import { RenderPage } from "./pages/RenderPage";
 export function App() {
   const load = useLibrary();
   const route = useRoute();
+  const theme = usePreviewTheme();
 
-  const tokens = load.phase === "ready" ? load.library.manifest.tokens : [];
-  useEffect(() => {
-    paintSurface(document.documentElement, surfaceFromTokens(tokens));
-  }, [tokens]);
+  const tokens = load.phase === "ready" ? tokensFor(load.library.manifest, theme) : [];
+  useLayoutEffect(() => {
+    paintSurface(document.documentElement, surfaceFromTokens(tokens, theme), tokens);
+  }, [theme, tokens]);
 
   // A new page starts at the top; a state tab on the same page does not
   // move, and neither does a reload (the dev server reloads the page

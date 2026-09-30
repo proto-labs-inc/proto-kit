@@ -23,14 +23,8 @@
       }
     }
   ],
-  "tokens": [
-    "indigo-500",
-    "indigo-700",
-    "emerald-500",
-    "emerald-700",
-    "amber-500",
-    "amber-700",
-    "red-500",
-    "red-700"
-  ]
+  "tokens": {
+    "light": ["indigo-500", "indigo-700", "emerald-500", "emerald-700", "amber-500", "amber-700", "red-500", "red-700"],
+    "dark": ["indigo-500", "indigo-700", "emerald-500", "emerald-700", "amber-500", "amber-700", "red-500", "red-700"]
+  }
 }

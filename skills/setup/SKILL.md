@@ -5,7 +5,8 @@ description: >-
   prompt copied from the Proto site, two lines whose second is a one-time link
   to the setup document: it links this laptop, finds your codebase folder,
   creates the codebase in Proto, opens your product page in a Proto browser
-  window, and hands over to the design-system import. Use when a message starts
+  window, attaches the prepared onboarding design system, and starts the
+  courier. Use when a message starts
   "Set up Proto for", when installing Proto or connecting a new
   codebase, or when other Proto skills find no config.json or codebase.json.
 ---
@@ -14,11 +15,37 @@ description: >-
 
 Two scopes, both idempotent: the **machine** (once: config.json,
 prerequisites) and a **codebase** (once per codebase being prototyped:
-source link, library scaffold). Re-running setup repairs; it never
+source link, onboarding library attachment). Re-running setup repairs; it never
 clobbers working state. **Setup is resumable**: every step below
 leaves its result in a file, so if it parks mid-way (waiting on an
 engineer, a login, anything), a later "continue setting up Proto"
 picks up right where it stopped: say so when you park.
+
+### Resume audit: do this before setup work
+
+After fetching the setup document, inspect the saved state before carrying
+out any machine, codebase, import, courier, or prototype step. The document's
+`codebase` is a resume key, not an instruction to rebuild that codebase.
+
+- If `~/.proto/config.json` already identifies the document's app and member
+  and `whoami` succeeds, the machine is linked. Keep it. Only repair a missing
+  or stale MCP entry, agent role, or prerequisite.
+- If the document carries `codebase` and
+  `~/.proto/<codebase>/codebase.json` exists and parses, use its recorded
+  source path, remote, and live URL. Do not scan for the repo, ask the user to
+  confirm it, call `set_codebase_source`, or rewrite the file unless a recorded
+  value is missing, invalid, or the user explicitly changes it.
+- Inspect the courier state and local prototype workspaces before starting
+  their skills. A healthy existing result is completed work, not a reason to
+  recreate it. Start or repair only the missing or unhealthy process. Do not
+  start or resume a design-system import during setup.
+- If the brief already has a matching registered or local prototype, resume
+  that prototype. Never create a duplicate merely because the setup document
+  carries the brief again.
+
+Use the cheapest authoritative check for each item. Report what was already
+complete separately from what you repaired or created. Do not ask the user to
+reconfirm saved facts just because setup was invoked again.
 
 The user is often not an engineer. Two standing rules for the whole
 flow: **failures are plain sentences**, never surface raw command
@@ -271,53 +298,47 @@ system it extracts."**
 }
 ```
 
-### Host the library, in the background
+### Leave the local library stopped
 
-The moment `codebase.json` exists, start the library coming up and
-move on:
-
-```
-node tools/host-library.mjs <codebase> > ~/.proto/<codebase>/run/host-library.log 2>&1 &
-```
-
-(`mkdir -p` the run dir first.) One call scaffolds `template/library/`
-into `~/.proto/<codebase>/library/`, installs its dependencies (the
-library is a Vite React app, ADR 0003; the install is paid once per
-codebase), provisions the library tunnel through the site, starts the
-supervised run and verifies it through Cloudflare's edge. It runs
-while the Proto window and icon steps below proceed, so the first
-thing the import does, running the same call again, returns at once
-with the address. Never look the library's hostname up yourself
-meanwhile; the serve skill says why.
+Do not scaffold, host, or import a local library during setup. The prepared
+onboarding library is attached by the cloud only after the real codebase and
+courier are ready. An explicit later design-system import owns starting the
+local library host.
 
 ### The reference page (the Proto window)
 
-Prototypes and imports read the user's live product through their own
-browser. Set that up once per machine, here:
+Prototypes and imports read the user's live product through a browser.
+Reuse the user's existing browser state before creating any window or tab:
 
-1. Start the dedicated Proto Chrome window: `node
-   tools/cdp/chrome.mjs` (resolve kit tools from the installed host's
-   `PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, or `CURSOR_PLUGIN_ROOT`;
-   otherwise use the root above this skill's `skills/` directory). Its profile lives at
-   `~/.proto/chrome`, so logins persist across sessions and reboots;
-   the login is one-time.
-2. The document's `productUrl` is the product page to parse; with
-   none, ask the user for the URL of a page in their product. Open it
-   in that window yourself, over CDP:
-   `openBackground(url)` from `tools/cdp/attach.mjs`, then read the
-   page (`evaluate`) for a signed-in marker: the user's name in a
-   greeting or menu, an account control, no sign-in form. **Never
-   drive the browser's interface** (no clicking its address bar, no
-   typing into it, no computer-use automation): the kit reads pages
-   through the debug port only. If the page shows no signed-in
-   marker, tell the user to sign in in the Proto window and wait
-   until they say they have; then read again. Record the page in
-   `codebase.json` as `source.liveUrl`: the import-design-system
-   skill takes it from there instead of asking again.
-3. From then on, skills find the page by looking at the open tabs
-   over CDP (prefer the active tab; offer a pick when several
-   match). Pasting a URL into the chat is always an accepted
-   fallback: never a required step.
+1. Resolve the document's `productUrl`; with none, ask for a URL of a page
+   in the product. Before launching Chrome or calling `openBackground`,
+   inspect every browser window and tab the current coding host can already
+   read, including an already-running Proto Chrome on port 9333 and any
+   available in-app or user-Chrome browser tool. Prefer an exact URL match,
+   then the same project or product path, then the same origin. When a
+   matching signed-in page provides the DOM and capture access the import
+   needs, use that page as the reference. Do not launch another browser or
+   open a duplicate tab.
+2. Only when no usable matching page is already open, start the dedicated
+   Proto Chrome window with `node tools/cdp/chrome.mjs` (resolve kit tools
+   from the installed host's `PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, or
+   `CURSOR_PLUGIN_ROOT`; otherwise use the root above this skill's `skills/`
+   directory). Its profile lives at `~/.proto/chrome`, so logins persist
+   across sessions and reboots. After it starts, call `listPages()` from
+   `tools/cdp/attach.mjs` and reuse a matching tab if one appeared. Call
+   `openBackground(url)` only when no matching tab exists.
+3. Read the selected page for a signed-in marker: the user's name in a
+   greeting or menu, an account control, and no sign-in form. **Never drive
+   the browser's interface** (no clicking its address bar, no typing into it,
+   no computer-use automation). If the page is not signed in, tell the user
+   which existing window contains it and wait for them to sign in there;
+   then read the same page again. Record its final URL in `codebase.json` as
+   `source.liveUrl`: the import-design-system skill takes it from there
+   instead of asking again.
+4. From then on, skills find the page by looking at the open tabs in the
+   selected browser context (prefer the active tab; offer a pick when several
+   match). Pasting a URL into the chat is always an accepted fallback: never
+   a required step.
 
 ### The product's icon
 
@@ -386,20 +407,29 @@ codebase id is in the document), then:
 Setup ends by continuing, not by stopping (an Edit prompt ends at
 "Editing a prototype" above instead):
 
-1. Run **import-design-system** against the found source + the Proto
-   window's live page: the library filling in is the first thing the
-   user watches. The courier (the serve skill's "The courier" section)
-   comes up inside the import, while its units run, so the run's
-   tail is nothing: when the library is published, the courier is
-   already listening.
-2. If the document carried a `brief`, hand it to **create-prototype**
-   verbatim: title, description, the brief document URL, the
-   reference page (`productUrl`), the reference HTML (structure
-   hints only: the live page wins) and whether to use real data.
+1. Follow **serve**'s "The courier" section for this codebase to create or
+   repair its real courier. Verify its supervisor reports both the listener
+   and tunnel up. Then enter **listen**, arm this session's command-feed
+   watch, and wait until the courier heartbeat reports this agent as
+   listening. Do not invoke `create-prototype` until all of those checks pass.
+   This lets the site receive and display progress for the entire prototype
+   build, including work started directly from this setup prompt.
+2. Call `attach_onboarding_library { codebase }`. This must happen only after
+   step 1 is healthy. The operation is idempotent, so retry it once if the
+   call is interrupted or reports a transient failure. Do not run
+   **import-design-system** during setup. If attachment still fails, remain
+   in setup, tell the user in one plain sentence that Proto could not finish
+   the design system, and offer to retry. Never continue to success or create
+   a prototype until attachment succeeds.
+3. If the document carried a `brief`, first check for a matching registered
+   or local prototype. Resume it when found. Only when none exists, hand the
+   brief to **create-prototype** verbatim: title, description, the brief
+   document URL, the reference page (`productUrl`), the reference HTML
+   (structure hints only: the live page wins) and whether to use real data.
    Registration there uses the laptop token's member as creator.
-3. End by telling the user, plainly: **keep this session open, it's
+4. End by telling the user, plainly: **keep this session open, it's
    your codebase's agent.** And one more sentence once the first
-   import has finished: the library is published, so it stays
+   attachment has finished: the library is published, so it stays
    viewable after this laptop closes. This very session (in the terminal, the
    Claude Code desktop app, the Codex app, or Cursor's chat) is what receives the site's commands;
    continue into the listen skill. Closing it doesn't lose

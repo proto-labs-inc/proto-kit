@@ -35,3 +35,15 @@
   align-items: center;
   justify-content: center;
 }
+
+:global([data-proto-theme="dark"]) .card { background: #111827; border-color: #334155; box-shadow: 0 1px 2px rgb(0 0 0 / 0.35); }
+:global([data-proto-theme="dark"]) .card:hover,
+:global([data-proto-theme="dark"]) .hover { box-shadow: 0 4px 12px rgb(0 0 0 / 0.45); }
+:global([data-proto-theme="dark"]) .selected { border-color: #818cf8; box-shadow: 0 0 0 3px #312e81; }
+:global([data-proto-theme="dark"]) .merchant,
+:global([data-proto-theme="dark"]) .amount { color: #f8fafc; }
+:global([data-proto-theme="dark"]) .meta,
+:global([data-proto-theme="dark"]) .who { color: #94a3b8; }
+:global([data-proto-theme="dark"]) .foot { border-top-color: #1f2937; }
+:global([data-proto-theme="dark"]) .badge { background: #451a03; color: #fde68a; }
+:global([data-proto-theme="dark"]) .avatar { background: #818cf8; color: #111827; }
