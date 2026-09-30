@@ -404,16 +404,21 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     // this pass's failure, not a hang. The outcome is read in the same
     // breath as the wait, so a page reloading between the two cannot
     // answer with an empty document.
-    const outcome = await evaluate(replica.page, "new Promise((done) => { const until = Date.now() + 15000; const tick = () => { const root = document.querySelector('[data-render]'); if (root && !document.querySelector('[data-loading]')) done(root.dataset.render); else if (Date.now() > until) done(null); else setTimeout(tick, 50); }; tick(); })");
-    if (outcome === null) throw new Error(`the render route did not mount ${slug}/${state} within 15 s`);
-    if (outcome !== "ok") throw new Error(`the render route could not show ${slug}/${state}: ${outcome}`);
-    await evaluate(replica.page, "document.fonts.ready.then(() => document.fonts.status)");
+    const mounted = "new Promise((done) => { const until = Date.now() + 15000; const tick = () => { const root = document.querySelector('[data-render]'); if (root && !document.querySelector('[data-loading]')) done(root.dataset.render); else if (Date.now() > until) done(null); else setTimeout(tick, 50); }; tick(); })";
     // The replica's own photos, to tell a photo each browser scales
-    // differently from one the replica lacks or never loaded.
-    replicaImages = await evaluate(
-      replica.page,
-      `(() => { const media = [...document.querySelector('[data-render]').querySelectorAll('img, video, canvas')]; return { count: media.length, loaded: media.every((e) => (e.tagName === 'IMG' ? e.complete && e.naturalWidth > 0 : e.tagName !== 'VIDEO' || e.readyState >= 2)) }; })()`,
-    );
+    // differently from one the replica lacks or never loaded; null when
+    // the route is gone again (the dev server reloaded the tab between
+    // the mount and this read), in which case the mount is waited for
+    // once more.
+    const photosHere = "(() => { const root = document.querySelector('[data-render]'); if (!root) return null; const media = [...root.querySelectorAll('img, video, canvas')]; return { count: media.length, loaded: media.every((e) => (e.tagName === 'IMG' ? e.complete && e.naturalWidth > 0 : e.tagName !== 'VIDEO' || e.readyState >= 2)) }; })()";
+    for (let attempt = 0; attempt < 2 && !replicaImages; attempt++) {
+      const outcome = await evaluate(replica.page, mounted);
+      if (outcome === null) throw new Error(`the render route did not mount ${slug}/${state} within 15 s`);
+      if (outcome !== "ok") throw new Error(`the render route could not show ${slug}/${state}: ${outcome}`);
+      await evaluate(replica.page, "document.fonts.ready.then(() => document.fonts.status)");
+      replicaImages = await evaluate(replica.page, photosHere);
+    }
+    if (!replicaImages) throw new Error(`the render route for ${slug}/${state} reloaded under the capture twice`);
     const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`;
     // The headless tab is the active one in its own browser, where a
     // clipped capture is safe: only the component's pixels come back, not
