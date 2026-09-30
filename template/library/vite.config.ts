@@ -99,7 +99,11 @@ export default defineConfig({
     port: Number(process.env.PROTO_PORT ?? 5210),
     strictPort: true,
     cors: true, // the app's Design system page probes manifest.json cross-origin
-    watch: { ignored: [`${publicDir}/**`] },
+    // The import writes a component's notes, fonts and pictures beside
+    // its module while render tabs are open for the checks; a full
+    // reload on each of those killed every capture in flight. Only the
+    // modules (tsx, css, component.json) are watched.
+    watch: { ignored: [`${publicDir}/**`, "**/notes.md", "**/*.woff2", "**/*.woff", "**/*.ttf", "**/*.otf", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.avif", "**/*.svg"] },
     // Through the library tunnel: accept the public hostname and use wss HMR.
     ...(tunnel && {
       allowedHosts: true,

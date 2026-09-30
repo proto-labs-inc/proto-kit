@@ -17,6 +17,8 @@ type Lookup =
 // a unit verifies before anything is landed.
 type Unit = { states: ComponentState[]; backdrop?: string };
 const UNITS = import.meta.glob<{ default: Unit }>("/src/components/*/component.json");
+// A new component's component.json changes this glob: a hot update, never a full reload (Rendered.tsx says why).
+if (import.meta.hot) import.meta.hot.accept(() => {});
 
 async function unitOf(slug: string): Promise<Unit | null> {
   const load = UNITS[`/src/components/${slug}/component.json`];

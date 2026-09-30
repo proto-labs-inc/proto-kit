@@ -16,6 +16,10 @@ import type { ComponentState } from "@/library";
 const MODULES = import.meta.glob<{ default: ComponentType<Record<string, unknown>> }>("/src/components/*/[A-Z]*.tsx");
 const UNITS = import.meta.glob<{ default: { states: ComponentState[] } }>("/src/components/*/component.json");
 const loaded = new Map<string, ComponentType<Record<string, unknown>>>();
+// A new component folder changes these globs; taken as a hot update
+// here rather than a full reload, so the render tabs the import's
+// checks hold open are not navigated away under them.
+if (import.meta.hot) import.meta.hot.accept(() => {});
 
 /** The module path of the component in src/components/<slug>/, whether or not the manifest names it yet. */
 export function moduleOf(slug: string): string | null {
