@@ -53,22 +53,69 @@ import { decodePng } from "./cdp/png.mjs";
 export const FORCEABLE = ["hover", "focus", "active", "focus-visible"];
 
 /**
- * The live element's rect at full precision, and whether the viewport
- * cuts it off. `target` is { selector } or { rect: [x, y, w, h] }.
+ * The live element's rect at full precision, whether the viewport
+ * cuts it off, and its rounded corners (`corners`: [x, y] radii in CSS
+ * px, top-left first, clockwise). `target` is { selector } or
+ * { rect: [x, y, w, h] }.
  */
 export async function liveRect(live, target) {
   if (target.rect) {
     const [x, y, w, h] = target.rect;
     const [vw, vh] = await evaluate(live, "[innerWidth, innerHeight]");
-    return { x, y, w, h, cut: x < 0 || y < 0 || x + w > vw || y + h > vh };
+    return { x, y, w, h, cut: x < 0 || y < 0 || x + w > vw || y + h > vh, corners: [] };
   }
   const found = await evaluate(
     live,
-    `(() => { const el = document.querySelector(${JSON.stringify(target.selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height, innerWidth, innerHeight]; })()`,
+    `(() => {
+      const el = document.querySelector(${JSON.stringify(target.selector)});
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      const px = (part, size) => (part.endsWith('%') ? (parseFloat(part) / 100) * size : parseFloat(part)) || 0;
+      const corners = ['top-left', 'top-right', 'bottom-right', 'bottom-left'].map((c) => { const parts = s.getPropertyValue('border-' + c + '-radius').split(/\s+/); return [px(parts[0], r.width), px(parts[1] ?? parts[0], r.height)]; });
+      return [r.x, r.y, r.width, r.height, innerWidth, innerHeight, corners];
+    })()`,
   );
   if (!found) throw new Error(`nothing on the live page matches ${target.selector}`);
-  const [x, y, w, h, vw, vh] = found;
-  return { x, y, w, h, cut: x < 0 || y < 0 || x + w > vw || y + h > vh };
+  const [x, y, w, h, vw, vh, corners] = found;
+  return { x, y, w, h, cut: x < 0 || y < 0 || x + w > vw || y + h > vh, corners };
+}
+
+/**
+ * Which device pixels of a capture lie outside the element's rounded
+ * outline: the corners' curves, with the pixel that straddles each
+ * curve. There the page shows through (a badge laid over an icon shows
+ * the icon at its corners), so those pixels are the page's, not the
+ * component's; null when no corner is rounded.
+ */
+export function outsideCorners(rect, dpr) {
+  const corners = rect.corners ?? [];
+  if (corners.length !== 4 || corners.every(([x, y]) => x <= 0 || y <= 0)) return null;
+  const W = rect.w * dpr;
+  const H = rect.h * dpr;
+  // CSS scales every radius down together when adjacent ones overlap.
+  let f = 1;
+  const [tl, tr, br, bl] = corners.map(([x, y]) => [x * dpr, y * dpr]);
+  for (const sum of [tl[0] + tr[0], bl[0] + br[0]]) if (sum > W) f = Math.min(f, W / sum);
+  for (const sum of [tl[1] + bl[1], tr[1] + br[1]]) if (sum > H) f = Math.min(f, H / sum);
+  const arcs = [
+    { rx: tl[0] * f, ry: tl[1] * f, cx: tl[0] * f, cy: tl[1] * f, left: true, top: true },
+    { rx: tr[0] * f, ry: tr[1] * f, cx: W - tr[0] * f, cy: tr[1] * f, left: false, top: true },
+    { rx: br[0] * f, ry: br[1] * f, cx: W - br[0] * f, cy: H - br[1] * f, left: false, top: false },
+    { rx: bl[0] * f, ry: bl[1] * f, cx: bl[0] * f, cy: H - bl[1] * f, left: true, top: false },
+  ].filter((a) => a.rx > 0 && a.ry > 0);
+  return (x, y) => {
+    const px = x + 0.5;
+    const py = y + 0.5;
+    for (const a of arcs) {
+      // Only the corner's own square holds a curve.
+      if (a.left ? px > a.cx : px < a.cx) continue;
+      if (a.top ? py > a.cy : py < a.cy) continue;
+      const inner = ((px - a.cx) / Math.max(a.rx - 1, 0.01)) ** 2 + ((py - a.cy) / Math.max(a.ry - 1, 0.01)) ** 2;
+      if (inner > 1) return true;
+    }
+    return false;
+  };
 }
 
 /**
@@ -111,7 +158,8 @@ async function holding(live, selector, pseudo, work) {
  * What on the live page can make a component differ without being
  * wrong, as boxes inside the component's own box: its photos (scaled
  * by each browser's own rasteriser) and whatever the page lays over it
- * (a floating card, with room for its shadow).
+ * (a floating card, with room for its shadow; a placeholder painted
+ * over a field by an element the pointer cannot hit).
  */
 export async function liveContext(live, selector, rect) {
   return evaluate(
@@ -123,6 +171,33 @@ export async function liveContext(live, selector, rect) {
       const images = [...(el.matches('img, video, canvas') ? [el] : []), ...el.querySelectorAll('img, video, canvas')].map((e) => rel(e.getBoundingClientRect()));
       const covers = [];
       const seen = new Set();
+      // Whatever paints over the component from outside it: every
+      // painting element outside its subtree and ancestry whose box
+      // crosses its own and sits above it, by the hit test where both
+      // can be hit, else by tree order (later paints over earlier). The
+      // hit test alone misses what the pointer cannot reach
+      // (pointer-events: none), which is exactly how a page lays text
+      // over a field.
+      const paints = (e, s) => ['IMG', 'svg', 'VIDEO', 'CANVAS'].includes(e.tagName) || !/rgba\(0, 0, 0, 0\)/.test(s.backgroundColor) || s.backgroundImage !== 'none' || s.boxShadow !== 'none' || (s.borderTopStyle !== 'none' && s.borderTopWidth !== '0px') || [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '');
+      for (const other of document.body.querySelectorAll('*')) {
+        if (covers.length >= 40) break;
+        if (other === el || el.contains(other) || other.contains(el)) continue;
+        const o = other.getBoundingClientRect();
+        if (o.width === 0 || o.height === 0 || o.x >= rx + rw || rx >= o.x + o.width || o.y >= ry + rh || ry >= o.y + o.height) continue;
+        const s = getComputedStyle(other);
+        if (s.visibility === 'hidden' || s.display === 'none' || s.opacity === '0' || !paints(other, s)) continue;
+        const mx = (Math.max(o.x, rx) + Math.min(o.x + o.width, rx + rw)) / 2;
+        const my = (Math.max(o.y, ry) + Math.min(o.y + o.height, ry + rh)) / 2;
+        const stack = mx >= 0 && my >= 0 && mx < innerWidth && my < innerHeight ? document.elementsFromPoint(mx, my) : [];
+        const iOther = stack.findIndex((e) => e === other || other.contains(e));
+        const iEl = stack.indexOf(el);
+        let above;
+        if (iOther !== -1 && iEl !== -1) above = iOther < iEl;
+        else above = Boolean(el.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+        if (!above) continue;
+        seen.add(other);
+        covers.push(rel(o, s.boxShadow === 'none' ? 1 : 24));
+      }
       for (let i = 0; i <= 6; i++) for (let j = 0; j <= 6; j++) {
         const x = rx + 1 + (rw - 2) * (i / 6);
         const y = ry + 1 + (rh - 2) * (j / 6);
@@ -150,6 +225,25 @@ function within(clusters, boxes) {
   return clusters.every(({ cssRect: [cx, cy, cw, ch] }) =>
     boxes.some(([bx, by, bw, bh]) => cx >= bx - 1 && cy >= by - 1 && cx + cw <= bx + bw + 1 && cy + ch <= by + bh + 1),
   );
+}
+
+/**
+ * How many differing device pixels lie in none of the boxes (CSS px
+ * relative to the capture, a pixel of slack). Counted pixel by pixel:
+ * a cluster is a bounding box and two overlays side by side merge into
+ * one cluster no single box holds.
+ */
+function outsideBoxes(bad, width, height, boxes, dpr) {
+  if (boxes.length === 0) return Infinity;
+  const spans = boxes.map(([bx, by, bw, bh]) => [Math.floor((bx - 1) * dpr), Math.floor((by - 1) * dpr), Math.ceil((bx + bw + 1) * dpr), Math.ceil((by + bh + 1) * dpr)]);
+  let outside = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!bad[y * width + x]) continue;
+      if (!spans.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1)) outside++;
+    }
+  }
+  return outside;
 }
 
 // A photo scaled by two browsers' rasterisers differs along its edges
@@ -329,7 +423,8 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     await replica.close();
   }
 
-  const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr });
+  // Outside the element's rounded corners the page shows through: those pixels are not compared.
+  const result = diffPngs(files.live, files.screenshot, { diffPath: files.diff, threshold: THRESHOLD, dpr: display.dpr, ignore: outsideCorners(rect, display.dpr) });
   let verdict = "match";
   let shifted = null;
   let photos = [];
@@ -342,7 +437,7 @@ export async function verifyPass({ appUrl, slug, state, liveMatch, target, force
     const faint = Math.max(12, Math.round(0.003 * rect.w * rect.h * display.dpr * display.dpr));
     photos = photosAsContext(context.images, replicaImages, files.live, files.screenshot, display.dpr);
     if (shifted.mismatch <= rim && shifted.mismatch < result.diffPixels / 4) verdict = "shifted";
-    else if (within(result.clusters, [...photos, ...context.covers])) verdict = "context";
+    else if (outsideBoxes(result.bad, result.width, result.height, [...photos, ...context.covers], display.dpr) === 0) verdict = "context";
     else if (result.diffPixels <= faint) verdict = "faint";
     else verdict = "differs";
   }
