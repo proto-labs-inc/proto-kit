@@ -97,7 +97,8 @@ Talking to the app, and the harness hooks:
 
 - `chrome.mjs`: start or find the visible Proto window, unfocused.
 - `headless.mjs`: the headless Chrome that replicas and diffs render in.
-- `attach.mjs`: find a tab and read it, never navigate.
+- `attach.mjs`: reuse a product tab; otherwise navigate a blank tab, or open one when none exists.
+- `product-page.mjs`: prepare that tab for setup and print the page URL the import will read.
 - `cdp.mjs`: minimal CDP client over Node's WebSocket, no dependencies.
 - `capture.mjs`: clip screenshots behind a stability gate.
 - `crop.mjs`: crop an element from the live page at 2x.

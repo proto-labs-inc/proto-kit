@@ -343,27 +343,36 @@ browser. Set that up once per machine, here:
    `~/.proto/chrome`, so logins persist across sessions and reboots;
    the login is one-time.
 2. The document's `productUrl` is the product page to parse; with
-   none, ask the user for the URL of a page in their product. Open it
-   in that window yourself, over CDP:
-   `openBackground(url)` from `tools/cdp/attach.mjs`, then read the
-   page (`evaluate`) for a signed-in marker: the user's name in a
-   greeting or menu, an account control, no sign-in form. **Never
-   drive the browser's interface** (no clicking its address bar, no
-   typing into it, no computer-use automation): the kit reads pages
-   through the debug port only. If the page shows no signed-in
+   none, ask the user for the URL of a page in their product. Run
+   `node tools/cdp/product-page.mjs '<productUrl>'` after starting the
+   Proto window. It reuses an open page of that product, navigates a
+   blank tab when no product page is open, and creates a background tab
+   only when Chrome has no tabs at all. If only another site is open,
+   ask the user to show the product in that window and retry; do not
+   treat the other site as the product. Use the command's returned
+   `url` as the actual page URL. Read that page (`evaluate`) for a
+   signed-in marker: the user's name in a greeting or menu, an account
+   control, no sign-in form. **Never drive the browser's interface** (no
+   clicking its address bar, no typing into it, no computer-use
+   automation): the kit reads pages through the debug port only. If
+   the page shows no signed-in
    marker, bring the Proto window to the front on that tab
    (`node tools/cdp/raise.mjs <url-substring>`: the one time the kit
    raises it, because the user must act in it), tell the user to sign
    in there and wait until they say they have; then read again. A
    password field on a signed-in page (a form asking for a new
    database password) is not a sign-in form: look for the account
-   control. Record the page in
+   control. After sign-in, read the tab's current URL again. Record that
+   actual page URL in
    `codebase.json` as `source.liveUrl`: the import-design-system
    skill takes it from there instead of asking again.
 3. From then on, skills find the page by looking at the open tabs
    over CDP (prefer the active tab; offer a pick when several
    match). Pasting a URL into the chat is always an accepted
-   fallback: never a required step.
+   fallback: never a required step. A pasted URL identifies the
+   preferred page; it authorizes navigating a blank tab when there is
+   no product page, or opening one when there is no tab at all. It
+   never authorizes navigating an existing product page.
 
 ### The product's icon
 
