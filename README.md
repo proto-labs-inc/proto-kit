@@ -4,6 +4,11 @@ Proto's installable surface: everything a customer's machine runs. The
 cloud product lives in the `proto` repo; this repo is what their coding
 agent installs and drives.
 
+Work starts and resumes in the active coding-agent conversation on Claude Code,
+Codex, and Cursor. Website actions provide copyable prompts; progress and
+published results flow outward. There is no remote command-delivery service,
+listener skill, or experimental opt-in. See `docs/work-handoff.md`.
+
 ## Layout
 
 ```
@@ -16,7 +21,6 @@ cursor-agents/   the same roles, Cursor format
 hooks/           Claude Code hook declarations
 codex-hooks/     Codex hook declarations
 cursor-hooks/    Cursor hook declarations
-monitors/        the Claude Code courier-feed monitor
 docs/            frozen contracts, hard-won facts
 assets/          the logo plugin manifests reference
 ```
@@ -36,7 +40,6 @@ Cursor; the core stays harness-neutral.
 - `create-pr-plan/`: decompose prototype work into ordered pull-request slices.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
 - `publish-library/`: publish the library on demand.
-- `listen/`: take the website's commands off the feed.
 - `update/`: update the plugin, then repair what the update leaves stale.
 - `debug/`: send Proto a debug report now, with a headline; the agent uses it on its own too.
 
@@ -54,8 +57,8 @@ The library and the import:
 A prototype build (`docs/build-read.md`):
 
 - `proto-build.mjs`: the whole copy of the reference page in one command, then the parts list.
-- `build-stream.mjs`: the build's events to the site (read, curate, name, phase, focus), and its questions: ask, await the answer, or pass on one given in the terminal.
-- `copy-gate.mjs`: a copy over its gate, retried once, then the copy-gate question on the site.
+- `build-stream.mjs`: outbound build events and resumable questions answered in the active conversation.
+- `copy-gate.mjs`: one automatic copy retry, then a saved chat decision checkpoint; required choices never time out.
 - `scaffold.mjs`, `replicate.mjs`: the workspace from the read; every leaf copied, checked and composed.
 - `variant-set.mjs`: a variant set's skeleton, one stub per variant for the units.
 - `check-states.mjs`: every state and variant loaded headless; errors, rect sanity, the untouched parts against the read.
@@ -76,18 +79,11 @@ Serving and publishing:
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 - `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
 
-The courier and the feed:
+Questions and retirement:
 
-- `courier.mjs`: validate the website's commands onto a durable feed.
-- `questions.mjs`: a build's answers taken from the feed; a stray one routed and dropped.
-- `courier-relay.mjs`: the courier's transport, one WebSocket to the site's relay.
-- `courier-http.mjs`: the courier's local-only port, for this laptop's own checks.
-- `feed-tail.mjs`: follow one codebase's feed from the committed offset.
-- `feed-watch-all.mjs`: follow every codebase's feed at once, for monitors.
-- `agent-launch.mjs`: resume-aware headless launcher for a listen session.
-- `codex-thread.mjs`: which live Codex thread is this session (by a token it printed).
-- `feed-queue.mjs`: the Codex wake, queueing each command into the session the user has open.
-- `feed-drive.mjs`: the Codex last resort, resuming its saved conversation headlessly.
+- `chat-questions.mjs`: durable questions and idempotent answers in the build directory.
+- `retire-legacy-runs.mjs`: dry-run inventory and explicit safe archival of obsolete command-delivery runs; never a startup path.
+- `codex-install.mjs`: synchronize MCP and supported roles, retaining recoverable role archives.
 
 Talking to the app, and the harness hooks:
 
@@ -124,12 +120,10 @@ The subagent roles, one file per harness format.
 - `verifier.md`, `proto-verifier.toml`, `proto-verifier.md`: read-only checks of markers, pixels, state URLs.
 - `part-fixer.md`, `proto-part-fixer.toml`, `proto-part-fixer.md`: fix one copied part of a prototype build.
 - `variant-builder.md`, `proto-variant-builder.toml`, `proto-variant-builder.md`: write one variant of a set.
-- `listen.md`, `proto-listen.toml`: the headless listen session, Claude Code and Codex.
 
-### hooks/, codex-hooks/, cursor-hooks/, monitors/
+### hooks/, codex-hooks/, cursor-hooks/
 
 - `hooks/hooks.json`, `codex-hooks/hooks.json`, `cursor-hooks/hooks.json`: the health line and marker check, per harness.
-- `monitors/monitors.json`: the `courier-feed` monitor, armed when the listen skill starts.
 
 ### docs/
 
@@ -185,13 +179,20 @@ codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit
 git -C ~/.cursor/plugins/local/proto pull, then run "Developer: Reload Window" in Cursor (or Refresh in the Customize panel for a marketplace install).
 ```
 
+For Codex, inspect `codex plugin marketplace list --json` first. A configured
+local marketplace stays local: run only `codex plugin add proto@proto-kit`,
+without upgrading the remote or changing its checkout. Resolve the actual
+installed root and run `node <installed-kit>/tools/codex-install.mjs`; `--check`
+verifies MCP and role synchronization. Existing conversation descriptions may
+remain cached until plugin discovery refreshes.
+
 Then run `/proto:setup` (Claude Code) or `$setup` (Codex) in any
 session; in Cursor, type `/` in the chat and pick the Proto setup
 skill, or paste the setup prompt. On Codex, setup writes the MCP
-server entry and installs the agent roles itself. The skills and
+server entry and supported roles using `tools/codex-install.mjs`. The skills and
 tools are one shared set; only the packaging differs per harness
-(`.claude-plugin/` + `hooks/` + `agents/` + `monitors/` for Claude;
-`plugin.json` + `codex-hooks/` + `codex-agents/` for Codex;
+(`.claude-plugin/` + `hooks/` + `agents/` for Claude;
+`.codex-plugin/plugin.json` + `codex-hooks/` + `codex-agents/` for Codex;
 `.cursor-plugin/` + `cursor-hooks/` + `cursor-agents/` for Cursor). A
 session-start hook prints one health line per codebase once `~/.proto`
 exists.

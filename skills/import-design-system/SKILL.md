@@ -5,6 +5,10 @@ description: Import your product's design system into Proto. Reads a live page o
 
 # Import a design system
 
+Work is requested in this conversation. Imports do not start a listener or
+wait for website commands. Keep finite checks of the library's local component
+request queue during this active import, then finish.
+
 You are turning a real product into its design system: its colours,
 its type styles and its components, each a React component with typed
 props whose looks and states are prop sets, identical to the product
@@ -61,7 +65,6 @@ node tools/snapshot.mjs <codebase> <json | @file> --theme <light|dark>  write on
 node tools/check.mjs <codebase> <slug> --theme <light|dark> [--state <name>] [--activity "<line>"]   check it; each pass lands
 node tools/explain-diff.mjs <codebase> <slug> --theme <light|dark> [--state <name>]   why a state differs: the product's value and ours, named
 node tools/tail.mjs decide <codebase>                 the tail's numbers now, at once: one line to relay when a unit reports; it never waits
-node tools/courier-up.mjs <codebase>                this laptop's courier, up and answering (idempotent)
 node tools/library.mjs component <codebase> <slug> status done
 node tools/library.mjs component <codebase> <slug> status skipped --kind <kind> --reason "<sentence>" --screenshot <png>
 node tools/library.mjs event <codebase> [slug] "<activity>"
@@ -94,17 +97,6 @@ and let go straight after.
    reached) the same: the library is up on its local port, every check
    uses it, and `host-library.mjs` shares it when run again later.
 
-   **Listen from here on.** In the same turn, start `node
-   tools/courier-up.mjs <codebase>` in the background (`--codex` on
-   Codex) and arm the listen skill's watch (its step 1), unless setup
-   already did both. `courier-up` does the serve skill's courier steps
-   in one call: it registers the courier (once), gets its relay
-   address, starts the supervisor, and moves a courier set up by an
-   older kit onto the relay. It never prints the secret; do not build
-   the courier by hand. Both are light, and from then on the site
-   shows this laptop as listening: a Build the user presses mid-import
-   lands in the feed and waits its turn (the listen skill's "Busy when
-   a command lands").
 
 2. **The page's state and light theme.** If the page is showing
    a welcome screen, an empty list or a sign-in wall instead of the
@@ -177,8 +169,8 @@ and let go straight after.
    "<slug> left for later: ..."). Relay the runner's `gate.line` to the
    user as it stands, in one line, then go to the Finish below. The
    import's time is the import's: nothing waits on a unit, you never
-   fix a component yourself (not one, not even a small one), and a
-   site brief that arrived meanwhile starts right after the Finish.
+   fix a component yourself (not one, not even a small one). After the Finish,
+   continue only with work the user requested in this conversation.
 
    Then, for every component in `toFix` or `failed`, dispatch one
    `importer` sub-agent, **all in one turn, in the background**, with
@@ -195,11 +187,10 @@ and let go straight after.
    true. From then on `node tools/tail.mjs decide <codebase>` reads the
    units' numbers as they stand and returns at once with one line
    ("Fixing in the background: 13 of 15 matched; the rest improved 2%
-   in the last minute, about 4 more minutes to go", or "Moving on: ...,
-   a create-prototype command from the site is waiting"). Run it when a
+   in the last minute, about 4 more minutes to go"). Run it when a
    unit reports or when you are asked where things stand, relay its
-   line as it stands, and go on: take the queue and any waiting
-   command. Never wait for a unit, never poll, never ask the user
+   line as it stands, and check the local component queue. Never wait for
+   a unit, never poll, never ask the user
    whether to wait; each unit stops on its own budget (three checks or
    two minutes) and restores its component when it did not match.
 
@@ -324,7 +315,7 @@ product uses, a variant key its code calls something else. Re-run
 
 ## The queue
 
-While the session lasts, the library's "Build it" button is a request
+During active import work, the library's "Build it" button is a local request
 to build a skipped component, and its "Import again" a request to run
 the whole import again. `node tools/library.mjs take-queued <codebase>`
 pops one request and prints its slug (nothing printed means nothing
@@ -332,7 +323,9 @@ queued). A component's slug: survey again, plan that component alone,
 run `import.mjs` with it, fix what is left as above, then `complete`
 and publish. `*`: start this skill over from step 1 (`init` on a
 completed run starts fresh). Check the queue after each landing, at
-the finish, and on every wake while you listen.
+the finish. Do not start a persistent watch or keep the session alive to
+consume requests. Later queued work is handled when the user asks to continue
+the import in chat; a published library cannot wake an agent.
 
 ## Finish
 
@@ -345,16 +338,11 @@ Every line, in order, before you say the import is done:
 - `node tools/library.mjs complete <codebase>` (it refuses otherwise);
 - `node tools/publish-library.mjs <codebase> --wait`: this last publish
   carries `completedAt`, so the published copy says the import finished;
-- the courier is up: `node tools/courier-up.mjs <codebase>` prints
-  `local: true` and `relay: "connected"`. If `relay` is anything else,
-  say plainly that the site cannot reach this laptop yet, and carry on:
-  the import itself does not need it;
 - one sentence to the user: the library is published and stays
   viewable after this laptop closes, and how many components are still
   being fixed in the background (each lands and publishes on its own);
-- keep listening: take any command that queued up during the import
-  (oldest first), then continue into the next thing setup asked for
-  (a prototype brief), and keep taking the queue.
+- check the local component queue once, then continue only into work the user
+  already requested (such as the prototype brief passed by setup). Otherwise finish.
 
 ## Activity voice
 

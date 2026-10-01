@@ -7,11 +7,11 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { TokenSwatches } from "@/components/TokenSwatches";
 import { TypeSpecimens } from "@/components/TypeSpecimens";
-import { componentView, headingStyle, importInProgress, tokensFor, type Component, type Courier, type Library } from "@/library";
+import { componentView, headingStyle, importInProgress, tokensFor, type Component, type RequestQueue, type Library } from "@/library";
 import { galleryUrl } from "@/route";
 import { usePreviewTheme } from "@/theme";
 
-type Props = { library: Library; courier: Courier };
+type Props = { library: Library; requestQueue: RequestQueue };
 
 // The import's own order: type styles, colours, then the components in
 // the order the import found them, beneath the two things they are made
@@ -23,7 +23,7 @@ type Props = { library: Library; courier: Courier };
 // once the import has read one, and under it the one sentence that says
 // where this came from and when (ImportLine). The site's page around
 // this frame says only where it is served from.
-export function Overview({ library, courier }: Props) {
+export function Overview({ library, requestQueue }: Props) {
   const { manifest } = library;
   const theme = usePreviewTheme();
   const tokens = tokensFor(manifest, theme);
@@ -41,7 +41,7 @@ export function Overview({ library, courier }: Props) {
             >
               {manifest.product?.name ?? "Design system"}
             </h1>
-            {started && <ImportLine library={library} courier={courier} />}
+            {started && <ImportLine library={library} requestQueue={requestQueue} />}
           </div>
           <ThemeToggle manifest={manifest} />
         </header>
@@ -65,7 +65,7 @@ export function Overview({ library, courier }: Props) {
                   component={component}
                   library={library}
                   view={componentView(component, library)}
-                  courier={courier}
+                  requestQueue={requestQueue}
                   justAdded={justAdded.has(component.slug)}
                 />
               ))}

@@ -1,6 +1,6 @@
 {
   "name": "proto",
-  "description": "Proto makes prototypes from your product's own code. This plugin runs on your laptop and is driven by your coding agent: it connects your account, imports your product's design system, builds prototypes, serves them at public addresses, and listens for work sent from the Proto site.",
+  "description": "Proto makes prototypes from your product's own code. This plugin runs on your laptop and is driven by your coding agent: it connects your account, imports your product's design system, builds prototypes and serves them at public addresses from your active conversation. Website actions provide prompts to copy into your coding agent.",
   "author": {
     "name": "Proto Labs"
   },

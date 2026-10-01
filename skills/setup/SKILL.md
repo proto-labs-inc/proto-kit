@@ -6,12 +6,16 @@ description: >-
   laptop-linking code: it links this laptop, finds your codebase folder,
   creates the codebase in Proto, opens your product page in a Proto browser
   window, attaches a configured starter design system or imports the product's
-  real one, and starts the courier. Use when a message starts
+  real one. Work continues in the active conversation. Use when a message starts
   "Set up Proto for", when installing Proto or connecting a new
   codebase, or when other Proto skills find no config.json or codebase.json.
 ---
 
 # Setup
+
+Setup links the laptop and connects its codebase, then prepares the library.
+It never starts a listener, binds a conversation, or waits for website commands.
+Reject old courier-delivery envelopes rather than treating them as new user requests.
 
 Two scopes, both idempotent: the **machine** (once: config.json,
 prerequisites) and a **codebase** (once per codebase being prototyped:
@@ -53,7 +57,7 @@ A `, codebase <id>` suffix on the first line appears when resuming an
 unfinished setup; a new setup has none, and creating the codebase is
 this skill's job (below). A `, codebase <id>, prototype <slug>` suffix
 is the **Edit prompt**, copied from a prototype's Frame by its creator
-when their agent was not listening: see "Editing a prototype" at the
+for their coding agent: see "Editing a prototype" at the
 end. Everything else comes from the embedded document. Run the whole flow
 without re-asking for anything the document already says.
 
@@ -116,8 +120,15 @@ them nothing they already had.
 
 ### Keep the plugin current
 
+For Codex, first read `codex plugin marketplace list --json`. If the selected
+Proto marketplace is local, preserve that source and run only
+`codex plugin add proto@proto-kit`; do not replace it with the document's
+remote source, pull its checkout, or discard its changes. The normal remote
+upgrade command below applies only to a Git marketplace. Resolve the installed
+root from the install result and verify its manifest.
+
 If the Proto plugin is already installed, update it before anything
-else, so setup runs on the latest version, with the document's
+else (using the local-marketplace branch above when applicable), with the document's
 `install.<harness>.update` command for the harness you are running
 in. Two notes the command does not say: Codex has no plugin update,
 so its command re-adds the plugin, which installs the refreshed
@@ -214,7 +225,7 @@ works with nothing else to add. The bridge announces its tools when
 config.json appears; if they still do not show, the user toggles the
 Proto MCP server off and on in Customize. Its tools may appear under a host-specific scoped name; this and the
 other skills refer to them by bare tool name. The kit's plain tools
-(courier, supervisor, publisher) read the same config.json.
+(supervisor, publisher) read the same config.json.
 
 Running from a bare checkout instead, add the same bridge manually in
 Claude Code: `claude mcp add proto -- node <kit>/tools/mcp-stdio.mjs`.
@@ -222,9 +233,10 @@ Never add it as an HTTP server with a fixed `Authorization` header: a
 header written into a harness config pins the connection to one team
 and goes stale the moment that token is revoked.
 
-**On Codex** the server is added at setup time (its plugin config
-can't ship one): `codex mcp add proto -- node
-<kit>/tools/mcp-stdio.mjs`, which writes
+**On Codex**, run `node <kit>/tools/codex-install.mjs` from the installed
+root. It synchronizes the supported roles and MCP bridge and archives only
+recognizable obsolete Proto listener roles. It never starts a service. The
+server entry is
 
 ```toml
 [mcp_servers.proto]
@@ -232,8 +244,8 @@ command = "node"
 args = ["<kit>/tools/mcp-stdio.mjs"]
 ```
 
-Also install the agent roles (Codex plugins don't ship them): copy
-`<kit>/codex-agents/*.toml` into `~/.codex/agents/`.
+Verify synchronization with `node <kit>/tools/codex-install.mjs --check`.
+Do not merely copy a role glob: removed roles would remain installed.
 
 Either way, confirm with the `whoami` tool: it reports the auth
 mode, team, and grants. A connected server whose `whoami` fails means
@@ -244,9 +256,7 @@ the credential is stale: redo the auth step above.
 A codebase is one codebase being prototyped, keyed everywhere by a
 cloud-minted id: `~/.proto/<id>/` on the laptop, and the id in every
 later call. Its display name is separate and renamable; never derive
-a path or slug from it. The codebase is the team's. The courier is
-keyed by the per-laptop `courierId` the cloud mints at courier
-registration (stored in the run dir with the library's `libraryId`).
+a path or slug from it. The codebase is the team's.
 Tunnels are provisioned by target, never by a name you compose: the
 library's by the codebase id. The site chooses and stores every
 address.
@@ -355,7 +365,7 @@ system it extracts."**
 
 Do not scaffold, host, publish, or import a local library before the handoff
 below decides what this codebase needs. The cloud checks whether this member
-has a starter only after the real codebase and courier are ready. If it has
+has a starter after the real codebase is ready. If it has
 none, the handoff runs **import-design-system**, which owns starting the local
 library host.
 
@@ -426,9 +436,9 @@ Proto window step, while the product's live page is open there:
 This concept was called "project", then "product", before
 "codebase". If a home has `project.json` or `product.json`, repair
 it in place: rename the file to `codebase.json` and its `"project"`
-or `"product"` key to `"codebase"` (same for a `courier.json`
-carrying either old key, and a library `manifest.json` with either
-old field). Nothing running is affected: supervisors and run-dir
+or `"product"` key to `"codebase"` (and a library `manifest.json` with either
+old field). Leave retired command-delivery files to the explicit retirement
+utility; do not migrate them into an active run. Nothing running is affected: supervisors and run-dir
 specs never reference these files by those names, so migrate
 without stopping anything.
 
@@ -441,8 +451,6 @@ without stopping anything.
   why confirmation beat validation above).
 - The `whoami` MCP tool answers with the expected team and grants.
 - `cloudflared --version` runs.
-- The courier can start after the codebase exists. Its relay connection and
-  agent-listening state are verified in the handoff below.
 
 Report what you set up, leading with the link `summary`: which member
 and team this laptop now works as, and which teams it already worked in
@@ -453,7 +461,7 @@ skipped because it already existed.
 
 The Edit prompt (`prototype` in the document) means: the creator of
 that prototype wants their agent on it again, and the site assumed no
-session was listening. Only the creator's account can edit a
+session was open. Only the creator's account can edit a
 prototype; the site refuses every other laptop's writes to it in one
 sentence, so a document naming a prototype is always the creator's.
 Do the machine steps above (the link helper keeps a working token; the
@@ -468,21 +476,13 @@ codebase id is in the document), then:
 2. Tell the user, in one line, that you are on "<title>" and ask what
    to change. Wait. Every change follows the create-prototype and
    serve skills as usual (the serve run, registration, publish at
-   checkpoints), and this session keeps listening for the site's
-   commands afterwards (the listen skill).
+   checkpoints). Finish when the requested change is complete.
 
 ## Handoff
 
 Setup ends by continuing, not by stopping (an Edit prompt ends at
 "Editing a prototype" above instead):
 
-0. Start listening before attaching the library. Start `node
-   tools/courier-up.mjs <codebase>` (`--codex` on Codex; it needs only
-   the codebase id, which the steps above just made), then arm the listen
-   skill's watch (its step 1) and keep it armed for the rest of this
-   session. Wait for `courier-up.mjs` to report `local: true`,
-   `relay: "connected"`, and `agentListening: true`. If it does not, remain
-   in setup and repair the courier. Do not continue without all three.
 1. Call `attach_onboarding_library { codebase }`. The call is idempotent. Read
    its `outcome` exactly:
    - `attached` or `already-attached`: the configured starter is published;
@@ -502,12 +502,7 @@ Setup ends by continuing, not by stopping (an Edit prompt ends at
    reference page (`productUrl`), the reference HTML (structure
    hints only: the live page wins) and whether to use real data.
    Registration there uses the laptop token's member as creator.
-3. End by telling the user, plainly: **keep this session open, it's
-   your codebase's agent.** And one more sentence once the starter attachment
-   or normal import has finished: the library is published, so it stays
-   viewable after this laptop closes. This very session (in the terminal, the
-   Claude Code desktop app, the Codex app, or Cursor's chat) is what receives the site's commands,
-   and it has been listening since step 0: carry on with the listen
-   skill's loop. Closing it doesn't lose
-   anything: commands queue in the feed, but nothing runs until a
-   session picks the protocol up again.
+3. Tell the user the library is published and stays viewable after this laptop
+   closes. Finish when their requested work is complete. Website build and edit
+   actions provide prompts to paste into a coding-agent conversation; no open
+   listening session is needed.

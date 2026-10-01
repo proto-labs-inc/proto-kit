@@ -30,6 +30,20 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
 `CURSOR_PLUGIN_ROOT`), otherwise the folder above this skill's
 `skills/` directory. Run every kit tool with the node the kit runs on.
 
+## Website handoffs and resumes
+
+When the user pastes a website work prompt with a `briefId`, read
+`docs/work-handoff.md` first. Fetch the brief with `get_brief`, use its persisted
+`action` and target, and preserve its ID. A variations action belongs to
+`add-variants`, not new-prototype creation. An old courier-delivery envelope
+is not a current work request: ask the user for a current copied prompt.
+
+For an explicit resume of this same brief, verify the codebase, creator,
+prototype slug, and saved build checkpoint agree before reusing its workspace.
+Then continue the same command without `--again`; do not re-create or overwrite
+completed work. The unused-slug rule below applies to new creation, not a
+verified same-brief resume. Missing or contradictory state requires input.
+
 ## The runbook
 
 1. **Brief.** The site or a copied prompt hands you fields: `codebase`,
@@ -54,10 +68,12 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    cannot be checked read-only, stop with `needs-input` rather than risk an
    upsert. Never update, reuse, replace, re-register, restart, republish, or
    otherwise mutate an existing prototype during creation.
-3. **Brief id.** A website brief already has one: use it. Otherwise
-   `begin_prototype_build { codebase, slug, title }` returns it; the
-   gallery shows a loading card from here. `report_progress
-   { briefId, status: "started" }` before any slow work.
+3. **Brief id.** For a website request, call
+   `begin_prototype_build { codebase, slug, title, briefId }` with its existing
+   ID, preserving the website card and action. Otherwise
+   `begin_prototype_build { codebase, slug, title }` returns a new/reused active
+   ID. Report `report_progress { briefId, status: "started" }` when work actually
+   begins, never merely because a prompt was copied.
 4. **Copy the page**, one command. The live URL is the visual source of truth.
    Before opening a browser or tab, inspect readable existing tabs in the
    in-app browser, the user's Chrome, and Proto Chrome on port 9333. Prefer an
@@ -89,6 +105,10 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    `<svg>`, `<canvas>` and stylesheet images) are copied as the page's
    own files and set in as they are, never redrawn; nobody edits one to
    make a check pass.
+   If the command returns `status: "needs-input"`, present its question in this
+   conversation and stop at that checkpoint. Record the answer as described
+   under Blocked, then rerun the same command. Do not advance to serving or
+   composition while the choice is unanswered.
 5. **Serve early.** The dev server the copy used has stopped; start the
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
@@ -98,15 +118,14 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
    copy's gate: the change is written on it when the page differs by at
    most `TAIL.PAGE_PROCEED_PCT` (0.5% of its pixels) and mounted.
    `proto-build.mjs` takes a copy over the gate through it itself: it
-   copies once more after the page settles and, still over, asks the
-   person on the site whether to start building anyway (the copy-gate
-   question, answered there, going with the recommended option after
-   30 seconds), and waits for the answer. Never ask that question
-   yourself, and never as prose in the terminal. Its output's `gate`
-   says what came of it:
+   copies once more after the page settles and, still over, returns a
+   structured `needs-input` question. Present the options, recommendation,
+   copy-quality details, and impact in this conversation. No choice is made
+   by a timer. The checkpoint preserves completed capture and replication.
+   After the recorded answer, its output's `gate` says what came of it:
    - `outcome: "proceed"`: the copy passed; `gate.line` says so in one
      line; relay it to the user as it stands.
-   - `outcome: "build"`: the person (or the default) said start on this
+   - `outcome: "build"`: the person said start on this
      copy; carry on.
    - `outcome: "reply"`: the person wrote what to do instead;
      `gate.instruction` is their words. Follow it as given, as the next
@@ -197,33 +216,33 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
 
 ## Blocked
 
-A decision only the person can make is asked on the site, where the
-build is watched, never as prose in the terminal:
+A required decision is answered in the active coding-agent conversation.
+Create or recover its saved question:
 
 ```
 node tools/build-stream.mjs question <briefId> --codebase <id> --kind generic "<the question>" \
-  --option <id>="<Label>" --option <id>="<Label>" [--option <id>="<Label>"] \
-  [--recommended <id> --default-after <seconds>] [--detail "<what you found>"] [--suggest "<a reply>"]...
+  --option <id>="<Label>" --option <id>="<Label>" [--recommended <id>] [--detail "<what you found>"]
 node tools/build-stream.mjs await-answer <briefId> <questionId> --codebase <id>
 ```
 
-- The question is direct and short (200 characters at most). It has 2
-  or 3 options, each label verb-first and saying what happens next
-  ("Use the list", "Keep both tabs"), 40 characters at most; option
-  ids are lowercase with dashes. Up to 3 suggested replies (80
-  characters each) the person can send with one click.
-- A recommended option with a default (`--default-after`, 5 to 600
-  seconds) only when going on without the person is safe; without
-  one, the build waits for the answer.
-- `question` prints the question id and puts the brief in needs-input;
-  `await-answer` prints one JSON line, `{ "by": "option" | "reply" |
-  "default", "option"?, "text"? }`, and the brief is building again.
-- Act on the answer as given: an option is the path it names; a reply
-  (`by: "reply"`) is an instruction, followed as written.
-- When the person answers in the terminal instead (stop the wait),
-  tell the site with `node tools/build-stream.mjs answered <briefId>
-  <questionId> --codebase <id> --text "<what they said>"` and carry on
-  with their answer.
+Both return promptly with a stable question ID and structured `needs-input`
+while unanswered. Present the returned question and options; wait for the
+user's actual choice. A recommendation is not consent. Required choices have
+no default countdown. Do not poll, start a listener, or create another question
+to replace the same pending one.
+
+Record exactly one option or free-text reply:
+
+```
+node tools/build-stream.mjs answered <briefId> <questionId> --codebase <id> --option <option-id>
+node tools/build-stream.mjs answered <briefId> <questionId> --codebase <id> --text "<what the user said>"
+```
+
+Then resume the original command without `--again`. Questions, answers, and
+copy-gate checkpoints are saved in the build directory. Repeated invocations
+reuse the same state; repeated submitted answers do not apply twice. Follow
+free text as the user's instruction within the original task's scope. The
+website only receives progress saying input is needed in the coding agent.
 
 A failure is `report_progress failed` with one plain sentence.
 
@@ -324,8 +343,8 @@ A brief whose run is `rebuild-section` is a change asked from the
 Frame's element picker: `get_brief` gives the prototype
 (`prototype_slug`), the component (`section`, its `data-proto-id`) and
 the change (`description`, the Frame's full edit prompt, scoped to that
-component and its variant). The Frame has frosted the component over.
-Report `started`, make the change in the prototype's workspace (the
+component and its variant). Report `started` when work begins; only then may
+the Frame mark the component as rebuilding. Then make the change in the prototype's workspace (the
 running dev server shows it as you save), run `check-states.mjs` and,
 for a variant, `previews.mjs`, then `report_progress done`. When the
 prototype came from a streamed build (`parent_brief_id` is set), run

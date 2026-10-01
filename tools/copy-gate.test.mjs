@@ -76,7 +76,7 @@ test("still over after the retry, the person is asked the copy-gate question; bu
   const { ask } = calls[2];
   assert.equal(ask.form, "copy-gate");
   assert.deepEqual(ask.options.map((o) => o.label), ["Not yet, finish it", "Yes, start building"]);
-  assert.equal(ask.defaultAfterSeconds, 30);
+  assert.equal(ask.defaultAfterSeconds, undefined);
   // n2 and n4 matched: 80 000 + 320 000 of 960 000 px.
   assert.equal(ask.copied, 42);
   assert.deepEqual(ask.missing, ["n3", "n1"], "largest first");

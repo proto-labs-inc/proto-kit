@@ -17,10 +17,8 @@ updating it is one command per harness and nothing else. The **runs**
 are what the old version left behind under `~/.proto/`: a run created
 by an older kit keeps the shape it was created with, because nothing
 rewrites a run spec that already exists. The second half is the one
-people feel. A version that adds a process to the courier's run spec
-changes nothing for a laptop that already has a courier until
-something repairs it, and until then the site's commands land in the
-feed and stop there.
+people feel: serving processes keep their old kit paths until the specs
+are repaired. Retired command-delivery runs must never be restarted.
 
 The halves are separable and often used apart. Somebody who pulled the
 kit by hand wants the repair alone: skip to "Repair without updating".
@@ -38,9 +36,9 @@ Read it before and after, so the report can say what moved:
   entry's `version` and `installPath`. The version is the marketplace
   commit this copy came from, because the Claude manifest carries no
   version of its own.
-- **Codex**: `codex plugin list --json -m proto-kit` → `version`. The
-  copy it runs from is
-  `~/.codex/plugins/cache/proto-kit/proto/<version>/`.
+- **Codex**: `codex plugin list --json -m proto-kit` gives the version and
+  source. Resolve the installed root from the installation result and verify
+  its manifest; do not assume a cache path.
 - **Cursor**: a local folder install is a checkout, so
   `git -C ~/.cursor/plugins/local/proto rev-parse --short HEAD`. A
   Customize-panel install has no version to read from a command; say
@@ -58,11 +56,11 @@ in hand, prefer its copy.
   `claude plugin marketplace update proto-kit && claude plugin update proto@proto-kit`.
   The new copy installs beside the old one under a new path; run the
   rest of this skill from the new copy (below).
-- **Codex**:
+- **Codex**: inspect `codex plugin marketplace list --json` first. Preserve a
+  local marketplace and run only `codex plugin add proto@proto-kit`; never pull
+  or replace that checkout. For a Git marketplace, run
   `codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit`.
-  Codex has no plugin update command: `upgrade` refreshes the
-  marketplace snapshot and `add` installs that refreshed snapshot over
-  the installed one. It is not a workaround, it is how Codex installs.
+  Resolve the actual installed root from the result.
 - **Cursor**: there is no update command at all, and which half of the
   sentence applies depends on how the plugin was installed. A **local
   folder**: `git -C ~/.cursor/plugins/local/proto pull --ff-only`. A
@@ -81,6 +79,24 @@ setup skill instead, which installs it.
 the setup skill does: the text you are following is the old version's,
 and the repair below is defined by the new one. Find the new copy with
 the version commands above, and run the repair from it.
+
+## Retire legacy command delivery
+
+All agents now run work in the active conversation. There is no listen skill,
+experimental feature flag, or automatic website delivery.
+
+Run `node <kit>/tools/retire-legacy-runs.mjs` for a read-only inventory. It is
+not serving repair. If obsolete runs exist, report the exact proposed targets
+and pass those explicit run-directory targets with `--apply` only when the
+user authorized retiring them. Applying without named targets is refused. Never replay
+queued commands. Uncertain process identity must be resolved, not guessed;
+interactive agent sessions and serving runs are excluded. Report the archive
+location and any blocked targets. Do not run retirement merely because a
+library is missing or a build needs a reply.
+
+On Codex, run `node <kit>/tools/codex-install.mjs` from the installed root to
+synchronize the MCP path and supported roles and archive the obsolete kit-owned
+listener role. Verify with `--check`; unrelated/custom roles are preserved.
 
 ## Move prototypes onto the rig from npm
 
@@ -116,26 +132,17 @@ node <kit>/tools/repair-runs.mjs --restart
 ```
 
 It reads every run dir under `~/.proto/<codebase>/run/` and brings it
-to this version: a courier missing the Codex wake, a courier still
-running a tunnel (it removes it, because the site's commands arrive
-through the relay now), a spec still pointing at a copy of the kit the
-update replaced. It never provisions a tunnel, never registers
-anything, and never invents a process it has no token for. Running it
-twice changes nothing the second time.
+to this version: serving specs still pointing at a replaced kit, or carrying
+obsolete package environment. It never provisions a tunnel or registers a
+service. Legacy command-delivery runs are skipped and cannot be revived.
+Running it twice changes nothing the second time.
 
 `--restart` restarts every run that is up and whose spec changed, so
 it picks up the new version straight away: a process this version
 needs starts, and processes still running the replaced copy of the
 kit come back on the new one. A run that is stopped stays stopped and
-takes the change when it next starts. Restart without asking, and
-don't list the restarts for the user.
-
-If it says a courier's own files don't say which agent it belongs to,
-run it again with `--harness claude`, `--harness codex` or
-`--harness cursor` for the agent you are running in. It reads the
-harness per courier, not per laptop, because one laptop can hold a
-Codex courier for one codebase and a Claude Code courier for another;
-the flag only answers for the ones nothing else does.
+takes the change when it next starts. Perform only the requested scope of repair, and report any serving runs
+restarted. A source-only update or migration review does not authorize restarts.
 
 ## Repair without updating
 

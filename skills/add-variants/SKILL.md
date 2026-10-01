@@ -5,6 +5,12 @@ description: Add one or more new variants to an existing variant set in a Proto 
 
 # Add variants
 
+For a website brief, read `docs/work-handoff.md`, fetch it with `get_brief`,
+verify its `add-variants` action and existing target, and preserve its ID. Report
+`started` only when work begins, and `done` only after verification and publish.
+An explicit resume continues the same brief and target, without adding the
+same variants twice. Questions are answered in the active conversation.
+
 Work only in the existing prototype workspace and variant set named by the
 request. This is an incremental edit: do not scaffold a prototype, run
 create-prototype or the full serve workflow, provision or restart a tunnel,

@@ -60,12 +60,12 @@ export function App() {
     );
   }
   if (route.page === "component") {
-    return <ComponentPage slug={route.slug} state={route.state} library={load.library} courier={load.courier} />;
+    return <ComponentPage slug={route.slug} state={route.state} library={load.library} requestQueue={load.requestQueue} />;
   }
   if (route.page === "render") {
     return <RenderPage slug={route.slug} state={route.state} placement={route.placement} library={load.library} />;
   }
-  return <Overview library={load.library} courier={load.courier} />;
+  return <Overview library={load.library} requestQueue={load.requestQueue} />;
 }
 
 /**
