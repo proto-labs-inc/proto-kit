@@ -44,3 +44,17 @@ test("a packed file is the original, gzipped, with only credentials changed", as
   const packed = await gzipTo({ name: "proto/in.log.gz", path: join(dir, "in.log") }, dir, ["plt_0123456789abcdef"]);
   assert.equal(gunzipSync(readFileSync(packed.gz)).toString(), body.replace("plt_0123456789abcdef", "[redacted:proto-secret]"));
 });
+
+test("characters split across read chunks arrive intact", async () => {
+  const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+  const { gunzipSync } = await import("node:zlib");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { gzipTo } = await import("./debug-report.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "debug-report-test-"));
+  // 65535 ASCII bytes, so the 3-byte "—" straddles the 64 KiB read boundary.
+  const body = `${"a".repeat(65_535)}— and 🙂 ${"b".repeat(70_000)}\n`;
+  writeFileSync(join(dir, "in.jsonl"), body);
+  const packed = await gzipTo({ name: "in.jsonl.gz", path: join(dir, "in.jsonl") }, dir, []);
+  assert.equal(gunzipSync(readFileSync(packed.gz)).toString(), body);
+});

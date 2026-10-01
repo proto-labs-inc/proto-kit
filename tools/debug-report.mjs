@@ -40,6 +40,7 @@ import { request } from "node:https";
 import { homedir, platform, release, tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { Transform } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
@@ -324,10 +325,13 @@ export function redact(text, secrets) {
 
 /** Redact line by line, so a secret is never split across two chunks. */
 function redactor(secrets) {
+  // One decoder across chunks, so a character split between two reads is
+  // joined rather than replaced.
+  const decoder = new StringDecoder("utf8");
   let carry = "";
   return new Transform({
     transform(chunk, _encoding, done) {
-      const text = carry + chunk.toString("utf8");
+      const text = carry + decoder.write(chunk);
       const end = text.lastIndexOf("\n");
       if (end === -1) {
         carry = text;
@@ -337,7 +341,8 @@ function redactor(secrets) {
       done(null, redact(text.slice(0, end + 1), secrets));
     },
     flush(done) {
-      done(null, carry ? redact(carry, secrets) : undefined);
+      const rest = carry + decoder.end();
+      done(null, rest ? redact(rest, secrets) : undefined);
     },
   });
 }
