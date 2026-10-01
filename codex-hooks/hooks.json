@@ -6,6 +6,10 @@
           {
             "type": "command",
             "command": "node \"$PLUGIN_ROOT/tools/health.mjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/tools/hooks/telemetry-start.mjs\""
           }
         ]
       }
