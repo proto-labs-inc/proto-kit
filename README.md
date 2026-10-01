@@ -41,7 +41,7 @@ Cursor; the core stays harness-neutral.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
 - `publish-library/`: publish the library on demand.
 - `update/`: update the plugin, then repair what the update leaves stale.
-- `debug/`: with the user's yes, send Proto this session's transcripts and logs (Claude Code, Codex).
+- `debug/`: send Proto a debug report now, with a headline; the agent uses it on its own too.
 
 ### tools/
 
@@ -74,7 +74,7 @@ Serving and publishing:
 - `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
 - `heartbeat.mjs`: the beat loop those share.
 - `health.mjs`: the session-start check, one line per codebase.
-- `debug-report.mjs`: find this session's transcripts, redact credentials, upload a debug report.
+- `debug-report.mjs`: session snapshots to Proto: `send` now, `watch` every ten minutes in the background.
 - `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 - `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
