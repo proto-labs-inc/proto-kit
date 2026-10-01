@@ -134,9 +134,8 @@ const courier = JSON.parse(readFileSync(courierPath, "utf8"));
 const ask = async (url) => {
   try {
     const res = await fetch(url, {
-      method: "POST",
-      headers: { authorization: `Bearer ${courier.secret}`, "content-type": "application/json" },
-      body: JSON.stringify({ status: true }),
+      method: "GET",
+      headers: { authorization: `Bearer ${courier.secret}` },
       signal: AbortSignal.timeout(4000),
     });
     return res.ok ? await res.json() : null;
@@ -147,7 +146,7 @@ const ask = async (url) => {
 const askLocal = async () => {
   let answer = null;
   for (let i = 0; i < 20 && !answer; i++) {
-    answer = await ask(`http://127.0.0.1:${courier.port}`);
+    answer = await ask(`http://127.0.0.1:${courier.port}/health`);
     if (!answer) await new Promise((r) => setTimeout(r, 250));
   }
   return answer;
@@ -160,13 +159,12 @@ if (local && local.relay === undefined && !restarted) {
   if (restartRun(dir, kit)) local = await askLocal();
 }
 // The relay state comes from the local answer: the courier is the one
-// holding the connection, so it is the one that knows. Every ask is a
-// status command in the feed, so a listener that still answers without
-// a relay is asked once and not twenty times.
+// holding the connection, so it is the one that knows. GET /health is
+// read-only, so polling here never appends a command or wakes an agent.
 let relay = local?.relay ?? "none";
 for (let i = 0; local?.relay !== undefined && i < 20 && relay !== "connected" && relay !== "unsupported"; i++) {
   await new Promise((r) => setTimeout(r, 500));
-  relay = (await ask(`http://127.0.0.1:${courier.port}`))?.relay ?? relay;
+  relay = (await ask(`http://127.0.0.1:${courier.port}/health`))?.relay ?? relay;
 }
 if (relay === "unsupported") {
   const node = readJson(specPath)?.processes?.find((p) => p.name === "listener")?.command?.[0] ?? "node";

@@ -105,8 +105,14 @@ export async function handle(cmd) {
   return { status: 202, body: { ok: true, id: entry.id } };
 }
 
-serveHttp({ port: config.port, secret: config.secret, handle }, () =>
-  console.log(`courier listener for ${config.codebase} on 127.0.0.1:${config.port}`),
+serveHttp(
+  {
+    port: config.port,
+    secret: config.secret,
+    handle,
+    health: async () => ({ ok: true, ...agentState(), relay: connection?.state() ?? "none" }),
+  },
+  () => console.log(`courier listener for ${config.codebase} on 127.0.0.1:${config.port}`),
 );
 
 // The relay: where the site's commands arrive. The connection is also
