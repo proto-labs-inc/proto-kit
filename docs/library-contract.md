@@ -236,13 +236,13 @@ The app adds a request when the user presses "Queue it" on a skipped
 component, and takes it out again when the user cancels before anything
 has picked it up. The slug `*` is a request to import everything again,
 added by the page's "Import again". The app sends both through one
-transport module (`src/courier.ts`); today that is a POST to
+local component-request module (`src/queue-client.ts`), a POST to
 `queue.json` on the dev server of `{ "action": "add" | "remove", "slug":
-"…" }`, which the site's courier replaces later (MAA-173). A published
+"…" }`. It does not wake a coding agent or send remote commands. A published
 build has no server behind it, so there the request fails and the app
 says only the live library can ask.
 
-A running import polls the file with `take-queued`, which, for the
+An active import checks the file finitely with `take-queued`, which, for the
 first request it can act on, removes the request from `requests` and
 prints the slug: for a component's slug it sets the component's `status`
 to `queued` and clears `completedAt`; the import then extracts it like
@@ -394,8 +394,9 @@ experience:
    instead, for the finish). The writer's lock is untouched, so a
    unit's own lines stay instant while a build runs.
 7. Finish by running `complete`, which sets `completedAt` and appends
-   the coverage line, and publishing once more. Then watch `queue.json`
-   for as long as the session lasts.
+   the coverage line, and publishing once more. Check local `queue.json` after
+   each landing and at the finish, without a persistent watch. Later requests
+   are handled when the user resumes import work in their conversation.
 
 ## What the app tolerates
 

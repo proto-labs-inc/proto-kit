@@ -4,7 +4,7 @@
  * while an import is under way.
  */
 import { useCallback, useEffect, useState } from "react";
-import { EVERYTHING, ask, withdraw, type SendOutcome } from "./courier";
+import { EVERYTHING, ask, withdraw, type SendOutcome } from "./queue-client";
 
 export type TokenRole = "surface" | "text";
 export type Token = { name: string; value: string; group: string; role?: TokenRole };
@@ -111,7 +111,7 @@ export type Library = {
 };
 
 /** What the pages can ask the import for; each call re-reads the library afterwards. */
-export type Courier = {
+export type RequestQueue = {
   ask: (slug: string) => Promise<SendOutcome>;
   withdraw: (slug: string) => Promise<SendOutcome>;
 };
@@ -119,7 +119,7 @@ export type Courier = {
 export type LibraryLoad =
   | { phase: "loading" }
   | { phase: "unreachable" }
-  | { phase: "ready"; library: Library; courier: Courier };
+  | { phase: "ready"; library: Library; requestQueue: RequestQueue };
 
 const POLL_MS = 1000;
 
@@ -237,7 +237,7 @@ export function useLibrary(): LibraryLoad {
     return () => clearTimeout(timer);
   }, [load, read]);
 
-  const courier = useCallback(
+  const requestQueue = useCallback(
     (send: (slug: string) => Promise<SendOutcome>) => async (slug: string) => {
       const outcome = await send(slug);
       if (outcome === "sent") await read();
@@ -246,7 +246,7 @@ export function useLibrary(): LibraryLoad {
     [read],
   );
 
-  if (load.kind === "ready") return { phase: "ready", library: load.library, courier: { ask: courier(ask), withdraw: courier(withdraw) } };
+  if (load.kind === "ready") return { phase: "ready", library: load.library, requestQueue: { ask: requestQueue(ask), withdraw: requestQueue(withdraw) } };
   if (load.kind === "unreachable") return { phase: "unreachable" };
   return { phase: "loading" };
 }

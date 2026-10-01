@@ -25,8 +25,8 @@
  *
  * Which session `send` belongs to: the skill puts a token it made up on
  * its command line, that command lands in this session's transcript on
- * disk, and the one transcript holding it is this session (the same
- * trick as codex-thread.mjs). If none does (Cursor, for now), the
+ * disk, and the one transcript holding it is this session (using the read-only
+ * transcript helper). If none does (Cursor, for now), the
  * snapshot goes without a transcript rather than not at all.
  *
  *   Claude Code  $CLAUDE_CONFIG_DIR/projects/<project>/<session>.jsonl, and
@@ -65,7 +65,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
-import { rolloutsHolding, CODEX_HOME } from "./codex-thread.mjs";
+import { rolloutsHolding, CODEX_HOME } from "./codex-transcripts.mjs";
 import { callTool, CONFIG_PATH } from "./mcp-call.mjs";
 
 const CLAUDE_PROJECTS = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");

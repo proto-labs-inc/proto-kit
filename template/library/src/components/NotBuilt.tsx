@@ -1,8 +1,8 @@
 import { CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { skipHeading, type Component, type ComponentView, type Courier } from "@/library";
-import type { SendOutcome } from "@/courier";
+import { skipHeading, type Component, type ComponentView, type RequestQueue } from "@/library";
+import type { SendOutcome } from "@/queue-client";
 
 /** Where a request to build stands: not made, on its way, or how it came back. */
 export type Ask = "idle" | "asking" | SendOutcome;
@@ -10,7 +10,7 @@ export type Ask = "idle" | "asking" | SendOutcome;
 type Props = {
   component: Component;
   view: Exclude<ComponentView, { kind: "preview" }>;
-  courier: Courier;
+  requestQueue: RequestQueue;
   ask: Ask;
   onAsk: () => void;
   onWithdraw: () => void;

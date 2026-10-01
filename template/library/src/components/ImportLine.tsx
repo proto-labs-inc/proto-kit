@@ -2,12 +2,12 @@ import { useState } from "react";
 import { ArrowUpRightIcon, ClockIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { EVERYTHING, type SendOutcome } from "@/courier";
-import { importRequested, type Courier, type Library, type Manifest, type Product } from "@/library";
+import { EVERYTHING, type SendOutcome } from "@/queue-client";
+import { importRequested, type RequestQueue, type Library, type Manifest, type Product } from "@/library";
 import { servingCopy } from "@/route";
 import { ago, elapsed, local } from "@/time";
 
-type Props = { library: Library; courier: Courier };
+type Props = { library: Library; requestQueue: RequestQueue };
 
 /**
  * The one sentence under the product's name, read the way a source
@@ -18,14 +18,14 @@ type Props = { library: Library; courier: Courier };
  * card with its address, the exact moment and how long it took, so the
  * header itself stays a name and a sentence.
  */
-export function ImportLine({ library, courier }: Props) {
+export function ImportLine({ library, requestQueue }: Props) {
   const { manifest } = library;
   if (manifest.product === null) return null;
   return (
     <p className="m-0 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
       <When manifest={manifest} />
       <PageSource product={manifest.product} manifest={manifest} />
-      <Again library={library} courier={courier} />
+      <Again library={library} requestQueue={requestQueue} />
     </p>
   );
 }
@@ -102,10 +102,10 @@ type Ask = "idle" | "asking" | SendOutcome;
  * Once asked and not yet taken, the sentence carries the request and
  * the way out of it.
  */
-function Again({ library, courier }: Props) {
+function Again({ library, requestQueue }: Props) {
   const [ask, setAsk] = useState<Ask>("idle");
   const { manifest, requests } = library;
-  const send = async (call: Courier["ask"]) => {
+  const send = async (call: RequestQueue["ask"]) => {
     setAsk("asking");
     setAsk(await call(EVERYTHING));
   };
@@ -119,7 +119,7 @@ function Again({ library, courier }: Props) {
           Importing again next time your agent runs
         </span>
         <Dot />
-        <Action onClick={() => send(courier.withdraw)} busy={ask === "asking"}>
+        <Action onClick={() => send(requestQueue.withdraw)} busy={ask === "asking"}>
           Cancel
         </Action>
       </>
@@ -128,7 +128,7 @@ function Again({ library, courier }: Props) {
   return (
     <>
       <Dot />
-      <Action onClick={() => send(courier.ask)} busy={ask === "asking"}>
+      <Action onClick={() => send(requestQueue.ask)} busy={ask === "asking"}>
         <RotateCwIcon className="size-3.5 shrink-0" />
         Import again
       </Action>

@@ -16,10 +16,7 @@
  *      another surface's colour, an element that is gone);
  *   4. diminishing returns: two passes in a row each cut the mismatch
  *      by under a fifth, or a pass made it worse;
- *   5. the unit's budget: three checks or two minutes;
- *   6. someone is waiting: a site command is queued (one being handled
- *      right now is not queued: `handling` marks it; nor is an answer
- *      to a build's question, which its build takes).
+ *   5. the unit's budget: three checks or two minutes.
  * And a phase (the import's tail, a build's copy) is weighed as a
  * whole from two minutes in: P(t), the matched share of the work by
  * weight, sampled at every check pass; every thirty seconds the gain
@@ -43,13 +40,8 @@
  *       the phase's decision now, at once. One JSON line on stdout:
  *       { action: continue|move-on|done, line, matched, total, P,
  *       gain, eta }; the line is for the user as it stands.
- *   node tools/tail.mjs waiting <codebase>
- *       whether a site command is queued for this codebase (rule 6).
- *   node tools/tail.mjs handling <codebase> <offset>
- *       the feed line ending at <offset> is being handled now: it is
- *       not waiting (the listen skill runs this before acting).
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -152,62 +144,6 @@ export function unitBudget({ checks, startedAt, now = Date.now() }) {
   return { stop: false, reason: null };
 }
 
-/** Where the listen skill records the feed line it is acting on: { offset } like offset.json. */
-export function handlingFile(codebase) {
-  return join(process.env.HOME ?? "", ".proto", codebase, "run", "courier", "handling.json");
-}
-
-/**
- * Rule 6: whether a site command is queued for this codebase: the
- * courier's feed holds a line past the committed offset and past the
- * line being handled. The listen skill commits the offset only after
- * acting on a line, so the command whose work this is stays in the
- * feed the whole time; without the handling mark it counted as
- * waiting on itself, and a build said a site command was waiting
- * about its own brief.
- */
-export function waiting(codebase) {
-  const run = join(process.env.HOME ?? "", ".proto", codebase, "run", "courier");
-  const feed = join(run, "commands.jsonl");
-  if (!existsSync(feed)) return { waiting: false, what: null };
-  const offsetIn = (file) => {
-    try {
-      const value = JSON.parse(readFileSync(file, "utf8")).offset;
-      return Number.isFinite(value) ? value : 0;
-    } catch {
-      return 0;
-    }
-  };
-  // Nothing committed yet: everything in the feed waits, except the line in hand.
-  const offset = Math.max(offsetIn(join(run, "offset.json")), offsetIn(handlingFile(codebase)));
-  const size = statSync(feed).size;
-  if (size <= offset) return { waiting: false, what: null };
-  // An answer to a build's question is never work waiting: its build
-  // takes it, or the listen skill drops it.
-  const pending = readFileSync(feed, "utf8")
-    .slice(offset)
-    .split("\n")
-    .filter(Boolean)
-    .filter((line) => !isAnswer(line));
-  if (pending.length === 0) return { waiting: false, what: null };
-  let what = "a site command";
-  try {
-    const command = JSON.parse(pending[0]);
-    if (command.run) what = `${/^[aeiou]/i.test(command.run) ? "an" : "a"} ${command.run} command from the site`;
-  } catch {
-    // An unreadable line still waits.
-  }
-  return { waiting: true, what, count: pending.length };
-}
-
-function isAnswer(line) {
-  try {
-    return JSON.parse(line).run === "answer";
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The matched share of a phase's work by weight at a moment: an item
  * counts once every state it has been checked in is accepted in its
@@ -240,8 +176,8 @@ export function progressAt(records, at) {
 }
 
 /**
- * The phase's decision now. Before the checkpoint only rule 6 decides;
- * from it, the last two windows' gains forecast the next.
+ * The phase's decision now, based only on local copy-quality measurements.
+ * From the checkpoint, the last two windows' gains forecast the next.
  */
 export function decide(records, codebase, now = Date.now()) {
   const here = progressAt(records, now);
@@ -249,8 +185,6 @@ export function decide(records, codebase, now = Date.now()) {
   const rest = here.total - here.matched;
   const of = `${here.matched} of ${here.total} matched`;
   if (rest === 0) return { action: "done", line: `Done: ${of}.`, ...numbers(here) };
-  const queued = waiting(codebase);
-  if (queued.waiting) return { action: "move-on", line: `Moving on: ${of}; ${queued.what} is waiting. The rest keeps going in the background.`, ...numbers(here), rule: "waiting" };
   const elapsed = now - here.phaseAt;
   if (elapsed < TAIL.CHECKPOINT_MS) return { action: "continue", line: `Fixing in the background: ${of}; nothing waits on the rest.`, ...numbers(here) };
   const before = progressAt(records, now - TAIL.WINDOW_MS);
@@ -304,25 +238,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       i += 1;
     } else positional.push(args[i]);
   }
-  const [command, codebase, offsetArg] = positional;
+  const [command, codebase] = positional;
   const usage = () => {
-    console.error("usage: node tools/tail.mjs decide <codebase> [--build <briefId>] | waiting <codebase> | handling <codebase> <offset>");
+    console.error("usage: node tools/tail.mjs decide <codebase> [--build <briefId>]");
     process.exit(1);
   };
   if (!command || !codebase) usage();
-  if (command === "waiting") {
-    console.log(JSON.stringify(waiting(codebase)));
-    process.exit(0);
-  }
-  if (command === "handling") {
-    const offset = Number(offsetArg);
-    if (!Number.isInteger(offset) || offset < 0) usage();
-    const file = handlingFile(codebase);
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify({ offset, at: new Date().toISOString() }) + "\n");
-    console.log(JSON.stringify({ handling: offset }));
-    process.exit(0);
-  }
   if (command !== "decide") usage();
   if ("wait" in options) console.error("tail.mjs decide no longer waits: the gate is reported at once and the tail runs in the background; printing the decision now");
   const file = tailFile(codebase, options.build ?? null);

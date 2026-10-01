@@ -1,7 +1,6 @@
 /**
  * The beat loop of prototype-heartbeat.mjs (a prototype's or the
- * library's serving run; the courier's heartbeat is its relay
- * connection, courier-relay.mjs). Every beat is one call of the app's
+ * library's serving run). Every beat is one call of the app's
  * `heartbeat` tool with a target that says what is being served:
  * { kind: "prototype", codebase, slug } or { kind: "library",
  * codebase }; the identity comes from ~/.proto/config.json's laptop token. The app owns the cadence:

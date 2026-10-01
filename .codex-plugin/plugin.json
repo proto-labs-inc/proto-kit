@@ -1,6 +1,6 @@
 {
   "name": "proto",
-  "version": "0.1.0+codex.20261001162931",
+  "version": "0.1.0+codex.20261001194951",
   "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs, driven by your coding agent.",
   "author": {
     "name": "Proto Labs"
@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "Proto",
     "shortDescription": "Prototypes from your product's own code",
-    "longDescription": "Proto makes prototypes from your product's own codebase. This plugin runs on your laptop and is driven by your coding agent: it connects your account, imports your product's design system, builds prototypes, serves them at public URLs, and listens for work sent from the Proto site.",
+    "longDescription": "Proto makes prototypes from your product's own codebase. This plugin runs on your laptop and is driven by your coding agent: it connects your account, imports your product's design system, builds prototypes and serves them at public URLs from your active conversation. Website actions provide prompts to copy into your coding agent.",
     "developerName": "Proto Labs",
     "category": "Engineering",
     "capabilities": [

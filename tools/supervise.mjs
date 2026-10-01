@@ -22,6 +22,7 @@
 import { spawn } from "node:child_process";
 import { openSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { isLegacyCourierRun } from "./legacy-runs.mjs";
 
 const [command, dirArg] = process.argv.slice(2);
 if (!command || !dirArg) {
@@ -30,6 +31,10 @@ if (!command || !dirArg) {
 }
 const dir = resolve(dirArg);
 const statePath = join(dir, "state.json");
+if (["start", "daemon", "stop"].includes(command) && isLegacyCourierRun(dir)) {
+  console.error("This is a retired courier run. It cannot be started or repaired. Preview safe retirement with retire-legacy-runs.mjs.");
+  process.exit(1);
+}
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const readState = () => {
