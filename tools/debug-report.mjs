@@ -85,8 +85,8 @@ const PARALLEL_UPLOADS = 4;
 const UPLOAD_ATTEMPTS = 3;
 
 /** What under ~/.proto is not worth sending: dependencies, build output,
- *  caches, git internals and the browser profile. */
-const SKIP_DIRS = new Set(["node_modules", ".git", "chrome", "dist", ".vite", ".next", ".turbo", ".cache", ".pnpm-store"]);
+ *  caches, git internals and the browser profiles. */
+const SKIP_DIRS = new Set(["node_modules", ".git", "chrome", "chrome-headless", "dist", ".vite", ".next", ".turbo", ".cache", ".pnpm-store"]);
 
 // ---------------------------------------------------------------------
 // Which session
