@@ -178,7 +178,7 @@ if (tailwind) {
     if (source.includes("@tailwindcss/vite")) return source;
     return source
       .replace('import react from "@vitejs/plugin-react";', 'import react from "@vitejs/plugin-react";\nimport tailwindcss from "@tailwindcss/vite";')
-      .replace("plugins: [react()],", "plugins: [react(), tailwindcss()],");
+      .replace("plugins: [react(), publicAssets()],", "plugins: [react(), tailwindcss(), publicAssets()],");
   });
 }
 
