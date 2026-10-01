@@ -16,6 +16,15 @@ plugin root exposed by the host (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, or
 `CURSOR_PLUGIN_ROOT`); otherwise use the root above this skill's `skills/`
 directory, which is also the proto-kit checkout root.
 
+## Authorization
+
+Invoking this skill from an explicit request to put a prototype online, or
+from the create-prototype runbook, already authorizes registration, tunnel
+provisioning, starting the supervised public endpoint, and uploading the
+permanent snapshot. Do not ask for a second permission for those expected
+steps. A host- or tool-enforced confirmation still applies and must be
+presented when the action reaches that boundary.
+
 ## Start
 
 1. **Register the prototype** first: `register_prototype { codebase,

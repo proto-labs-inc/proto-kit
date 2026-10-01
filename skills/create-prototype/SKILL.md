@@ -11,6 +11,20 @@ the brief's change built on top of it: a standalone Vite app in
 invisible package that syncs state to the URL and speaks to the Frame).
 The tools copy the page; you write only the change.
 
+## Authorization
+
+A request to create or build a prototype authorizes this runbook end to
+end, including registering the new prototype, provisioning its public
+address, starting its tunnel, and uploading its permanent snapshot. These
+are expected completion steps, not a separate expansion of scope. Do not
+ask the user for an additional permission merely to serve or publish the
+prototype created by the request.
+
+This does not bypass a confirmation that the host or a tool itself requires.
+When such a confirmation is mandatory, present that exact confirmation at
+the action boundary and resume the same build after it is approved; do not
+turn it into a separate design decision or an open-ended Proto question.
+
 All `tools/…` paths resolve from the kit root: the installed plugin
 root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
 `CURSOR_PLUGIN_ROOT`), otherwise the folder above this skill's
