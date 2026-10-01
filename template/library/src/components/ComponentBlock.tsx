@@ -2,9 +2,9 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { ArrowRightIcon, ExternalLinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { rebuiltNote, type Component, type ComponentView, type Courier, type Library } from "@/library";
+import { rebuiltNote, type Component, type ComponentView, type RequestQueue, type Library } from "@/library";
 import { href } from "@/route";
-import type { SendOutcome } from "@/courier";
+import type { SendOutcome } from "@/queue-client";
 import { CheckStrip } from "./Checks";
 import { NotBuilt } from "./NotBuilt";
 import { Fit } from "./Fit";
@@ -16,7 +16,7 @@ type Props = {
   component: Component;
   library: Library;
   view: ComponentView;
-  courier: Courier;
+  requestQueue: RequestQueue;
   justAdded: boolean;
 };
 
@@ -35,10 +35,10 @@ type Ask = "idle" | "asking" | SendOutcome;
  * its frame and the latest check shows as it lands; once built, the
  * picture develops into the real thing.
  */
-export function ComponentBlock({ component, library, view, courier, justAdded }: Props) {
+export function ComponentBlock({ component, library, view, requestQueue, justAdded }: Props) {
   const [comparing, setComparing] = useState(false);
   const [ask, setAsk] = useState<Ask>("idle");
-  const send = async (call: Courier["ask"]) => {
+  const send = async (call: RequestQueue["ask"]) => {
     setAsk("asking");
     setAsk(await call(component.slug));
   };
@@ -90,7 +90,7 @@ export function ComponentBlock({ component, library, view, courier, justAdded }:
           <Button
             size="sm"
             className="absolute right-3 bottom-3 opacity-0 shadow-md transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-            onClick={() => send(courier.ask)}
+            onClick={() => send(requestQueue.ask)}
             disabled={ask === "asking"}
           >
             Build it
@@ -105,7 +105,7 @@ export function ComponentBlock({ component, library, view, courier, justAdded }:
           <span className="text-xs text-muted-foreground">In the product</span>
         </div>
       )}
-      {view.kind !== "preview" && <NotBuilt component={component} view={view} courier={courier} ask={ask} onAsk={() => send(courier.ask)} onWithdraw={() => send(courier.withdraw)} />}
+      {view.kind !== "preview" && <NotBuilt component={component} view={view} requestQueue={requestQueue} ask={ask} onAsk={() => send(requestQueue.ask)} onWithdraw={() => send(requestQueue.withdraw)} />}
     </section>
   );
 }

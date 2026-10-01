@@ -5,7 +5,7 @@
  * exactly what happened. Only ever run by the debug skill, and `send`
  * only after the user has said yes.
  *
- * Which session is this? The same trick as codex-thread.mjs: the skill
+ * Which session is this? The read-only transcript helper finds the token the skill
  * puts a token it made up on the command line, that command lands in
  * this session's transcript on disk, and exactly one transcript holds
  * it. Zero matches or two are an error, never a guess. Claude Code and
@@ -44,7 +44,7 @@ import { StringDecoder } from "node:string_decoder";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
-import { rolloutsHolding, CODEX_HOME } from "./codex-thread.mjs";
+import { rolloutsHolding, CODEX_HOME } from "./codex-transcripts.mjs";
 import { callTool, CONFIG_PATH } from "./mcp-call.mjs";
 
 const CLAUDE_PROJECTS = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");

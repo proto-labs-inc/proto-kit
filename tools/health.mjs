@@ -2,8 +2,8 @@
 /**
  * Read-only health check across ~/.proto — the proto plugin's
  * session-start hook. First, which kit this session runs and which site
- * it talks to; then one line per codebase: what's serving and whether
- * the courier is listening, with the one command that fixes it when
+ * it talks to; then one line per codebase with serving health and its
+ * recovery command when
  * something's down. Never restarts anything, never errors: a machine
  * with no ~/.proto prints nothing and exits 0.
  */
@@ -12,6 +12,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConfig } from "./mcp-call.mjs";
+import { isLegacyCourierRun } from "./legacy-runs.mjs";
 
 const root = join(process.env.HOME ?? "", ".proto");
 const alive = (pid) => {
@@ -67,17 +68,15 @@ for (const codebase of codebases) {
 
   let servingUp = 0;
   let servingTotal = 0;
-  let courier = "absent"; // "absent" (no courier run dir) | "listening" | "offline"
   for (const dir of runDirs) {
+    if (isLegacyCourierRun(join(runRoot, dir.name))) continue;
     const state = readJson(join(runRoot, dir.name, "state.json"));
     const up =
       state !== null &&
       alive(state.pid) &&
       Object.values(state.processes).every((p) => alive(p.pid));
-    if (dir.name === "courier") {
-      if (up) courier = "listening";
-      else courier = "offline";
-    } else {
+    servingTotal += 1;
+    if (up) servingUp += 1; else {
       servingTotal += 1;
       if (up) servingUp += 1;
     }
@@ -88,10 +87,8 @@ for (const codebase of codebases) {
     if (servingUp === servingTotal) parts.push("serving");
     else parts.push(`${servingUp}/${servingTotal} serving`);
   }
-  if (courier === "listening") parts.push("courier listening");
-  if (courier === "offline") parts.push("courier offline");
   const allGood =
-    (servingTotal === 0 || servingUp === servingTotal) && courier !== "offline";
+    servingTotal === 0 || servingUp === servingTotal;
   let line = `${codebase.name}: ${parts.join(", ")}`;
   if (!allGood) line += ": run /proto:serve to bring it back";
   console.log(line);

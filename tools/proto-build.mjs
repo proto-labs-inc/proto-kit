@@ -29,9 +29,9 @@
  *              A copy over its gate (the page differs by more than
  *              TAIL.PAGE_PROCEED_PCT, or did not mount) is copied once
  *              more after the page settles; still over, the person is
- *              asked on the site whether to start building anyway, and
- *              the command waits for the answer (30 seconds, then the
- *              recommended option).
+ *              asked whether to start building anyway. The command
+ *              returns needs-input immediately; record the chat answer
+ *              with build-stream answered, then rerun without --again.
  *
  * Then it sends `phase composing` and prints parts.json: one JSON
  * line with the workspace, every part (its node id, name, marker, the
@@ -148,13 +148,21 @@ const workspace = run("scaffold.mjs", [options.slug, "--codebase", codebase, "--
 // ---- replicate ----
 const replicate = () => run("replicate.mjs", [briefId, "--codebase", codebase, "--lanes", options.lanes, "--port", options.port, ...(options["keep-dev"] ? ["--keep-dev"] : [])], { json: true });
 let replicated;
-if (existsSync(at("parts.json")) && !options.again) {
+const checkpointPath = at("copy-gate.json");
+let checkpoint = !options.again && existsSync(checkpointPath) ? JSON.parse(readFileSync(checkpointPath, "utf8")) : null;
+if (checkpoint) {
+  say("replicate: resuming the saved copy-gate checkpoint");
+  replicated = checkpoint.replicated;
+} else if (existsSync(at("parts.json")) && !options.again) {
   say("replicate: parts.json exists, kept (--again redoes it)");
   replicated = JSON.parse(readFileSync(at("parts.json"), "utf8")).replicate;
 } else {
   say("replicating the page");
   replicated = replicate();
+  checkpoint = { replicated };
+  writeFileSync(checkpointPath, JSON.stringify(checkpoint, null, 2) + "\n");
   delete steps.gate;
+  writeFileSync(stepsPath, JSON.stringify(steps, null, 2) + "\n");
 }
 
 // ---- the gate: a copy over it is tried once more, then the person is asked ----
@@ -168,12 +176,18 @@ const gated = await (async () => {
     tree: JSON.parse(readFileSync(at("tree.json"), "utf8")),
     copy: async () => replicate(),
     settle: () => settlePage(),
-    ask: (fields) => ask(build, fields),
+    ask: (fields, questionKey) => ask({ ...build, questionKey }, fields),
     wait: (questionId) => waitForAnswer(build, questionId),
+    checkpoint,
+    save: (state) => writeFileSync(checkpointPath, JSON.stringify(state, null, 2) + "\n"),
     say,
   });
 })();
 replicated = gated.replicated;
+if (gated.outcome === "needs-input") {
+  console.log(JSON.stringify({ ...gated.pending, checkpoint: checkpointPath, workspace, next: "Present this question in the current conversation, record the reply with build-stream answered, then run this command again without --again." }));
+  process.exit(0);
+}
 steps.gate = { outcome: gated.outcome, ...(gated.answer ? { answer: gated.answer } : {}) };
 remember("gateAt");
 
@@ -262,7 +276,7 @@ async function settlePage() {
 
 /**
  * What the gate decided, for the agent: proceed (the copy passed),
- * build (the person, or nobody in time, said start on this copy), or
+ * build (the person explicitly chose to start on this copy), or
  * reply (the person wrote what to do: `instruction`, followed as given).
  */
 function gateOf(gate, result) {

@@ -1,6 +1,6 @@
 /**
  * Minimal MCP-over-HTTP client for the kit's plain node processes
- * (the courier fetching its relay address, publish, the prototype
+ * (publish, the prototype
  * heartbeat; agents use their harness's MCP instead) and the transport under
  * mcp-stdio.mjs, the Cursor plugin's stdio bridge. Speaks just enough
  * Streamable HTTP: POST one JSON-RPC message, carry the session header

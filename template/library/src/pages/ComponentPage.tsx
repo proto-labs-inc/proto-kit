@@ -16,7 +16,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Fit } from "@/components/Fit";
 import { ProductCrop, usePictureWidth } from "@/components/ProductCrop";
 import { Rendered } from "@/components/Rendered";
-import { componentView, rebuiltNote, tokensFor, type Component, type ComponentView, type Courier, type Library, type ThemeId, type Token } from "@/library";
+import { componentView, rebuiltNote, tokensFor, type Component, type ComponentView, type RequestQueue, type Library, type ThemeId, type Token } from "@/library";
 import { href } from "@/route";
 import { hexOf } from "@/surface";
 import { usePreviewTheme } from "@/theme";
@@ -26,10 +26,10 @@ type Props = {
   /** The state the address names, or null for the default. */
   state: string | null;
   library: Library;
-  courier: Courier;
+  requestQueue: RequestQueue;
 };
 
-export function ComponentPage({ slug, state, library, courier }: Props) {
+export function ComponentPage({ slug, state, library, requestQueue }: Props) {
   const { manifest } = library;
   const theme = usePreviewTheme();
   const tokens = tokensFor(manifest, theme);
@@ -65,7 +65,7 @@ export function ComponentPage({ slug, state, library, courier }: Props) {
           </div>
           <ThemeToggle manifest={manifest} />
         </header>
-        <States component={component} view={view} state={state} courier={courier} />
+        <States component={component} view={view} state={state} requestQueue={requestQueue} />
         {component.tokens[theme].length > 0 && <Colours component={component} tokens={tokens} theme={theme} />}
         <Checks component={component} library={library} moving={moving} />
       </div>
@@ -74,7 +74,7 @@ export function ComponentPage({ slug, state, library, courier }: Props) {
   );
 }
 
-type StatesProps = { component: Component; view: ComponentView; state: string | null; courier: Courier };
+type StatesProps = { component: Component; view: ComponentView; state: string | null; requestQueue: RequestQueue };
 
 /**
  * The component in each of its states, one tab per state and the state
@@ -84,11 +84,11 @@ type StatesProps = { component: Component; view: ComponentView; state: string | 
  * component's own backdrop, and the strip that says why; the checks
  * landing for one being read are in the reveal below, open.
  */
-function States({ component, view, state, courier }: StatesProps) {
+function States({ component, view, state, requestQueue }: StatesProps) {
   const [comparing, setComparing] = useState(false);
   const [ask, setAsk] = useState<Ask>("idle");
   const productWidth = usePictureWidth(component.screenshot ?? null);
-  const send = async (call: Courier["ask"]) => {
+  const send = async (call: RequestQueue["ask"]) => {
     setAsk("asking");
     setAsk(await call(component.slug));
   };
@@ -102,7 +102,7 @@ function States({ component, view, state, courier }: StatesProps) {
             <ProductCrop name={component.name} screenshot={view.screenshot} />
           )}
         </Stage>
-        <NotBuilt component={component} view={view} courier={courier} ask={ask} onAsk={() => send(courier.ask)} onWithdraw={() => send(courier.withdraw)} />
+        <NotBuilt component={component} view={view} requestQueue={requestQueue} ask={ask} onAsk={() => send(requestQueue.ask)} onWithdraw={() => send(requestQueue.withdraw)} />
       </div>
     );
   }

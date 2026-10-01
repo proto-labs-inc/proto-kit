@@ -3,7 +3,7 @@
  * page differs from the reference by more than TAIL.PAGE_PROCEED_PCT
  * (or did not mount). The copy is tried once more by itself, after the
  * page settles; only if it is still over the gate is the person asked,
- * on the site, whether to start building anyway:
+ * in the current conversation, whether to start building anyway:
  *
  *   "Start building before the copy is finished?"
  *     finish  "Not yet, finish it"    another copy pass
@@ -11,14 +11,14 @@
  *   or a reply of their own, which the agent follows as an instruction.
  *
  * The question carries how much of the page is copied (the matched
- * parts' share of the page's area), the parts that never matched (the
- * site outlines them in red on the page), what starting now means and
+ * parts' share of the page's area), the parts that never matched (listed
+ * in the chat question and read-only site history), what starting now means and
  * how long finishing takes. The recommended option comes from
  * tail.mjs's forecast: "finish" when the last pass gained enough that
- * another one helps, else "build". Nobody answering for 30 seconds
- * takes the recommended option.
+ * another one helps, else "build". A pending question returns immediately and resumes from
+ * its saved checkpoint after an explicit chat answer.
  */
-import { COPY_GATE_DEFAULT_SECONDS } from "./questions.mjs";
+import { randomUUID } from "node:crypto";
 import { copyForecast } from "./tail.mjs";
 
 export const COPY_GATE_OPTIONS = [
@@ -85,7 +85,6 @@ export function copyGateQuestion({ copied, missing, forecast }) {
     impact,
     options: COPY_GATE_OPTIONS,
     recommended: forecast.verdict === "another-pass-helps" ? "finish" : "build",
-    defaultAfterSeconds: COPY_GATE_DEFAULT_SECONDS,
     suggestions: suggestions.slice(0, 3),
     copied: Math.round(copied * 100),
     missing: missing.slice(0, MAX_MISSING).map((part) => part.id),
@@ -101,11 +100,23 @@ export function copyGateQuestion({ copied, missing, forecast }) {
  *   { outcome: "proceed", replicated }         the copy passed its gate
  *   { outcome: "build", replicated, answer }   start on this copy anyway
  *   { outcome: "reply", replicated, answer }   the person wrote what to do
+ *   { outcome: "needs-input", replicated, pending }  answer in the current chat
+ * `checkpoint` and `save` keep the latest retry and pending question, so
+ * resuming an unanswered gate does not capture or copy the page again.
  */
-export async function passGate({ replicated, tree, copy, settle, ask, wait, say = () => {}, now = Date.now }) {
+export async function passGate({ replicated, tree, copy, settle, ask, wait, checkpoint = null, save = () => {}, say = () => {}, now = Date.now }) {
+  if (checkpoint?.outcome) return { outcome: checkpoint.outcome, replicated: checkpoint.replicated, ...(checkpoint.answer ? { answer: checkpoint.answer } : {}) };
   if (replicated.gate?.proceed) return { outcome: "proceed", replicated };
-  say(`the copy is over its gate (${replicated.gate?.line ?? "no gate line"}); copying once more after the page settles`);
-  let current = replicated;
+  let current = checkpoint?.replicated ?? replicated;
+  let questionId = checkpoint?.questionId ?? null;
+  let attempt = checkpoint?.attempt ?? 0;
+  const generation = checkpoint?.generation ?? randomUUID();
+  let last = checkpoint?.last ?? null;
+  const keep = (extra = {}) => save({ replicated: current, last, questionId, attempt, generation, ...extra });
+  const done = async (outcome, answer) => {
+    await keep({ outcome, ...(answer ? { answer } : {}) });
+    return { outcome, replicated: current, ...(answer ? { answer } : {}) };
+  };
   // The retry lets the page come to rest first; a pass the person asks for runs right away.
   const pass = async (when) => {
     const before = matchedShare(current, tree);
@@ -114,18 +125,30 @@ export async function passGate({ replicated, tree, copy, settle, ask, wait, say 
     current = await copy();
     return { before, passMs: now() - began };
   };
-  let last = await pass("after-settling");
+  if (!last) {
+    say(`the copy is over its gate (${current.gate?.line ?? "no gate line"}); copying once more after the page settles`);
+    last = await pass("after-settling");
+    await keep();
+  }
   for (;;) {
-    if (current.gate?.proceed) return { outcome: "proceed", replicated: current };
+    if (current.gate?.proceed) return done("proceed");
     const after = matchedShare(current, tree);
     const forecast = copyForecast({ before: last.before, after, passMs: last.passMs });
     const fields = copyGateQuestion({ copied: after, missing: missingParts(current, tree), forecast });
     say(`still over the gate: asking whether to start building (${fields.copied}% copied, recommended: ${fields.recommended})`);
-    const questionId = await ask(fields);
+    if (!questionId) {
+      questionId = await ask(fields, `copy-gate-${generation}-${attempt}`);
+      await keep();
+    }
     const answer = await wait(questionId);
-    if (answer.by === "reply") return { outcome: "reply", replicated: current, answer };
-    if (answer.option === "build") return { outcome: "build", replicated: current, answer };
+    if (answer.status === "needs-input") return { outcome: "needs-input", replicated: current, pending: answer };
+    if (answer.by === "reply") return done("reply", answer);
+    if (answer.option === "build") return done("build", answer);
+    if (answer.option !== "finish") throw new Error(`unknown copy-gate answer: ${JSON.stringify(answer)}`);
     say("finishing the copy: another pass");
+    questionId = null;
+    attempt += 1;
     last = await pass("right-away");
+    await keep();
   }
 }

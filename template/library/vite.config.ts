@@ -13,7 +13,7 @@ const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 // at start-up or through its watcher, and the watcher reloads the page
 // for every new file, so the data is served here instead, with
 // no-store, and the watcher leaves public/ alone. The same middleware
-// is the app's courier for now (src/courier.ts): a POST to queue.json
+// handles the local request queue (src/queue-client.ts): a POST to queue.json
 // of { action: "add" | "remove", slug } adds a request to, or takes one
 // out of, public/queue.json, where the import polls for it; the slug
 // "*" asks for the whole import again. A published build has no server

@@ -28,14 +28,16 @@
 //   node tools/build-stream.mjs focus    <briefId> --codebase <id> <nodeId|none>
 //   node tools/build-stream.mjs question <briefId> --codebase <id> --kind copy-gate|generic "<question>"
 //                                [--detail "…"] [--impact "…"] --option id="Label" --option id="Label" [--option …]
-//                                [--recommended <id>] [--default-after <seconds>] [--suggest "…"]…
+//                                [--recommended <id>] [--suggest "…"]…
 //                                [--copied <0-100>] [--missing <nodeId>,…]
-//       asks the person watching; prints the question id
+//       prints a needs-input JSON record, or the already-persisted answer
 //   node tools/build-stream.mjs await-answer <briefId> <questionId> --codebase <id>
-//       waits for the answer on the site; prints one JSON line
-//       { by: option|reply|default, option?, text? }
-//   node tools/build-stream.mjs answered <briefId> <questionId> --codebase <id> --text "<what they said>"
-//       the person answered in the terminal instead: the site hears it
+//       reads the durable answer or returns needs-input immediately
+//       { by: option|reply, option?, text? }
+//   node tools/build-stream.mjs answered <briefId> <questionId> --codebase <id> --text "<what they said>" | --option <id>
+//       records the answer from the current conversation
+// Questions return promptly and never select a default answer.
+// --question-key <stable-key> distinguishes repeated identical chat questions.
 // Every command takes --no-send: events go to <build>/events.jsonl and
 // images to <build>/captures/ instead of the site (a build under test).
 //
@@ -44,11 +46,7 @@
 // the part becomes in the prototype (none for packaging). Name every node
 // read; the site strikes packaging through and replicates leaves.
 //
-// A question is answered on the site with one of its 2 or 3 options, a
-// suggested reply or a reply of the person's own (tools/questions.mjs
-// says how the answer comes back). With --recommended and
-// --default-after, the laptop goes with the recommended option once
-// that long has passed with no answer and no hold.
+// Questions are answered explicitly in the current conversation.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findPage } from "./cdp/attach.mjs";
@@ -111,6 +109,7 @@ const treePath = join(runDir, "tree.json");
 const readPath = join(runDir, "read.json");
 const curationPath = join(runDir, "curation.json");
 const sink = flags.noSend ? "file" : "site";
+const build = { codebase, briefId, runDir, sink, questionKey: flags["question-key"] };
 
 const reporter = createReporter({ codebase, briefId, runDir, sink });
 /** Sends events to the build's stream and waits for them to leave. */
@@ -267,28 +266,26 @@ switch (command) {
       impact: flags.impact,
       options: flags.option.map(optionOf),
       recommended: flags.recommended,
-      defaultAfterSeconds: numberFlag("default-after"),
       suggestions: flags.suggest,
       copied: numberFlag("copied"),
       missing: flags.missing === undefined ? undefined : flags.missing.split(",").map((id) => id.trim()).filter(Boolean),
     };
-    const questionId = await ask({ codebase, briefId, runDir, sink }, fields).catch((error) => fail(error.message));
-    console.error(`asked ${questionId}; next: await-answer ${briefId} ${questionId} --codebase ${codebase}`);
-    console.log(questionId);
+    const questionId = await ask(build, fields).catch((error) => fail(error.message));
+    console.log(JSON.stringify(await waitForAnswer(build, questionId)));
     break;
   }
   case "await-answer": {
     const [questionId] = positional;
     if (!questionId) fail("await-answer needs the question id `question` printed");
-    const answer = await waitForAnswer({ codebase, briefId, runDir, sink }, questionId);
+    const answer = await waitForAnswer(build, questionId).catch((error) => fail(error.message));
     console.log(JSON.stringify(answer));
     break;
   }
   case "answered": {
     const [questionId] = positional;
-    if (!questionId || !flags.text) fail('answered needs the question id and --text "<what the person said>"');
-    await answeredInTerminal({ codebase, briefId, runDir, sink }, questionId, flags.text).catch((error) => fail(error.message));
-    console.log(JSON.stringify({ by: "reply", text: flags.text }));
+    if (!questionId || (flags.text !== undefined) === (flags.option.length > 0) || flags.option.length > 1) fail('answered needs the question id and exactly one --text "<what the person said>" or --option <id>');
+    const answer = await answeredInTerminal(build, questionId, flags.option.length ? { option: flags.option[0] } : { text: flags.text }).catch((error) => fail(error.message));
+    console.log(JSON.stringify(answer));
     break;
   }
   default:

@@ -1,11 +1,6 @@
-/**
- * How the app asks the import for something: the one place the request
- * transport lives, so the site's courier (MAA-173) can replace it
- * without touching the pages. Today a request is a POST to the dev
- * server, which adds it to public/queue.json for the import to poll
- * (docs/library-contract.md, "queue.json"). A published build has no
- * server behind it, so there every request comes back "unreachable"
- * and the page says only the live library can ask.
+/** Local component requests stored in public/queue.json by the dev server.
+ * An active import checks this queue at finite checkpoints. Published snapshots
+ * have no POST handler, so requests correctly report "unreachable" there.
  */
 
 /** The slug that asks for the whole import again, rather than one component. */
