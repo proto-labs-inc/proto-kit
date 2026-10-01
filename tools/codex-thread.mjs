@@ -138,15 +138,21 @@ function tailContains(file, token) {
 // rollout-<timestamp>-<thread-uuid>.jsonl
 const THREAD_IN_NAME = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 
-/** Every live thread whose recent transcript contains the token. */
-export function threadsHolding(token) {
-  const ids = new Set();
+/** Every recent rollout whose transcript contains the token, with its
+ *  thread id: { path, id }. */
+export function rolloutsHolding(token) {
+  const found = [];
   for (const f of rolloutFiles()) {
     const m = THREAD_IN_NAME.exec(f.name);
     if (!m) continue;
-    if (tailContains(f, token)) ids.add(m[1]);
+    if (tailContains(f, token)) found.push({ path: f.path, id: m[1] });
   }
-  return [...ids];
+  return found;
+}
+
+/** Every live thread whose recent transcript contains the token. */
+export function threadsHolding(token) {
+  return [...new Set(rolloutsHolding(token).map((r) => r.id))];
 }
 
 export function readCourier(runDir) {

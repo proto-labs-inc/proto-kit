@@ -38,6 +38,7 @@ Cursor; the core stays harness-neutral.
 - `publish-library/`: publish the library on demand.
 - `listen/`: take the website's commands off the feed.
 - `update/`: update the plugin, then repair what the update leaves stale.
+- `debug/`: with the user's yes, send Proto this session's transcripts and logs (Claude Code, Codex).
 
 ### tools/
 
@@ -70,6 +71,7 @@ Serving and publishing:
 - `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
 - `heartbeat.mjs`: the beat loop those share.
 - `health.mjs`: the session-start check, one line per codebase.
+- `debug-report.mjs`: find this session's transcripts, redact credentials, upload a debug report.
 - `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 - `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
