@@ -192,13 +192,12 @@ if (staleNow.length > 0) {
 }
 if (pending.length > 0) {
   console.log("");
-  console.log(check ? "Run this without --check, then again with --restart." : "Run this again with --restart when the person is ready.");
+  console.log(check ? "Run this without --check, then again with --restart." : "Run this again with --restart to apply it.");
 }
 if (check) console.log("\nNothing was written (--check).");
 
-// What restarting this run costs the person, in their words. The
-// skill asks before any of it happens, and these are the sentences
-// it asks with.
+// What restarting this run costs, for the report when it runs
+// without --restart.
 function interruption(name) {
   if (name === "courier") return "the site's commands pause for a few seconds while it comes back.";
   if (name === "library") return "the library's public address is down for a few seconds.";

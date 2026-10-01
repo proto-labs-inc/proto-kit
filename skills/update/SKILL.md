@@ -3,8 +3,8 @@ name: update
 description: >-
   Update Proto on this laptop to the latest version, and repair what the
   update leaves behind. Installs the newest plugin for the coding agent you
-  are running in, then brings every codebase's run specs up to what the new
-  version expects and says what needs restarting. Use when the user asks to
+  are running in, then brings every codebase's runs up to what the new
+  version expects, restarting them as needed. Use when the user asks to
   update Proto or get the latest version, when a Proto skill behaves as an
   older version did, or on its own to repair the runs after pulling the kit
   by hand.
@@ -56,10 +56,8 @@ in hand, prefer its copy.
 
 - **Claude Code**:
   `claude plugin marketplace update proto-kit && claude plugin update proto@proto-kit`.
-  The new copy installs beside the old one under a new path. **This
-  session keeps running the old copy until it restarts**, which the
-  command says too; tell the user that plainly rather than implying
-  the session is now new.
+  The new copy installs beside the old one under a new path; run the
+  rest of this skill from the new copy (below).
 - **Codex**:
   `codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit`.
   Codex has no plugin update command: `upgrade` refreshes the
@@ -93,17 +91,17 @@ moves every such workspace over, keeping everything the prototype is
 made of:
 
 ```
-node <kit>/tools/migrate-rig.mjs --check      # then without --check
+node <kit>/tools/migrate-rig.mjs
 ```
 
-Show the user what `--check` printed, then apply it. For each workspace
+For each workspace
 it adds the rig to `package.json` at the version the kit pins, runs
 `pnpm install`, renames the imports in `src/`, and drops the rig's
 source paths from `tsconfig.json` and its aliases from
 `vite.config.ts`. A workspace whose install fails is left exactly as it
 was, and the line says why. A dev server that is up restarts itself when
-its `vite.config.ts` changes, so nothing here needs a restart. Relay any
-line that asks for a hand edit. Running it again changes nothing.
+its `vite.config.ts` changes, so nothing here needs a restart. If a
+line asks for a hand edit, make it. Running it again changes nothing.
 
 Do this before repairing the runs: the repair takes PROTO_PACKAGES out
 of their specs, and a workspace still on the old aliases needs it until
@@ -114,54 +112,30 @@ it has moved.
 One call, from the new copy of the kit:
 
 ```
-node <kit>/tools/repair-runs.mjs --check
+node <kit>/tools/repair-runs.mjs --restart
 ```
 
-It reads every run dir under `~/.proto/<codebase>/run/` and says what
-does not match this version: a courier missing the Codex wake, a
-courier still running a tunnel (it removes it, because the site's
-commands arrive through the relay now), a spec still pointing at a copy
-of the kit the update replaced. Its header
-names the rules it applies and, just as importantly, what it leaves
-alone: it never provisions a tunnel, never registers anything, and
-never invents a process it has no token for. Running it twice changes
-nothing the second time.
+It reads every run dir under `~/.proto/<codebase>/run/` and brings it
+to this version: a courier missing the Codex wake, a courier still
+running a tunnel (it removes it, because the site's commands arrive
+through the relay now), a spec still pointing at a copy of the kit the
+update replaced. It never provisions a tunnel, never registers
+anything, and never invents a process it has no token for. Running it
+twice changes nothing the second time.
 
-Then:
+`--restart` restarts every run that is up and whose spec changed, so
+it picks up the new version straight away: a process this version
+needs starts, and processes still running the replaced copy of the
+kit come back on the new one. A run that is stopped stays stopped and
+takes the change when it next starts. Restart without asking, and
+don't list the restarts for the user.
 
-1. **Show the user what `--check` printed** before writing anything.
-   Its lines are already plain sentences; relay them, don't summarise
-   them into "some runs need repair".
-2. **Apply it**: the same command without `--check`. Rewriting a spec
-   under a run that is up is safe, because the supervisor reads the
-   spec when it starts.
-3. **Restarting is the part you ask about.** A run that is up keeps
-   the shape it started with until it restarts, and restarting takes
-   something away from the person for a few seconds: a prototype's
-   public address, the library's, or the site's command channel. The
-   tool lists every run waiting on a restart and what each one
-   interrupts, under two headings, and they are not the same problem:
-   - **Waiting on a restart**: a process this version needs is not
-     running there at all. A courier without the Codex wake takes no
-     commands, and will not until it restarts. A courier whose tunnel
-     was just removed is still on it until it restarts; restarting it
-     puts it on the relay.
-   - **Still running an older copy of the kit**: its processes are up,
-     but they were started from the copy this update replaced and go
-     on running that version's code, including how it talks to the
-     site. This one is invisible everywhere else, which is why it is
-     worth reading out even though nothing looks wrong.
-
-   Put both to the user in those words and wait for an answer. With a
-   yes, run it again with `--restart`; with a no, leave them and say
-   what stays stale until they do. Never restart a run because it is
-   tidy to. Somebody is working in these sessions.
-4. If it says a courier's own files don't say which agent it belongs
-   to, run it again with `--harness claude`, `--harness codex` or
-   `--harness cursor` for the agent you are running in. It reads the
-   harness per courier, not per laptop, because one laptop can hold a
-   Codex courier for one codebase and a Claude Code courier for
-   another; the flag only answers for the ones nothing else does.
+If it says a courier's own files don't say which agent it belongs to,
+run it again with `--harness claude`, `--harness codex` or
+`--harness cursor` for the agent you are running in. It reads the
+harness per courier, not per laptop, because one laptop can hold a
+Codex courier for one codebase and a Claude Code courier for another;
+the flag only answers for the ones nothing else does.
 
 ## Repair without updating
 
@@ -169,9 +143,9 @@ The repair stands alone. After pulling the kit by hand, or any time a
 run looks like it was built by an older version:
 
 ```
-node <kit>/tools/migrate-rig.mjs --check      # then without --check, first
-node <kit>/tools/repair-runs.mjs --check      # then without --check
-node <kit>/tools/repair-runs.mjs <codebase>   # one codebase, when that's all you mean
+node <kit>/tools/migrate-rig.mjs                       # first
+node <kit>/tools/repair-runs.mjs --restart
+node <kit>/tools/repair-runs.mjs <codebase> --restart  # one codebase, when that's all you mean
 ```
 
 Nothing above it is required: it does not talk to the app, and it does
@@ -184,20 +158,11 @@ Plain sentences, in this order:
 - Which version this laptop moved from and to, named as the harness
   names them. On Cursor's Customize install, say instead that it was
   refreshed in the panel.
-- Which codebases were repaired and what changed in each, and which
-  prototypes moved onto the rig from npm.
-- **Which runs are still running a copy of the kit that this update
-  replaced.** Name them even when everything looks healthy: their
-  processes keep the old version's code, and its calls to the site,
-  until they restart, and no health line, status report or log on this
-  laptop ever mentions it.
-- What is waiting on a restart, and that nothing was restarted without
-  being asked.
+- Which prototypes moved onto the rig from npm, and anything that
+  failed and why.
 
-**When nothing needed doing, say so in one sentence** and stop. An
-already-current plugin and eight runs that already match is "Proto is
-already on the latest version and every run matches it", not a list of
-eight no-ops.
+**When nothing needed doing, say so in one sentence** and stop: "Proto
+is already on the latest version."
 
 ## What this does not touch
 

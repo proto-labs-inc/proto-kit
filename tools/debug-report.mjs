@@ -226,6 +226,18 @@ function healthText() {
   return `${res.stdout ?? ""}${res.stderr ?? ""}`;
 }
 
+/** Which kit this is, short: an installed plugin runs from a cache
+ *  folder named after its version (…/proto/<version>); a checkout is its
+ *  branch and commit. health.txt keeps the full path either way. */
+function kitVersionName() {
+  const git = (...args) => spawnSync("git", ["-C", KIT, ...args], { encoding: "utf8" });
+  const head = git("rev-parse", "--abbrev-ref", "HEAD");
+  if (head.status !== 0) return basename(KIT);
+  const sha = git("rev-parse", "--short", "HEAD").stdout.trim();
+  const edits = git("status", "--porcelain").stdout.trim() ? "+edits" : "";
+  return `${head.stdout.trim()}@${sha}${edits}`;
+}
+
 /** The agent's version, from the first records that carry one. */
 function harnessVersion(path) {
   let fd;
@@ -249,7 +261,7 @@ function harnessVersion(path) {
 
 function collect(session) {
   const health = healthText();
-  const kitVersion = /^proto kit (.*?), site /m.exec(health)?.[1];
+  const kitVersion = kitVersionName();
   const transcripts = session.harness === "claude-code" ? claudeFiles(session) : codexFiles(session);
   const environment = {
     harness: session.harness,
