@@ -195,11 +195,63 @@ export const READ_INSTANCE = String.raw`(rootSelector) => {
     room = root.parentElement.getBoundingClientRect().width - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight) - parseFloat(ps.borderLeftWidth) - parseFloat(ps.borderRightWidth);
   }
   return {
-    nodes, backdrop, room,
+    nodes, backdrop, room, pointerHovered: root.matches(':hover'),
     rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
     base: location.href,
   };
 }`;
+
+// Properties that can change under :hover without changing anything the
+// component draws. Transition and animation values describe how a change
+// proceeds, not the completed look captured by the importer.
+const NONVISUAL_INTERACTION = /^(cursor|pointer-events|touch-action|resize|scroll-behavior|will-change|transition(?:-|$)|animation(?:-|$)|-webkit-user-select$|user-select$)/;
+
+const visibleAttrs = (attrs) => Object.fromEntries(Object.entries(attrs).filter(([name]) =>
+  name !== "class" && name !== "style" && name !== "id" && name !== "tabindex" && !name.startsWith("aria-") && !name.startsWith("data-"),
+));
+
+const PSEUDO_GEOMETRY = new Set(["content", "width", "height", "top", "right", "bottom", "left"]);
+
+const visibleStyle = (style, node, pseudo = false) => Object.fromEntries(Object.entries(style).filter(([name]) => {
+  if (NONVISUAL_INTERACTION.test(name) || (skipped(name) && !(pseudo && PSEUDO_GEOMETRY.has(name)))) return false;
+  if (PAINTED_BY[name] && !PAINTED_BY[name](style, node)) return false;
+  return true;
+}));
+
+/** The part of a live instance that can change its rendered pixels. */
+export function visualFingerprint(instance) {
+  return instance.nodes.map((node) => ({
+    tag: node.tag,
+    parent: node.parent,
+    children: node.children,
+    attrs: visibleAttrs(node.attrs),
+    rect: node.rect.map((value) => Math.round(value * 100) / 100),
+    style: visibleStyle(node.style, node),
+    pseudo: Object.fromEntries(Object.entries(node.pseudo).map(([which, style]) => [which, visibleStyle(style, { ...node, style }, true)])),
+    value: node.value,
+    picture: node.picture,
+  }));
+}
+
+/** Whether two reads of one component have a visibly different look. */
+export function visualStateDiffers(rest, held) {
+  return JSON.stringify(visualFingerprint(rest)) !== JSON.stringify(visualFingerprint(held));
+}
+
+/**
+ * A survey can conservatively include Hover when it could not compare the
+ * page. Drop that state here when the full snapshot proves it is a no-op.
+ */
+export function withoutNoopHovers(instances) {
+  const first = instances.find((instance) => !instance.state.force);
+  return instances.filter((instance) => {
+    if (instance.state.force !== "hover") return true;
+    const rest = instance.state.of
+      ? instances.find((candidate) => candidate.state.name === instance.state.of && !candidate.state.force)
+      : first;
+    return !rest || rest.pointerHovered || visualStateDiffers(rest, instance);
+  });
+}
 
 // ---- layout ----
 
@@ -1007,6 +1059,7 @@ async function run(codebase, spec, theme) {
   let tokenByValue;
   try {
     read = await readLiveInstances(live, spec.states);
+    read.instances = withoutNoopHovers(read.instances);
     const values = [...new Set(read.instances.flatMap((instance) => [
       instance.backdrop,
       ...instance.nodes.flatMap((node) => [...Object.values(node.style), ...Object.values(node.pseudo).flatMap((style) => Object.values(style))]),

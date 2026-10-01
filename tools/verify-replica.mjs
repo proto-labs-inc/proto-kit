@@ -140,6 +140,20 @@ export async function withForcedState(live, selector, pseudo, work) {
   return withLive(() => holding(live, selector, pseudo, work));
 }
 
+/**
+ * Read a target at rest and with a pseudo-class held while keeping both
+ * reads under the live-page lock. Survey uses this to decide whether a
+ * CSS interaction has a visible state at all; the held state is released
+ * and its outgoing transitions are finished before the lock is returned.
+ */
+export async function compareForcedState(live, selector, pseudo, read) {
+  return withLive(async () => {
+    const rest = await read();
+    const forced = await holding(live, selector, pseudo, read);
+    return { rest, forced };
+  });
+}
+
 async function holding(live, selector, pseudo, work) {
   const settle = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; for (const a of el.getAnimations({ subtree: true })) if (a instanceof CSSTransition) a.finish(); return true; })()`;
   // A capture straight after another state's release can catch that

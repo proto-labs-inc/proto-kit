@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * Redeem one Proto setup link without exposing the laptop token to the
- * agent. The setup document and laptop token use the same one-time code but
- * are consumed independently: fetch the document, exchange the code through
- * link_laptop, then write the token directly to ~/.proto/config.json.
+ * Redeem the one-time linking code in an embedded Proto setup document
+ * without exposing the laptop token to the agent. Exchange linkingCode
+ * through link_laptop, then write the token directly to
+ * ~/.proto/config.json.
  *
  * One credential per team (MAA-195). A laptop that already holds a
  * working token for this app, member and team (an Edit prompt on a
- * laptop that is set up) keeps it: the code then only served the
- * document. Otherwise the token this code was exchanged for is handed
+ * laptop that is set up) keeps it, without spending the code. Otherwise
+ * the token this code was exchanged for is handed
  * to `addCredential`, which owns config.json. This file is one way of
  * obtaining a credential, not the owner of the set.
  */
@@ -29,36 +29,19 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const setupLink = process.argv[2];
-if (!setupLink) fail("usage: node tools/link-laptop.mjs <setup-link>");
+const [, , appInput, code, accountId] = process.argv;
+if (!appInput || !code || !accountId) {
+  fail("usage: node tools/link-laptop.mjs <app> <linking-code> <account-id>");
+}
 
-let link;
+let app;
 try {
-  link = new URL(setupLink);
+  const address = new URL(appInput);
+  if (address.protocol !== "http:" && address.protocol !== "https:") throw new Error("unsupported protocol");
+  app = address.origin;
 } catch {
-  fail("the setup link is not a valid URL");
+  fail("the setup document has an invalid Proto app address");
 }
-const code = link.pathname.split("/").filter(Boolean).at(-1);
-if (!code) fail("the setup link has no linking code");
-
-const documentResponse = await fetch(link);
-const documentText = await documentResponse.text();
-if (!documentResponse.ok) {
-  let message = `the setup link answered ${documentResponse.status}`;
-  try {
-    message = JSON.parse(documentText).error ?? message;
-  } catch {}
-  fail(message);
-}
-
-let document;
-try {
-  document = JSON.parse(documentText);
-} catch {
-  fail("the setup link did not return a setup document");
-}
-const app = typeof document.app === "string" ? document.app.replace(/\/+$/, "") : "";
-if (!app) fail("the setup document has no Proto app address");
 
 const previous = readPreviousConfig();
 const held = previous.app === app ? credentialsIn(previous) : [];
@@ -74,23 +57,18 @@ function readPreviousConfig() {
   }
 }
 
-// A laptop already linked to this member for this team keeps that
-// token. The document names the team, so only the one credential that
-// could match is tried against the server.
-const candidate = held.find(
-  (credential) =>
-    credential.user?.id === document.account?.id && credential.team?.name === document.account?.team,
-);
+// Account ids are unique member rows, so at most one held credential can
+// belong to the member and team named by this document.
+const candidate = held.find((credential) => credential.user?.id === accountId);
 if (candidate) {
   try {
     const answer = await callTool("whoami", {}, { app, secret: candidate.secret });
     const me = JSON.parse(answer?.content?.[0]?.text ?? "{}");
-    if (me.mode === "laptop-token" && me.user?.id === document.account?.id) {
+    if (me.mode === "laptop-token" && me.user?.id === accountId) {
       const unchanged = describeCredential({ ...candidate, user: me.user, team: me.team, laptop: me.laptop });
       const kept = held.filter((credential) => credential !== candidate).map(describeCredential);
       console.log(
         JSON.stringify({
-          setup: document,
           linkedAs: { user: me.user, team: me.team, laptop: me.laptop },
           added: null,
           replaced: null,
@@ -154,7 +132,6 @@ const { added, replaced, kept } = addCredential({
 });
 
 console.log(JSON.stringify({
-  setup: document,
   linkedAs: { user: linked.user, team: linked.team, laptop: linked.laptop },
   added,
   replaced,

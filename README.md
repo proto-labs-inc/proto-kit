@@ -91,7 +91,7 @@ Talking to the app, and the harness hooks:
 
 - `mcp-call.mjs`: MCP-over-HTTP client, the one reader of `~/.proto/config.json`.
 - `mcp-stdio.mjs`: that same transport as a stdio MCP server, choosing the credential per call.
-- `link-laptop.mjs`: fetch the setup document, mint this laptop's token.
+- `link-laptop.mjs`: redeem the setup document's code and save this laptop's token.
 - `hooks/post-edit-markers.mjs`: re-run the marker check on an edited workspace file.
 - `hooks/cursor-session-start.mjs`, `hooks/cursor-post-tool-use.mjs`: those two checks, Cursor's shape.
 
@@ -144,20 +144,20 @@ The subagent roles, one file per harness format.
 
 Sign in to Proto and copy the setup prompt from the gallery's setup
 steps or its New prototype dialog. Paste it into your coding agent, in
-Claude Code, Codex, or Cursor: one paste. The prompt is two lines, your
-identity and a one-time link. Your agent installs the plugin, whose setup
-helper fetches the document and exchanges the link for a per-laptop token
-without exposing it in chat. The document carries the app's address, your
-codebase folder and your product page. The agent runs
+Claude Code, Codex, or Cursor: one paste. The prompt contains your identity,
+the complete setup document and a one-time linking code. Your agent installs
+the plugin, whose setup helper exchanges the code for a per-laptop token
+without exposing that durable token in chat. The document carries the app's
+address, your codebase folder and your product page. The agent runs
 the Proto plugin and runs its setup skill: your account, your codebase,
-your design system. The link works once and expires after 10 minutes;
+your design system. The code works once and expires after 10 minutes;
 copy the prompt again for a fresh one.
 
 Manual install, if you prefer the commands yourself. These are the
 words the setup document carries, copied verbatim from the site's
 `web/src/lib/setup-snippet.ts` (`installCommands`), which is the source:
 change them there first. The plugin takes no credential at install time;
-the setup link mints the laptop token afterward.
+the setup code mints the laptop token afterward.
 
 ```sh
 # Claude Code

@@ -72,10 +72,12 @@ node tools/library.mjs complete <codebase>
 The headless Chrome that draws every copy is launched with the Proto
 window's own display (its real device scale factor and colour
 profile), so a component written from the page matches it to the
-pixel. Every tool reads the Proto window and never changes it: no
-navigation, no clicks, no focus. Holding a hover or focus look on an
-element (`"force"`) is done with the DevTools pseudo-class and let go
-straight after.
+pixel. Import tools read the Proto window without navigating it or
+changing product data. When this workflow needs a theme change, use
+the product's visible theme control yourself when it can be identified
+reliably; otherwise ask the user to switch it. Holding a hover or focus
+look on an element (`"force"`) is done with the DevTools pseudo-class
+and let go straight after.
 
 ## Order of operations
 
@@ -108,10 +110,11 @@ straight after.
    a welcome screen, an empty list or a sign-in wall instead of the
    product, ask the user one plain question naming what to do ("Open
    a project in the Proto window so its dashboard is showing, then
-   tell me") and survey again once they have. Never click in their
-   window. The first survey and build use the product's light mode. If
-   the page is dark, ask the user to switch it to light first; never
-   click the theme control yourself.
+   tell me") and survey again once they have. Do not navigate or alter
+   product data in their window. The first survey and build use the
+   product's light mode. If the page is dark, switch it to light with
+   the product's visible theme control when it can be identified
+   reliably; otherwise ask the user.
 
 3. **Plan: edit the survey's draft, briefly.** The survey prints the
    draft one component a line: its slug, its looks with their text, and
@@ -157,8 +160,9 @@ straight after.
    `--proto-token-<name>` variables rather than literals, so the same
    generated component can resolve another theme's values.
 
-   Then ask the user to switch the product page to dark mode. Run
-   `node tools/survey.mjs <codebase> --theme dark`, replace the provisional
+   Then switch the product page to dark mode with its visible theme
+   control when it can be identified reliably; otherwise ask the user.
+   Run `node tools/survey.mjs <codebase> --theme dark`, replace the provisional
    dark palette with `node tools/library.mjs tokens <codebase> dark
    @"$HOME/.proto/<codebase>/run/survey/dark/palette.json"`, and run
    `node tools/import.mjs <codebase> --check-theme dark`. The writer and

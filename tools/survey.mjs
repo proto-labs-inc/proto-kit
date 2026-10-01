@@ -42,6 +42,10 @@ import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { cropPng, decodePng, encodePng, scalePng } from "./cdp/png.mjs";
+import { READ_INSTANCE, visualStateDiffers } from "./snapshot.mjs";
+import { compareForcedState } from "./verify-replica.mjs";
+
+const INTERACTIVE = new Set(["button", "a", "link", "input", "textarea", "combobox", "checkbox", "switch", "radio", "tab", "menuitem", "slider"]);
 
 const options = {};
 const positional = [];
@@ -222,6 +226,23 @@ const READ = String.raw`(names) => {
 const data = await evaluate(live, `(${READ})(${JSON.stringify([...propertyNames])})`);
 data.page.display = await displayOf(live);
 
+// Only advertise Hover when the product has a visible CSS hover look.
+// A failed comparison stays conservative: snapshot.mjs repeats the full
+// comparison and removes a no-op before it writes the component.
+const hoverChanges = new Map();
+for (const candidate of data.candidates.filter((entry) => INTERACTIVE.has(entry.kind))) {
+  const selector = candidate.instances[0]?.selector;
+  if (!selector || hoverChanges.has(selector)) continue;
+  try {
+    const pair = await compareForcedState(live, selector, "hover", () =>
+      evaluate(live, `(${READ_INSTANCE})(${JSON.stringify(selector)})`),
+    );
+    hoverChanges.set(selector, pair.rest.pointerHovered || visualStateDiffers(pair.rest, pair.forced));
+  } catch {
+    hoverChanges.set(selector, true);
+  }
+}
+
 // Colours: resolved in the headless Chrome on a probe element (a
 // relative colour or a bare "153deg 60% 52%" triple only a style
 // resolves), each with its pixel as the display draws it.
@@ -374,7 +395,6 @@ const NAMES = {
   aside: "Sidebar", table: "Table", img: "Image", h1: "Heading", h2: "Heading", h3: "Heading", h4: "Heading", kbd: "Keyboard key",
   code: "Code", hr: "Divider", separator: "Divider", tooltip: "Tooltip", dialog: "Dialog", alert: "Alert", status: "Status",
 };
-const INTERACTIVE = new Set(["button", "a", "link", "input", "textarea", "combobox", "checkbox", "switch", "radio", "tab", "menuitem", "slider"]);
 const slugOf = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "component";
 const draft = { palette: palette.map(({ px, ...rest }) => rest), type: data.type.map(({ tags, uses, ...rest }) => ({ ...rest, tags })), components: [] };
 const usedSlugs = new Set();
@@ -407,7 +427,7 @@ for (const c of candidates) {
     state.name = name;
   }
   if (INTERACTIVE.has(c.kind)) {
-    states.push({ name: "Hover", selector: first.selector, force: "hover" });
+    if (hoverChanges.get(first.selector) !== false) states.push({ name: "Hover", selector: first.selector, force: "hover" });
     states.push({ name: "Focus", selector: first.selector, force: "focus-visible" });
   }
   draft.components.push({ slug, name, picture: c.picture, states });

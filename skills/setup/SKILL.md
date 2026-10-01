@@ -2,11 +2,11 @@
 name: setup
 description: >-
   Set up Proto on this laptop and connect a codebase. Starts from the setup
-  prompt copied from the Proto site, two lines whose second is a one-time link
-  to the setup document: it links this laptop, finds your codebase folder,
+  prompt copied from the Proto site, containing setup data and a one-time
+  laptop-linking code: it links this laptop, finds your codebase folder,
   creates the codebase in Proto, opens your product page in a Proto browser
-  window, attaches the prepared onboarding design system, and starts the
-  courier. Use when a message starts
+  window, attaches a configured starter design system or imports the product's
+  real one, and starts the courier. Use when a message starts
   "Set up Proto for", when installing Proto or connecting a new
   codebase, or when other Proto skills find no config.json or codebase.json.
 ---
@@ -15,7 +15,7 @@ description: >-
 
 Two scopes, both idempotent: the **machine** (once: config.json,
 prerequisites) and a **codebase** (once per codebase being prototyped:
-source link, onboarding library attachment). Re-running setup repairs; it never
+source link, starter attachment or design-system import). Re-running setup repairs; it never
 clobbers working state. **Setup is resumable**: every step below
 leaves its result in a file, so if it parks mid-way (waiting on an
 engineer, a login, anything), a later "continue setting up Proto"
@@ -40,12 +40,13 @@ setup steps or its New prototype dialog (it carries the identity and
 everything else below). One question, then proceed
 exactly as below once they paste it.
 
-**As the prompt**: pasted from the Proto site. It is two lines. The
-first is the sentence the recognizer keys on:
+**As the prompt**: pasted from the Proto site. Its first line is the sentence
+the recognizer keys on; its last line is the complete JSON setup document:
 
 ```
 Set up Proto for <name> (<id>) at <team>.
-Fetch <app>/api/setup/<code> and follow it; the link is valid for 10 minutes and works once.
+Follow the Proto setup data below.
+{"instructions":"...","account":{"id":"...","name":"...","team":"..."},...}
 ```
 
 A `, codebase <id>` suffix on the first line appears when resuming an
@@ -53,19 +54,19 @@ unfinished setup; a new setup has none, and creating the codebase is
 this skill's job (below). A `, codebase <id>, prototype <slug>` suffix
 is the **Edit prompt**, copied from a prototype's Frame by its creator
 when their agent was not listening: see "Editing a prototype" at the
-end. Everything else comes from the document the second line points
-at. Run the whole flow without re-asking for anything the document
-already says.
+end. Everything else comes from the embedded document. Run the whole flow
+without re-asking for anything the document already says.
 
 ### The setup document
 
-Run `node <kit>/tools/link-laptop.mjs <link>` exactly once. The helper
-fetches the setup document, exchanges the same code for this laptop's
-token, adds the token to `~/.proto/config.json`, and prints only the
-non-secret document, the linked identity, and what the link changed. The link expires ten
-minutes after the site made it. If it says the link expired or was
-already used, tell the user to copy the setup prompt from the Proto site
-again and wait for the new prompt. The printed setup document is JSON:
+Run `node <kit>/tools/link-laptop.mjs <app> <linkingCode> <account.id>`
+exactly once, substituting those three values from the document. The helper
+exchanges `linkingCode` for this laptop's token when needed, adds the token to
+`~/.proto/config.json`, and prints the linked identity and what linking
+changed. The code expires at `expiresAt`.
+If it says the code expired or was already used, tell the user to copy the
+setup prompt from the Proto site again and wait for the new prompt. The
+embedded setup document is JSON:
 
 ```jsonc
 {
@@ -73,6 +74,8 @@ again and wait for the new prompt. The printed setup document is JSON:
   "account": { "id": "<id>", "name": "<name>", "team": "<team>" },
   "codebase": "<id>",                          // only when resuming
   "app": "https://...",                        // the Proto app's origin
+  "linkingCode": "...",                        // one use, until expiresAt
+  "expiresAt": "2026-09-30T12:34:56.000Z",
   "install": {                                 // the plugin command per harness
     "claude": { "install": "...", "update": "..." },
     "codex":  { "install": "...", "update": "..." },
@@ -81,7 +84,14 @@ again and wait for the new prompt. The printed setup document is JSON:
   "source": { "folderPath": "..." },           // or { "fingerprint": { "name", "tree": [...] } }, or absent
   "productUrl": "https://...",                 // the product page to parse, or absent
   "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" },  // New prototype prompts only
-  "prototype": { "slug": "...", "title": "..." },  // Edit prompts only
+  "prototype": { "slug": "...", "title": "..." }  // Edit prompts only
+}
+```
+
+The helper's JSON answer is separate from the document:
+
+```jsonc
+{
   "summary": "Linked as ada@example.com in Acme; still linked as ada@acme.dev in Acme Labs.",
   "added":   { "user", "team", "laptop", "linkedAt" },  // null when the token it held still works
   "replaced": { … },                           // the same team's previous credential, when there was one
@@ -90,12 +100,12 @@ again and wait for the new prompt. The printed setup document is JSON:
 ```
 
 The helper keeps a token that already works for this member and team (it
-asks `whoami` first), so an Edit prompt on a laptop that is set up spends
-the code on the document alone. The setup document carries no credential.
+asks `whoami` first), so an Edit prompt on a laptop that is set up does not
+spend the code. The setup document carries no durable credential.
 Never print or read back a credential's `secret` from config.json. Hold
 the brief for the handoff.
 
-**Say what the link did**, in the helper's own words: relay `summary`.
+**Say what linking did**, in the helper's own words: relay `summary`.
 It names what this laptop can now do and what it could already do and
 still can, which is what tells the user their other team survived. Do
 not improve on it by promising that linking is behind them: a person
@@ -241,12 +251,25 @@ Tunnels are provisioned by target, never by a name you compose: the
 library's by the codebase id. The site chooses and stores every
 address.
 
-**The codebase is created here**, once the codebase is found: call
-`set_codebase_source` with **no `codebase` field**. The server
-creates the codebase, names it after the source folder, and returns
-the id. Keep that id for everything that follows. When the document
-carries `codebase` (resuming an unfinished setup), skip creation and
-use that id.
+**Branch on `codebase` before looking for code.** A `codebase` in the
+setup document is the cloud-minted id of an existing codebase. It is
+never a folder name, display name, repo hint, or evidence for a local
+filesystem match.
+
+- When the document carries `codebase`, first read
+  `~/.proto/<codebase>/codebase.json`. If it parses and its
+  `source.path` exists, this codebase is already imported on this laptop:
+  use that record's source path, remote and live URL without asking the
+  user to confirm them. Skip all of **Find their code**, including its
+  scan, confirmation question and `set_codebase_source` call.
+- When the document carries `codebase` but that usable local record does
+  not exist, resume with that id and run **Find their code** to recover
+  the missing source pointers. Do not use the id itself to search for or
+  score folders.
+- With no `codebase` in the document, this is a new setup. Run **Find
+  their code**, then call `set_codebase_source` with no `codebase` field;
+  the server creates the codebase, names it after the source folder and
+  returns the id. Keep that id for everything that follows.
 
 ### Find their code
 
@@ -271,8 +294,10 @@ system it extracts."**
 1. **Silent scan first, the engineer fast path.** Quietly look for
    checkouts in the obvious places (`~/Projects`, `~/code`, `~/src`,
    `~/dev`, `~/work`, one or two levels deep for `.git`), matching
-   directory names, `package.json` names, and git remotes against
-   anything the document or conversation names. On a hit, ask ONE
+   directory names, `package.json` names, and git remotes against an
+   explicit source fingerprint, folder hint, repo hint, or other source
+   evidence from the conversation. Never match against the document's
+   cloud `codebase` id. On a hit, ask ONE
    confirmation question with the evidence in it ("Is it
    `~/Projects/cobble-web`?"). **Fail soft**: if the scan finds
    nothing, just move to the ask: never announce "no repositories
@@ -297,7 +322,9 @@ system it extracts."**
    locally.", and **park**: tell them setup will pick up right here
    once the repo exists, and mean it (re-running setup resumes from
    files, not memory).
-6. **Create or record the codebase** once confirmed:
+6. **Create or record the codebase** once confirmed (this step is not
+   reached for an already-imported local record handled by the early
+   branch above):
    `set_codebase_source { sourcePath, repoRemote }`. With no `codebase`
    field the server creates the codebase in the laptop token's team and names it after the source
    folder, and returns the id that keys everything from here on.
@@ -326,10 +353,11 @@ system it extracts."**
 
 ### Leave the local library stopped
 
-Do not scaffold, host, publish, or import a local library during setup. The
-prepared onboarding library is attached by the cloud only after the real
-codebase and courier are ready. An explicit later design-system import owns
-starting the local library host.
+Do not scaffold, host, publish, or import a local library before the handoff
+below decides what this codebase needs. The cloud checks whether this member
+has a starter only after the real codebase and courier are ready. If it has
+none, the handoff runs **import-design-system**, which owns starting the local
+library host.
 
 ### The reference page (the Proto window)
 
@@ -455,20 +483,28 @@ Setup ends by continuing, not by stopping (an Edit prompt ends at
    session. Wait for `courier-up.mjs` to report `local: true`,
    `relay: "connected"`, and `agentListening: true`. If it does not, remain
    in setup and repair the courier. Do not continue without all three.
-1. Call `attach_onboarding_library { codebase }`. The call is idempotent, so
-   retry it once if it is interrupted or reports a transient failure. Do not
-   run **import-design-system** during setup. If attachment still fails,
-   remain in setup, tell the user in one plain sentence that Proto could not
-   finish the design system, and offer to retry. Never continue to success or
-   create a prototype until attachment succeeds.
+1. Call `attach_onboarding_library { codebase }`. The call is idempotent. Read
+   its `outcome` exactly:
+   - `attached` or `already-attached`: the configured starter is published;
+     continue.
+   - `existing-library`: the codebase already has a published library; preserve
+     it and continue.
+   - `not-configured`: run **import-design-system** now and continue only after
+     its completion gate. That skill owns scaffolding, hosting and publishing
+     the local library.
+   A tool error is not `not-configured`: retry once if the call was interrupted
+   or reports a transient failure. If it still fails, remain in setup, tell the
+   user in one plain sentence that Proto could not finish the design system,
+   and offer to retry. Never continue to success or create a prototype until
+   one of the successful outcomes above or the normal import's completion gate.
 2. If the document carried a `brief`, hand it to **create-prototype**
    verbatim: title, description, the brief document URL, the
    reference page (`productUrl`), the reference HTML (structure
    hints only: the live page wins) and whether to use real data.
    Registration there uses the laptop token's member as creator.
 3. End by telling the user, plainly: **keep this session open, it's
-   your codebase's agent.** And one more sentence once the first
-   attachment has finished: the library is published, so it stays
+   your codebase's agent.** And one more sentence once the starter attachment
+   or normal import has finished: the library is published, so it stays
    viewable after this laptop closes. This very session (in the terminal, the
    Claude Code desktop app, the Codex app, or Cursor's chat) is what receives the site's commands,
    and it has been listening since step 0: carry on with the listen
