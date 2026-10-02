@@ -61,6 +61,18 @@ for their coding agent: see "Editing a prototype" at the
 end. Everything else comes from the embedded document. Run the whole flow
 without re-asking for anything the document already says.
 
+### Published kit version
+
+App prompts carry `kitRelease` from the release registry. Before setup, compare
+its version with the installed `.codex-plugin/plugin.json` (all harnesses).
+Compare the 14-digit UTC suffix: equal or newer needs no update. For an older
+release, follow the update skill, resolve the installed root and re-read setup
+there, preserving this document and request. Local development marketplaces
+and checkouts with uncommitted edits are exempt. Never claim an update worked
+unless the resulting manifest meets the requested version. A missing release
+record uses the update skill's normal marketplace check. Do not restart an
+active host automatically; explain any required reload and preserve the request.
+
 ### The setup document
 
 Run `node <kit>/tools/link-laptop.mjs <app> <linkingCode> <account.id>`

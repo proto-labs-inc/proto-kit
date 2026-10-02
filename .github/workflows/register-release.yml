@@ -1,0 +1,26 @@
+name: Register published kit
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: register-kit-release
+  cancel-in-progress: false
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test release registration
+        run: node --test tools/register-release.test.mjs
+      - name: Verify published manifest and record release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROTO_APP_URL: ${{ vars.PROTO_APP_URL }}
+          PROTO_KIT_RELEASE_TOKEN: ${{ secrets.PROTO_KIT_RELEASE_TOKEN }}
+        run: node tools/register-release.mjs
