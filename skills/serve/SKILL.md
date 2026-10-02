@@ -32,9 +32,11 @@ presented when the action reaches that boundary.
    upserts on (codebase, slug), so re-registering after a title change
    is correct. The row must exist before the next step: the site
    stores the prototype's address on it. An authorization error means
-   the laptop must be relinked through setup. Registering
-   also flips the build's brief to done, closing the gallery's loading
-   card; the tile waits for a heartbeat before it loads anything.
+   the laptop must be relinked through setup. Registering closes a
+   build begun with `begin_prototype_build` (its brief names the slug);
+   a website brief is closed only by `report_progress done` with
+   `prototypeSlug`, at the end of the build. The tile waits for a
+   heartbeat before it loads anything.
 
 2. **Provision the tunnel** (idempotent; reuses an existing tunnel):
    call the `provision_tunnel` MCP tool with
