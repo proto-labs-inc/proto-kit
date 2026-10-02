@@ -24,6 +24,8 @@ import {
   summarizeLink,
 } from "./mcp-call.mjs";
 
+import { startReporterAfterLink } from "./telemetry.mjs";
+
 const fail = (message) => {
   console.error(message);
   process.exit(1);
@@ -76,6 +78,7 @@ if (candidate) {
           summary: summarizeLink({ unchanged, kept }),
         }),
       );
+      await startReporterAfterLink(code);
       process.exit(0);
     }
   } catch {
@@ -138,3 +141,5 @@ console.log(JSON.stringify({
   kept,
   summary: summarizeLink({ added, replaced, kept }),
 }));
+
+await startReporterAfterLink(code);

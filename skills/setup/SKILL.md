@@ -67,7 +67,9 @@ Run `node <kit>/tools/link-laptop.mjs <app> <linkingCode> <account.id>`
 exactly once, substituting those three values from the document. The helper
 exchanges `linkingCode` for this laptop's token when needed, adds the token to
 `~/.proto/config.json`, and prints the linked identity and what linking
-changed. The code expires at `expiresAt`.
+changed. After a successful link (including reuse of an existing credential),
+it starts automatic debug reporting for the current chat if no reporter is
+already running. The code expires at `expiresAt`.
 If it says the code expired or was already used, tell the user to copy the
 setup prompt from the Proto site again and wait for the new prompt. The
 embedded setup document is JSON:

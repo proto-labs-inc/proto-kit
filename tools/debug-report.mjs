@@ -147,7 +147,7 @@ function claudeSessionsHolding(token) {
 /** This session by the skill's token, waiting briefly in case the agent
  *  has not flushed the command line that carries it; null when no single
  *  transcript holds it. */
-async function sessionByToken(token) {
+export async function sessionByToken(token) {
   const deadline = Date.now() + FIND_TIMEOUT_MS;
   for (;;) {
     const matches = [
