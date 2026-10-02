@@ -56,6 +56,8 @@ import { instanceFromRead, styleOf } from "./read-page.mjs";
 import { INSIDE, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
 import { appBaseline, cssBlock, download, instanceOf, jsxAttr, jsxValue, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
 
+import { artifactFiles, retryFingerprint, selectRetryParts } from "./selective-retry.mjs";
+
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
 // A tab closed under a pending call rejects after its lane moved on; that is that lane's failure, not the build's.
@@ -72,6 +74,7 @@ const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === "--no-send") options.noSend = true;
+  else if (args[i] === "--retry-failing") options.retryFailing = true;
   else if (args[i] === "--keep-dev") options.keepDev = true;
   else if (args[i].startsWith("--")) {
     options[args[i].slice(2)] = args[i + 1];
@@ -154,6 +157,23 @@ const parts = leaves.map(({ entry, node }) => {
 // Heaviest first, so a big part starts in the first lane instead of becoming the tail.
 parts.sort((a, b) => b.instance.nodes.length - a.instance.nodes.length);
 
+for (const part of parts) part.retryFingerprint = retryFingerprint({ instance: part.instance, viewport, display });
+const selectionBegan = Date.now();
+const outcomesPath = join(buildDir, "replicate-outcomes.json");
+let saved = null;
+if (options.retryFailing && existsSync(outcomesPath)) {
+  try { saved = JSON.parse(readFileSync(outcomesPath, "utf8")); } catch {}
+}
+const selection = options.retryFailing ? selectRetryParts(parts, saved) : { retained: [], selected: parts };
+const retrySelection = {
+  mode: options.retryFailing ? "failing" : "full",
+  startedAt: new Date(selectionBegan).toISOString(),
+  selectedCount: selection.selected.length, retainedCount: selection.retained.length,
+  selectedIds: selection.selected.map(part => part.id), retainedIds: selection.retained.map(part => part.id),
+  seconds: (Date.now() - selectionBegan) / 1000,
+};
+step(`retry selection: ${retrySelection.selectedCount} selected, ${retrySelection.retainedCount} retained (${retrySelection.mode})`);
+
 const baselineBegan = Date.now();
 mkdirSync(partsDir, { recursive: true });
 const kinds = [...new Set(parts.flatMap((part) => part.instance.nodes.map(kindOf)))];
@@ -162,7 +182,7 @@ stage("baseline", baselineBegan);
 
 reporter.send([
   { kind: "phase", phase: "replicating", line: `Replicating ${parts.length} parts against your page` },
-  ...parts.map((part) => ({ kind: "queued", id: part.id })),
+  ...selection.selected.map((part) => ({ kind: "queued", id: part.id })),
 ]);
 
 // ---- lanes ----
@@ -176,11 +196,11 @@ reporter.send([
 const PART_MS = 180_000;
 const STAGE_MS = 15 * 60_000;
 const LANES_MIN = 2;
-const matched = [];
+const matched = selection.retained.map(part => part.id);
 const toFix = [];
 const failed = [];
-const reused = [];
-const queue = [...parts];
+const reused = selection.retained.filter(part => part.reused).map(part => part.id);
+const queue = [...selection.selected];
 const partsBegan = Date.now();
 let capacity = Math.max(1, Number(options.lanes));
 const stageOver = () => Date.now() - partsBegan > STAGE_MS;
@@ -298,7 +318,7 @@ stage("pageCheck", pageBegan);
 
 // ---- the library learns the parts it lacked ----
 const libraryBegan = Date.now();
-const learned = learnParts(built.filter((part) => part.outcome.matched && part.reused === null));
+const learned = learnParts(built.filter((part) => part.outcome.matched && part.reused === null && !part.retained));
 stage("library", libraryBegan);
 
 // ---- the gate: the copy is usable now; what is left is the tail ----
@@ -330,6 +350,12 @@ else gateLine += `; the copy is not usable yet (${pageCheck?.error ?? `the page 
 if (toFix.length + failed.length > 0) gateLine += `. ${toFix.length + failed.length} part${toFix.length + failed.length === 1 ? "" : "s"} left for later, each with its reason above: the long tail, for background units.`;
 step(gateLine);
 
+// This build-local checkpoint retains full outcomes for composing untouched parts.
+writeFileSync(outcomesPath, JSON.stringify({
+  version: 1, finishedAt: new Date().toISOString(), retrySelection, timings,
+  parts: parts.map(part => ({ id: part.id, slug: part.slug, retryFingerprint: part.retryFingerprint, reused: part.reused ?? null,
+    outcome: part.outcome ?? null, artifacts: artifactFiles(part.folder) })),
+}, null, 2) + "\n");
 await reporter.flush();
 stopDev();
 console.log(
@@ -344,6 +370,7 @@ console.log(
     learned,
     fitted: page.rounds,
     timings,
+    retrySelection,
     gate: { proceed, line: gateLine },
   }),
 );

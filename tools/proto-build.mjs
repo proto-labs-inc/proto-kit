@@ -8,7 +8,7 @@
  *
  * Usage:
  *   node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>"
- *                              [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--no-send] [--port 9333]
+ *                              [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send] [--port 9333]
  *
  * Every step is skipped when its output already exists in the build
  * folder (~/.proto/<codebase>/run/builds/<briefId>/), so the same
@@ -63,9 +63,9 @@ const started = Date.now();
 // turn, a toast leaving) to finish before it is captured again.
 const SETTLE_MS = 3_000;
 
-const USAGE = 'usage: node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>" [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--no-send]';
+const USAGE = 'usage: node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>" [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send]';
 
-const options = { lanes: "12", port: "9333" };
+const options = { lanes: "12", port: "9333", "retry-mode": "failing" };
 const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
@@ -81,6 +81,7 @@ const fail = (message) => {
   process.exit(1);
 };
 if (!briefId || !options.codebase || !options.slug) fail(USAGE);
+if (!["full", "failing"].includes(options["retry-mode"])) fail("--retry-mode must be full or failing");
 const codebase = options.codebase;
 const buildDir = buildFolder(codebase, briefId);
 const at = (name) => join(buildDir, name);
@@ -146,7 +147,7 @@ say("scaffolding the workspace");
 const workspace = run("scaffold.mjs", [options.slug, "--codebase", codebase, "--brief", briefId, ...(options.title ? ["--title", options.title] : [])], { json: true, sends: false });
 
 // ---- replicate ----
-const replicate = () => run("replicate.mjs", [briefId, "--codebase", codebase, "--lanes", options.lanes, "--port", options.port, ...(options["keep-dev"] ? ["--keep-dev"] : [])], { json: true });
+const replicate = (retry = false) => run("replicate.mjs", [briefId, "--codebase", codebase, "--lanes", options.lanes, "--port", options.port, ...(retry && options["retry-mode"] === "failing" ? ["--retry-failing"] : []), ...(options["keep-dev"] ? ["--keep-dev"] : [])], { json: true });
 let replicated;
 const checkpointPath = at("copy-gate.json");
 let checkpoint = !options.again && existsSync(checkpointPath) ? JSON.parse(readFileSync(checkpointPath, "utf8")) : null;
@@ -174,7 +175,7 @@ const gated = await (async () => {
   return passGate({
     replicated,
     tree: JSON.parse(readFileSync(at("tree.json"), "utf8")),
-    copy: async () => replicate(),
+    copy: async () => replicate(true),
     settle: () => settlePage(),
     ask: (fields, questionKey) => ask({ ...build, questionKey }, fields),
     wait: (questionId) => waitForAnswer(build, questionId),

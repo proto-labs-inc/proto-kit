@@ -350,3 +350,13 @@ for a variant, `previews.mjs`, then `report_progress done`. When the
 prototype came from a streamed build (`parent_brief_id` is set), run
 those two with `--brief <parent> --codebase <id>` so the build's stream
 shows the change: the node is the one whose `marker` is the section.
+
+### Copy retry scope
+
+Copy-gate retries retain matched components whose captured inputs are unchanged
+and whose generated files still exist. Only failing, changed, or missing
+components are replicated again; the complete page is still composed and
+checked. `proto-build.mjs` uses this behavior by default. Use
+`--retry-mode full` for an explicit full retry, or `--again` to restart the
+initial copy. Missing or incompatible retry checkpoints fall back to copying
+all components.
