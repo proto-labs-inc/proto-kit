@@ -22,3 +22,9 @@ test("invalid release configuration never sends credentials", async () => {
     await assert.rejects(registerRelease({ ...input, ...change, fetcher }), /configuration|HTTPS/);
   }
 });
+
+test("registration errors include the API explanation without exposing credentials", async () => {
+  await assert.rejects(registerRelease({ ...input, fetcher: async () => Response.json({ error: "version already belongs to another commit" }, { status: 409 }) }), /HTTP 409.*version already belongs to another commit/);
+  await assert.rejects(registerRelease({ ...input, fetcher: async () => new Response("<html>Bad gateway</html>", { status: 502 }) }), /^Error: Release registration failed \(HTTP 502\)$/);
+  await assert.rejects(registerRelease({ ...input, fetcher: async () => Response.json({ error: `Rejected ${input.token}` }, { status: 401 }) }), error => !error.message.includes(input.token) && error.message.includes("[redacted]"));
+});

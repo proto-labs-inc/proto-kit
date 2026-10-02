@@ -16,7 +16,13 @@ export async function registerRelease({ app, token, commit, version, fetcher = f
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ version, sourceCommit: commit }),
   });
-  if (!response.ok) throw new Error(`Release registration failed (HTTP ${response.status})`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const detail = typeof body?.error === "string"
+      ? body.error.replaceAll(token, "[redacted]").replace(/[\r\n]+/g, " ").slice(0, 300)
+      : "";
+    throw new Error(`Release registration failed (HTTP ${response.status})${detail ? `: ${detail}` : ""}`);
+  }
   const result = await response.json();
   if (!result.ok || result.version !== version || result.sourceCommit !== commit) throw new Error("Release registration was not confirmed");
   return { version, sourceCommit: commit };
