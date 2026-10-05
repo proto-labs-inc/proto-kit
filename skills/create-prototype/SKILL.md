@@ -81,12 +81,16 @@ checkpoints.
 3. **Brief id.** For a website request, call
    `begin_prototype_build { codebase, slug, title, briefId }` with its existing
    ID, preserving the website card and action. Otherwise
-   `begin_prototype_build { codebase, slug, title }` returns a new/reused active
-   ID. Early reports already mark a saved request started; do not reset its status.
+   `begin_prototype_build { codebase, slug, title, description, useRealData }`
+   returns a new/reused active ID; pass the brief's text you are building
+   from (a setup document's brief, the user's request) as `description`
+   and its `useRealData`, so the website shows what was asked. Early reports
+   already mark a saved request started; do not reset its status.
    Copying a prompt never starts work.
 4. **Copy the page**, one command. This is the Copy workflow step, separate
    from Build. Capture, curation, replication, and the copy-quality gate all
-   report `copy`; report `build` only after the gate allows the requested change. The live URL is the visual source of truth.
+   report `copy`; report `build` only after the gate allows the requested
+   change. The live URL is the visual source of truth.
    Before opening a browser or tab, inspect readable existing tabs in the
    in-app browser, the user's Chrome, and Proto Chrome on port 9333. Prefer an
    exact `referenceUrl` match, then the same path, then the same origin, and
@@ -125,7 +129,9 @@ checkpoints.
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
    through the edge yet: the tunnel connects while you write the change.
-   `report_progress serving` comes later, at step 10.
+   Registering and the heartbeat do not finish the build: its card stays
+   up and every stage is still reported. `report_progress serving` comes
+   later, at step 10, and `done` at the very end.
 6. **The gate, then the parts left to fix.** The composed page is the
    copy's gate: the change is written on it when the page differs by at
    most `TAIL.PAGE_PROCEED_PCT` (0.5% of its pixels) and mounted.
@@ -369,5 +375,8 @@ and whose generated files still exist. Only failing, changed, or missing
 components are replicated again; the complete page is still composed and
 checked. `proto-build.mjs` uses this behavior by default. Use
 `--retry-mode full` for an explicit full retry, or `--again` to restart the
-initial copy. Missing or incompatible retry checkpoints fall back to copying
-all components.
+initial copy: it reads the page afresh, stops at the curation review again
+(unless `--accept-curation`) and copies anew, for a read that was itself wrong
+(the page mid-load, signed out, or showing a flash message). Run every later
+step without `--again`. Missing or incompatible retry checkpoints fall back to
+copying all components.

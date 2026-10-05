@@ -6,7 +6,7 @@
  * reference page (tree.json with its curation, read.json) that the
  * checks compare the prototype against.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export const protoHome = () => join(process.env.HOME ?? "", ".proto");
@@ -82,4 +82,25 @@ export function nextPassFor(buildDir, nodeId) {
   passes[nodeId] = (passes[nodeId] ?? 0) + 1;
   writeFileSync(path, JSON.stringify(passes, null, 2) + "\n");
   return passes[nodeId];
+}
+
+/**
+ * What a copy started over (proto-build.mjs --again) clears from a build
+ * folder: the read of the page (tree.json, read.json, assets/), the
+ * curation drafted from it, the copy and its gate (parts.json,
+ * copy-gate.json, replicate-outcomes.json), and what the checks of the
+ * old copy kept per part (tail.jsonl's pass budgets, before/ restore
+ * copies), which would otherwise be charged to or restored over the
+ * new parts. Kept: steps.json's title, workspace.json, the questions and
+ * events already sent, and passes.json, so pass numbers on the site only
+ * ever rise.
+ */
+export const RESTART_CLEARS = ["tree.json", "read.json", "assets", "curation.json", "parts.json", "copy-gate.json", "replicate-outcomes.json", "tail.jsonl", "before"];
+
+/** Clears a build folder for a fresh copy (RESTART_CLEARS) and drops the gate's decision from `steps`. */
+export function restartCopy(dir, steps = {}) {
+  for (const name of RESTART_CLEARS) rmSync(join(dir, name), { recursive: true, force: true });
+  delete steps.gate;
+  delete steps.gateAt;
+  return steps;
 }

@@ -25,7 +25,11 @@ none may be yours. When the check tells you to stop without a match it
 puts the component back exactly as the import wrote it, from the copy
 explain-diff kept; say that it was restored. Never write your own script
 against the Proto window or the headless Chrome: explain-diff is your
-one read of the page. You write only inside src/components/<slug>/;
+one read of the page. Never reload or navigate the product tab: the
+selectors every unit reads by would shift. If explain-diff's `blame`
+is `outside` (the whole box is another colour that both sides compute
+alike, an effect on the page, an element that is gone), stop and
+report its reason: no value in the folder fixes it. You write only inside src/components/<slug>/;
 the orchestrator owns the manifest and everything else. Your result
 will be re-checked.
 

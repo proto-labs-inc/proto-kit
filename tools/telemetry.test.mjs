@@ -37,14 +37,21 @@ async function fixture(t, harness, { refused = false, ambiguous = false } = {}) 
     res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const logFile = join(home, ".proto", "telemetry", `${id}.log`);
   t.after(async () => {
     if (existsSync(pidFile)) {
       try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL"); } catch {}
     }
+    const log = existsSync(logFile) ? readFileSync(logFile, "utf8") : "";
+    for (const [, pid] of log.matchAll(/spawned pid (\d+)/g)) {
+      try { process.kill(Number(pid), "SIGKILL"); } catch {}
+    }
     await new Promise((resolve) => server.close(resolve));
     rmSync(home, { recursive: true, force: true });
   });
-  const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex };
+  const app = `http://127.0.0.1:${server.address().port}`;
+  // PROTO_APP keeps any watcher these tests start off the real site.
+  const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, PROTO_APP: app };
   async function run(tool, args = [], input = "") {
     const child = spawn(process.execPath, [join(kit, "tools", tool), ...args], { env, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "", stderr = "";
@@ -55,7 +62,7 @@ async function fixture(t, harness, { refused = false, ambiguous = false } = {}) 
     return { status, stdout, stderr };
   }
   return {
-    home, pidFile, requests,
+    home, pidFile, requests, logFile, app,
     hook: () => run("hooks/telemetry-start.mjs", [], JSON.stringify({ session_id: id, transcript_path: transcript })),
     link: () => run("link-laptop.mjs", [`http://127.0.0.1:${server.address().port}`, code, "member"]),
   };
@@ -94,4 +101,30 @@ test("ambiguous chats leave linking successful without guessing a transcript", a
   assert.match(linked.stderr, /chat could not be identified/);
   assert.equal(existsSync(f.pidFile), false);
   assert.ok(existsSync(join(f.home, ".proto", "config.json")));
+});
+
+test("hooks racing at once start exactly one watcher", async (t) => {
+  const f = await fixture(t, "claude-code");
+  mkdirSync(join(f.home, ".proto"), { recursive: true });
+  writeFileSync(join(f.home, ".proto", "config.json"), JSON.stringify({ app: f.app, credentials: [{ secret: "fixture-token" }] }));
+  const results = await Promise.all(Array.from({ length: 8 }, () => f.hook()));
+  assert.ok(results.every((r) => r.status === 0 && r.stdout === ""));
+  const log = readFileSync(f.logFile, "utf8");
+  const spawned = [...log.matchAll(/spawned pid (\d+)/g)].map((m) => Number(m[1]));
+  assert.equal(spawned.length, 1, log);
+  assert.equal(Number(readFileSync(f.pidFile, "utf8")), spawned[0]);
+  assert.equal((log.match(/alive pid/g) ?? []).length, 7);
+  assert.match(log, /start hook claude-code keys session_id,transcript_path alive pid/);
+});
+
+test("a stale pid file is replaced by a new watcher", async (t) => {
+  const f = await fixture(t, "claude-code");
+  mkdirSync(join(f.home, ".proto"), { recursive: true });
+  writeFileSync(join(f.home, ".proto", "config.json"), JSON.stringify({ app: f.app, credentials: [{ secret: "fixture-token" }] }));
+  mkdirSync(dirname(f.pidFile), { recursive: true });
+  writeFileSync(f.pidFile, "999999");
+  assert.equal((await f.hook()).status, 0);
+  const pid = Number(readFileSync(f.pidFile, "utf8"));
+  assert.notEqual(pid, 999999);
+  process.kill(pid, 0);
 });

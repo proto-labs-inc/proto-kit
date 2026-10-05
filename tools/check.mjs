@@ -21,7 +21,10 @@
  *   { "name": "Hover", "props": { "interaction": "hover" },
  *     "live": { "selector": "<css>", "force": "hover" } }
  * `selector` names the live element (tools/snapshot.mjs writes it);
- * `force` holds a pseudo-class on it for the capture. A state without
+ * `force` holds a pseudo-class on it for the capture; `fallback`, when
+ * the selector is positional, names the same element without a position
+ * and is used once the selector no longer names it (tools/live-selector.mjs).
+ * A state without
  * `live` has no instance on the page and is not checked. --state
  * checks one state only.
  *
@@ -51,6 +54,7 @@ import { fileURLToPath } from "node:url";
 import { classifyState, passTrend, readRecords, record, tailFile, unitBudget } from "./tail.mjs";
 import { restoreFolder } from "./unit-restore.mjs";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
+import { resolveStates } from "./live-selector.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 // Verdicts that count as the product's look: identical, a one-pixel
@@ -78,6 +82,9 @@ export async function checkComponent({ unit, slug, appUrl, liveMatch, out, codeb
   if (only) states = states.filter((s) => s.name === only);
   if (states.length === 0) throw new Error(only ? `state "${only}" has no live instance in component.json` : "no state in component.json names a live instance");
   mkdirSync(out, { recursive: true });
+  // A positional selector the page has shifted under resolves to the
+  // position-free one snapshot.mjs recorded beside it.
+  states = await resolveStates(states, liveMatch, port);
   // Each state has its own pass numbers (two per state: its check and a
   // possible second look), so none collide.
   const first = nextPass(out);

@@ -51,6 +51,7 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { INSIDE, PICTURE_OF, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
 import { FORCEABLE, withForcedState } from "./verify-replica.mjs";
+import { STURDY_SELECTOR, positional } from "./live-selector.mjs";
 
 const USAGE = "usage: node tools/snapshot.mjs <codebase> <json | @file> [--theme <light|dark>]";
 
@@ -505,10 +506,60 @@ export async function fontFaces(live) {
       const body = match[1];
       const family = /font-family\s*:\s*([^;]+)/.exec(body)?.[1].trim().replace(/^["']|["']$/g, "");
       if (!family) continue;
-      faces.push({ family, body, base: header.sourceURL || null });
+      const modern = withoutLegacySources(body);
+      if (modern) faces.push({ family, body: modern, base: header.sourceURL || null });
     }
   }
   return faces;
+}
+
+/** Splits `text` on `sep` outside parentheses and quotes, so a data:
+ *  URL's own ";" and "," stay inside its url(). */
+function splitOutside(text, sep) {
+  const out = [];
+  let depth = 0;
+  let quote = null;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote && text[i - 1] !== "\\") quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "(") depth++;
+    else if (c === ")") depth = Math.max(0, depth - 1);
+    else if (c === sep && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out;
+}
+
+const LEGACY_SOURCE = /url\(\s*["']?[^"')]*\.eot(?:[?#][^"')]*)?["']?\s*\)|format\(\s*["']?embedded-opentype["']?\s*\)/i;
+
+/**
+ * A @font-face body without its Internet Explorer sources: the `.eot`
+ * files (Embedded OpenType) older stylesheets such as Bootstrap 3's
+ * glyphicons still list. No current browser loads them, and the
+ * published host refuses their type, so a face that kept them could
+ * never be published. Each `src` keeps its other sources; a `src`
+ * that held only .eot goes; a face left with no source at all is
+ * null.
+ */
+export function withoutLegacySources(body) {
+  if (!LEGACY_SOURCE.test(body)) return body;
+  let sources = 0;
+  const kept = splitOutside(body, ";").flatMap((declaration) => {
+    const m = /^\s*src\s*:([\s\S]*)$/i.exec(declaration);
+    if (!m) return declaration.trim() ? [declaration] : [];
+    const entries = splitOutside(m[1], ",").filter((entry) => entry.trim() && !LEGACY_SOURCE.test(entry));
+    if (!entries.length) return [];
+    sources++;
+    return [`src: ${entries.map((e) => e.trim()).join(", ")}`];
+  });
+  if (!sources) return /\bsrc\s*:/i.test(body) ? null : body;
+  return kept.map((d) => d.trim()).join("; ") + ";";
 }
 
 export const familiesIn = (value) =>
@@ -517,10 +568,88 @@ export const familiesIn = (value) =>
     .map((f) => f.trim().replace(/^["']|["']$/g, ""))
     .filter((f) => f && !/^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-[a-z-]+|-apple-system|emoji|math|fangsong|inherit|initial)$/i.test(f));
 
-export async function download(url, to) {
-  const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36" } });
+// ---- what a fetched body is ----
+
+// Image files by their first bytes, with the extension each is saved under.
+const IMAGE_MAGIC = [
+  [(b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47, "png"],
+  [(b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff, "jpg"],
+  [(b) => b.subarray(0, 4).toString("latin1") === "GIF8", "gif"],
+  [(b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP", "webp"],
+  [(b) => b.subarray(4, 8).toString("latin1") === "ftyp" && /^(avif|avis)$/.test(b.subarray(8, 12).toString("latin1")), "avif"],
+  [(b) => b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0, "ico"],
+  [(b) => b.subarray(0, 2).toString("latin1") === "BM", "bmp"],
+];
+const IMAGE_FILE = /\.(svg|png|jpe?g|webp|gif|avif|ico|bmp)$/i;
+
+/**
+ * What a fetched body is, from its bytes first and its content type
+ * second: { kind: "image", extension } for a picture (an SVG included),
+ * { kind: "html" } for a web page (a sign-in redirect answers with one),
+ * { kind: "text" } for other text, { kind: "other" } for anything else
+ * (a font). The bytes win over the header: a server that labels its
+ * login page image/png is still sending a page.
+ */
+export function sniffBody(bytes, contentType = "") {
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? []);
+  if (buf.length === 0) return { kind: "empty" };
+  for (const [test, extension] of IMAGE_MAGIC) if (test(buf)) return { kind: "image", extension };
+  const head = buf.subarray(0, 1024).toString("utf8").replace(/^﻿/, "").trimStart();
+  if (/^(<!doctype\s+html|<html[\s>]|<head[\s>]|<body[\s>])/i.test(head)) return { kind: "html" };
+  if (/^(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!doctype\s+svg[^>]*>\s*)?<svg[\s>]/i.test(head)) return { kind: "image", extension: "svg" };
+  const type = String(contentType ?? "").toLowerCase();
+  if (type.includes("text/html")) return { kind: "html" };
+  // Printable through its first bytes: text, never a binary file.
+  const sample = buf.subarray(0, 512);
+  const printable = [...sample].every((c) => c === 9 || c === 10 || c === 13 || (c >= 32 && c < 127) || c >= 128);
+  if (printable && /^(text\/|application\/(json|javascript|xml))/.test(type)) return { kind: "text" };
+  if (type.startsWith("image/") && !printable) return { kind: "image", extension: IMAGE_TYPES[type.split(";")[0].trim()] ?? null };
+  if (printable && !/^(font\/|application\/(font|x-font|octet-stream|vnd\.ms-fontobject))/.test(type)) return { kind: "text" };
+  return { kind: "other" };
+}
+
+/**
+ * Why a body cannot be saved as the file it is meant to be, or null when
+ * it can: an image must be an image, and nothing is ever a web page (a
+ * session's sign-in page answering for a file it guards).
+ */
+export function refusalOf(bytes, contentType, { image }) {
+  const found = sniffBody(bytes, contentType);
+  if (found.kind === "empty") return "it answered with nothing";
+  if (found.kind === "html") return "it answered with a web page (HTML), not the file: most likely a sign-in page standing in for a file that needs the browser's session";
+  if (image && found.kind !== "image") return `it answered with ${found.kind === "text" ? "text" : `something that is not an image (${contentType || "no content type"})`}, not an image`;
+  return null;
+}
+
+/** A refused download: the body was fetched but is not the file (`code` NOT_THE_FILE). */
+export class NotTheFile extends Error {
+  constructor(url, reason) {
+    super(`not saved: ${url} ${reason}`);
+    this.code = "NOT_THE_FILE";
+  }
+}
+
+/**
+ * A file the component uses, fetched without the browser: { bytes,
+ * extension } where extension is what the bytes are when they are an
+ * image. A redirect is not followed (a guarded file redirects to its
+ * sign-in page); a body that is not the file throws NotTheFile.
+ */
+export async function fetchFile(url, { image = IMAGE_FILE.test(new URL(url).pathname), headers = {} } = {}) {
+  const res = await fetch(url, { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36", ...headers } });
+  if (res.status >= 300 && res.status < 400) throw new NotTheFile(url, `redirected (${res.status}${res.headers.get("location") ? ` to ${res.headers.get("location")}` : ""}): most likely to a sign-in page, because the request did not carry the browser's session`);
   if (!res.ok) throw new Error(`could not fetch a file the component uses (${res.status})`);
-  writeFileSync(to, Buffer.from(await res.arrayBuffer()));
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const type = res.headers.get("content-type") ?? "";
+  const refusal = refusalOf(bytes, type, { image });
+  if (refusal) throw new NotTheFile(url, refusal);
+  return { bytes, extension: image ? sniffBody(bytes, type).extension ?? null : null };
+}
+
+/** fetchFile, written to `to`; an image name (by `to`'s extension) must get an image. */
+export async function download(url, to) {
+  const { bytes } = await fetchFile(url, { image: IMAGE_FILE.test(to) });
+  writeFileSync(to, bytes);
 }
 
 const fileNameOf = (url, fallback) => {
@@ -1029,6 +1158,10 @@ export async function readLiveInstances(live, states) {
       }
       return data;
     });
+    // A position names the element only while every sibling before it
+    // stays (a sign-in flash message gone on reload shifts it): record a
+    // position-free selector beside it (tools/live-selector.mjs).
+    if (positional(state.selector)) read.fallback = await evaluate(live, `(${STURDY_SELECTOR})(${JSON.stringify(state.selector)})`).catch(() => null);
     instances.push(instanceOf(state, read));
   }
   const faces = await fontFaces(live);
@@ -1137,16 +1270,31 @@ async function writeImages(folder, instances, assets) {
       const ident = `image${images.size + 1}`;
       let file;
       const captured = assets?.[absolute];
-      if (captured && existsSync(captured)) {
-        file = `${ident}${/\.[a-z0-9]+$/i.exec(captured)?.[0] ?? ".png"}`;
+      // A captured file is used only when it is an image: a read taken
+      // before the session-aware capture may hold a sign-in page under it.
+      const capturedBytes = captured && existsSync(captured) ? readFileSync(captured) : null;
+      const capturedRefusal = capturedBytes ? refusalOf(capturedBytes, "", { image: true }) : null;
+      if (capturedBytes && capturedRefusal) console.error(`… the captured file for ${absolute} is not an image (${capturedRefusal}); fetching it again`);
+      if (capturedBytes && !capturedRefusal) {
+        const sniffed = sniffBody(capturedBytes).extension;
+        file = `${ident}${sniffed ? `.${sniffed}` : /\.[a-z0-9]+$/i.exec(captured)?.[0] ?? ".png"}`;
         copyFileSync(captured, join(folder, file));
       } else if (absolute.startsWith("data:")) {
         const inline = inlineImage(absolute);
         file = `${ident}.${inline.extension}`;
         writeFileSync(join(folder, file), inline.bytes);
       } else {
-        file = `${ident}${/\.(svg|png|jpe?g|webp|gif|avif)$/i.exec(new URL(absolute).pathname)?.[0] ?? ".png"}`;
-        await download(absolute, join(folder, file));
+        let fetched;
+        try {
+          fetched = await fetchFile(absolute, { image: true });
+        } catch (error) {
+          if (error.code !== "NOT_THE_FILE") throw error;
+          // Never an image name over a page: the <img> goes without its file, and its check says so.
+          console.error(`… image ${absolute} ${error.message.replace(/^not saved: \S+ /, "")}; not saved, the <img> is left without its file`);
+          continue;
+        }
+        file = `${ident}${fetched.extension ? `.${fetched.extension}` : /\.(svg|png|jpe?g|webp|gif|avif)$/i.exec(new URL(absolute).pathname)?.[0] ?? ".png"}`;
+        writeFileSync(join(folder, file), fetched.bytes);
       }
       images.set(absolute, { file, ident });
     }
@@ -1587,6 +1735,7 @@ ${lines.join("\n")}
     }
     const live = { selector: inst.state.selector };
     if (inst.state.force) live.force = inst.state.force;
+    if (inst.fallback && inst.fallback !== inst.state.selector) live.fallback = inst.fallback;
     // The width the product gave it, which the library shows it at.
     const entry = { name: inst.state.name, props, live, width: inst.nodes[0].rect[2] };
     // A state sits on what the product painted under its own instance: a

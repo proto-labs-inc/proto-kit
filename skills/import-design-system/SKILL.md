@@ -102,7 +102,11 @@ The headless Chrome that draws every copy is launched with the Proto
 window's own display (its real device scale factor and colour
 profile), so a component written from the page matches it to the
 pixel. Import tools read the Proto window without navigating it or
-changing product data. When this workflow needs a theme change, use
+changing product data. The Proto window is started in sRGB
+(`tools/cdp/chrome.mjs`): one started without it draws through its
+screen's colour profile, and every component then differs by one
+uniform colour shift (explain-diff says so); quit it and start it
+again when no import is running. When this workflow needs a theme change, use
 the product's visible theme control yourself when it can be identified
 reliably; otherwise ask the user to switch it. Holding a hover or focus
 look on an element (`"force"`) is done with the DevTools pseudo-class
@@ -207,6 +211,16 @@ and let go straight after.
    every command of theirs asks the user; a plain sub-agent runs in
    this session with its mode.
 
+   **Never reload or navigate the product tab while units run** (no
+   `location.reload()`, no new address, no sign-in again in it), and
+   nothing you start (a prototype build, a script) may either. Every
+   unit reads its component's live element through the selector the
+   import recorded, and a reload can change the page under it: a
+   message shown once after sign-in is gone, every positional
+   selector after it lands one element over or on none, and every
+   unit comes back "nothing on the live page matches". If the tab
+   must change, wait until every unit has reported, and say so.
+
    Nothing waits on the units. Your next message after the gate is
    the gate line, in the same turn the runner returned, before you
    dispatch anything: the user hears "usable now" the moment it is
@@ -256,7 +270,15 @@ component), the pass pictures show what, and `explain-diff.mjs` says
 which value: it reads the product's element and ours at the differing
 spots and names each difference (a computed value, a box, a text, a
 reference to an id that no longer exists, an image or a face that did
-not load, the colour behind the component). Never spend a unit on a
+not load, the colour behind the component). When nearly every pixel
+differs because the whole box is another colour, it says that first,
+from the two pictures, and names the colour property behind it: the
+product's value to write, or, when both sides compute the same colour,
+that the difference is not the component's (an opacity or filter on
+the page, an animation, or the Proto window's colour profile; `blame`
+is then `outside` and the unit stops with that reason). When every
+value reads the same it says what that leaves (a held state, a
+transition, an effect around the element, a visited link). Never spend a unit on a
 verdict that counts as matching. `context` also covers what the page
 lays over a component without the pointer reaching it (a placeholder
 painted over a field) and what shows through outside its rounded
@@ -300,7 +322,9 @@ its hover look.
 > <theme>` again instead (that counts as a check). Never write a script against the
 > Proto window or the headless Chrome (no attach.mjs, cdp.mjs, ws,
 > port 9333 or 9444 from your own code): explain-diff is your one read
-> of the page. Write only in the component's folder; never touch
+> of the page. Never reload or navigate the product tab. If
+> explain-diff's `blame` is `outside`, stop and report its reason: no
+> value in the folder fixes it. Write only in the component's folder; never touch
 > `public/` or run `library.mjs`. Report as data: done or skipped, each
 > state's last verdict, what explain-diff named and what you changed,
 > and for a skip the kind (`did-not-match` or `could-not-isolate`),

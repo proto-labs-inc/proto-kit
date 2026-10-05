@@ -16,7 +16,8 @@
  *
  * A snapshot is the session's whole transcript and its subagents'
  * transcripts, plus everything under ~/.proto except dependencies,
- * build output and the browser profile. The user's own repository is
+ * build output, the browser profile, the laptop's config.json and all of
+ * traces/ but each trace's report.md, summary.json and flags.json. The user's own repository is
  * never collected; whatever of it the agent read is in the transcript.
  * Nothing is changed or trimmed: each file is gzipped as it is and PUT
  * to the signed URL begin_debug_report returns, streamed with its exact
@@ -38,10 +39,10 @@
  *
  * Usage:
  *   node debug-report.mjs send [--token <token>] [--transcript <path>]
- *        [--title <headline>] [--note <text>] [--codebase <codebase>]
+ *        [--title <headline>] [--note <text>] [--codebase <codebase>] [--detach]
  *   node debug-report.mjs watch --transcript <path> [--session <id>]
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
@@ -54,14 +55,16 @@ import {
   readdirSync,
   readFileSync,
   readSync,
+  realpathSync,
   rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { request } from "node:https";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { homedir, platform, release, tmpdir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
@@ -74,8 +77,15 @@ const PROTO_HOME = join(homedir(), ".proto");
 export const TELEMETRY_DIR = join(PROTO_HOME, "telemetry");
 const KIT = dirname(dirname(fileURLToPath(import.meta.url)));
 
-const INTERVAL_MS = 10 * 60 * 1000;
-const IDLE_MS = 20 * 60 * 1000;
+/** Tests shorten these through the environment; nothing else sets them. */
+const ms = (name, fallback) => Number(process.env[name]) || fallback;
+const INTERVAL_MS = ms("PROTO_TELEMETRY_INTERVAL_MS", 10 * 60 * 1000);
+const IDLE_MS = ms("PROTO_TELEMETRY_IDLE_MS", 20 * 60 * 1000);
+/** A PUT or MCP call that hangs must not freeze the watcher for good. */
+const PUT_TIMEOUT_MS = ms("PROTO_TELEMETRY_PUT_TIMEOUT_MS", 120_000);
+const CALL_TIMEOUT_MS = ms("PROTO_TELEMETRY_CALL_TIMEOUT_MS", 120_000);
+/** After a stop is asked for, the last snapshot gets this long. */
+const STOP_GRACE_MS = 5 * 60_000;
 // The token was written seconds ago, so only a transcript touched in the
 // last quarter hour can hold it; that bound keeps the scan cheap.
 const FRESH_MS = 15 * 60 * 1000;
@@ -86,7 +96,12 @@ const UPLOAD_ATTEMPTS = 3;
 
 /** What under ~/.proto is not worth sending: dependencies, build output,
  *  caches, git internals and the browser profiles. */
-const SKIP_DIRS = new Set(["node_modules", ".git", "chrome", "chrome-headless", "dist", ".vite", ".next", ".turbo", ".cache", ".pnpm-store"]);
+const SKIP_DIRS = new Set([
+  "node_modules", ".git", "chrome", "chrome-headless", "dist", "build", "out", ".vite", ".next", ".turbo",
+  ".cache", ".pnpm-store", ".yarn", ".venv", "coverage",
+]);
+/** The laptop's link secret: never leaves the laptop. */
+const SECRET_FILES = new Set([join(PROTO_HOME, "config.json")]);
 
 // ---------------------------------------------------------------------
 // Which session
@@ -204,7 +219,7 @@ function walkFiles(dir, keep = () => true) {
   return out.sort();
 }
 
-function claudeFiles(session) {
+export function claudeFiles(session) {
   const files = [{ name: "session.jsonl", path: session.path }];
   const beside = join(dirname(session.path), session.id);
   for (const path of walkFiles(beside)) files.push({ name: `session/${relative(beside, path)}`, path });
@@ -230,7 +245,7 @@ function firstLine(path) {
 /** The thread's rollout, then every rollout whose opening record names a
  *  thread already collected: its subagents, and theirs. Matching the id
  *  anywhere in that record holds whatever Codex calls the parent field. */
-function codexFiles(session) {
+export function codexFiles(session) {
   let started = 0;
   try {
     started = statSync(session.path).birthtimeMs || 0;
@@ -251,12 +266,27 @@ function codexFiles(session) {
   return files;
 }
 
+/** ~/.proto/traces/<session>/ is derived from transcripts (trace.mjs) and
+ *  large; of it only each trace's report.md, summary.json and flags.json are sent,
+ *  and hooks.jsonl, the step times and outputs a Cursor transcript lacks. */
+const TRACES = join(PROTO_HOME, "traces");
+const TRACE_KEEP = new Set(["report.md", "summary.json", "flags.json", "hooks.jsonl"]);
+function keepTrace(p, isDir) {
+  const parts = relative(TRACES, p).split(sep);
+  if (isDir) return parts.length === 1 && parts[0] !== ".locks";
+  if (parts.length !== 2 || parts[0] === ".locks") return false;
+  // A Cursor session's transcript is found nowhere else (only its trace
+  // keeps hooks.jsonl), so its trace's copy goes too.
+  return TRACE_KEEP.has(parts[1]) || (parts[1] === "transcript.jsonl" && existsSync(join(TRACES, parts[0], "hooks.jsonl")));
+}
+
 /** Everything under ~/.proto worth reading. */
-function protoFiles() {
-  return walkFiles(PROTO_HOME, (p, isDir) => !isDir || !SKIP_DIRS.has(basename(p))).map((path) => ({
-    name: `proto/${relative(PROTO_HOME, path)}`,
-    path,
-  }));
+export function protoFiles() {
+  const keep = (p, isDir) => {
+    if (p.startsWith(TRACES + sep)) return keepTrace(p, isDir);
+    return isDir ? !SKIP_DIRS.has(basename(p)) : !SECRET_FILES.has(p);
+  };
+  return walkFiles(PROTO_HOME, keep).map((path) => ({ name: `proto/${relative(PROTO_HOME, path)}`, path }));
 }
 
 function healthText() {
@@ -328,16 +358,26 @@ function collect(session) {
   return { environment, files };
 }
 
-/** When anything a snapshot would hold last changed. */
-function lastChange(session) {
-  const transcripts = session.harness === "codex" ? codexFiles(session) : claudeFiles(session);
-  return Math.max(...[...transcripts, ...protoFiles()].map((f) => mtimeOf(f.path)), 0);
+const transcriptFiles = (session) => (session.harness === "codex" ? codexFiles(session) : claudeFiles(session));
+const newest = (files) => files.reduce((max, f) => Math.max(max, mtimeOf(f.path)), 0);
+
+/** Files that change because reporting runs, not because the session did:
+ *  the watchers' own logs and pid files, and traces (derived from the
+ *  transcripts, whose own changes already count). */
+const isBookkeeping = (p) => p.startsWith(TELEMETRY_DIR + sep) || p.startsWith(TRACES + sep);
+
+/** When anything a snapshot would hold last changed, bookkeeping aside. */
+export function lastChange(session) {
+  return newest([...transcriptFiles(session), ...protoFiles().filter((f) => !isBookkeeping(f.path))]);
 }
+
+/** When the session last wrote anything: main transcript or a subagent's. */
+export const lastActivity = (session) => newest(transcriptFiles(session));
 
 /** Whether a session has used Proto: a Proto skill or tool, or a file
  *  under ~/.proto. A session that never did sends nothing. */
 export function usesProto(text) {
-  return /proto:[a-z-]+|mcp__plugin_proto_|\/\.proto\/|proto-kit[^"\s]*\/skills\//.test(text);
+  return /proto:[a-z-]+|mcp__plugin_proto_|\/\.proto\/|proto-kit[^"\s]*\/skills\/|plugins\/local\/proto\/(tools|skills)\//.test(text);
 }
 
 // ---------------------------------------------------------------------
@@ -355,22 +395,27 @@ export async function gzipTo(file, dir) {
   }
 }
 
+/** PUT one file; a socket quiet for PUT_TIMEOUT_MS fails the attempt. */
 function put(url, path, size, contentType) {
   return new Promise((resolve, reject) => {
+    const request = url.startsWith("http:") ? httpRequest : httpsRequest;
     const req = request(url, { method: "PUT", headers: { "Content-Type": contentType, "Content-Length": String(size) } }, (res) => {
       res.resume();
+      res.on("error", reject);
       res.on("end", () => (res.statusCode >= 200 && res.statusCode < 300 ? resolve() : reject(new Error(`HTTP ${res.statusCode}`))));
     });
+    req.setTimeout(PUT_TIMEOUT_MS, () => req.destroy(new Error("PUT timeout")));
     req.on("error", reject);
     createReadStream(path).on("error", reject).pipe(req);
   });
 }
 
-async function putWithRetry(upload, file, contentType) {
+async function putWithRetry(upload, file, contentType, log) {
   for (let attempt = 1; ; attempt++) {
     try {
       return await put(upload.uploadUrl, file.gz, file.size, contentType);
     } catch (error) {
+      log(`upload ${file.name} attempt ${attempt}: ${error.message}`);
       if (attempt >= UPLOAD_ATTEMPTS) throw new Error(`${file.name}: ${error.message}`);
       await new Promise((r) => setTimeout(r, 1000 * attempt));
     }
@@ -387,15 +432,23 @@ async function inBatches(items, n, fn) {
 }
 
 async function call(name, args) {
-  const result = await callTool(name, args);
+  const result = await callTool(name, args, undefined, { signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
   const text = result?.content?.[0]?.text ?? "";
   if (result?.isError) throw new Error(`${name}: ${text}`);
   return JSON.parse(text);
 }
 
-/** Collect, pack and upload one snapshot; returns { id, files, totalBytes }. */
-export async function sendSnapshot({ session, kind, title, note, codebase, log = () => {} }) {
+/** Collect, pack and upload one snapshot; returns { id, files, totalBytes }.
+ *  `log` gets phase timings and failed attempts, `progress` each upload. */
+export async function sendSnapshot({ session, kind, title, note, codebase, log = () => {}, progress = () => {} }) {
+  let mark = Date.now();
+  const phase = (name, extra = "") => {
+    const now = Date.now();
+    log(`${name} ${now - mark}ms${extra}`);
+    mark = now;
+  };
   const { environment, files } = collect(session);
+  phase("collect", ` ${files.length} files`);
   const dir = mkdtempSync(join(tmpdir(), "proto-debug-"));
   try {
     const packed = [];
@@ -404,6 +457,7 @@ export async function sendSnapshot({ session, kind, title, note, codebase, log =
       if (gz && gz.size > 0) packed.push(gz);
     }
     const totalBytes = packed.reduce((sum, f) => sum + f.size, 0);
+    phase("gzip", ` ${packed.length} files ${totalBytes} bytes`);
     const report = await call("begin_debug_report", {
       harness: environment.harness,
       kind,
@@ -415,13 +469,28 @@ export async function sendSnapshot({ session, kind, title, note, codebase, log =
       kitVersion: environment.kitVersion,
       files: packed.map((f) => ({ name: f.name, size: f.size })),
     });
+    phase("begin", ` ${report.id}`);
     const byName = new Map(packed.map((f) => [f.name, f]));
     let done = 0;
     await inBatches(report.uploads, PARALLEL_UPLOADS, async (upload) => {
-      await putWithRetry(upload, byName.get(upload.name), report.contentType);
-      log(`uploaded ${++done}/${report.uploads.length} ${upload.name}`);
+      await putWithRetry(upload, byName.get(upload.name), report.contentType, log);
+      progress(`uploaded ${++done}/${report.uploads.length} ${upload.name}`);
     });
-    const finished = await call("finish_debug_report", { id: report.id });
+    phase("upload");
+    // Finishing checks every file in storage; a refusal there is worth
+    // one more try before all the uploads are thrown away.
+    let finished;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        finished = await call("finish_debug_report", { id: report.id });
+        break;
+      } catch (error) {
+        if (attempt >= 2 || !/storage unavailable/.test(error.message)) throw error;
+        log(`finish attempt ${attempt} failed: ${error.message.replace(/\s+/g, " ")}; retrying`);
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    }
+    phase("finish");
     return { id: finished.id, files: packed.length, totalBytes };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -431,11 +500,44 @@ export async function sendSnapshot({ session, kind, title, note, codebase, log =
 // ---------------------------------------------------------------------
 // Commands
 
-async function send({ token, transcript, title, note, codebase }) {
-  let session = null;
-  if (transcript) session = sessionAt(transcript);
-  else if (token) session = await sessionByToken(token);
-  return sendSnapshot({ session, kind: "skill", title, note, codebase, log: (line) => console.error(line) });
+const stamp = (line) => `${new Date().toISOString()} ${line}\n`;
+
+async function findSession({ token, transcript }) {
+  if (transcript) return sessionAt(transcript);
+  if (token) return sessionByToken(token);
+  return null;
+}
+
+/** `background` is the detached child of `send --detach`: its stderr is a
+ *  log file, so lines are stamped and per-file progress is left out. */
+async function send({ title, note, codebase, background, ...where }) {
+  const session = await findSession(where);
+  const log = background ? (line) => process.stderr.write(stamp(`send ${line}`)) : (line) => console.error(line);
+  return sendSnapshot({ session, kind: "skill", title, note, codebase, log, progress: background ? () => {} : log });
+}
+
+/** `send --detach`: find the session here (the token is fresh now), then
+ *  hand the upload to a detached child so a large ~/.proto cannot outlast
+ *  the agent's command timeout. Returns the log the child writes to. */
+async function sendDetached(options) {
+  const session = await findSession(options);
+  mkdirSync(TELEMETRY_DIR, { recursive: true });
+  const logFile = join(TELEMETRY_DIR, session ? `${session.id}.log` : `send-${Date.now()}.log`);
+  const args = [fileURLToPath(import.meta.url), "send", "--background", "1"];
+  if (session) args.push("--transcript", session.path);
+  for (const key of ["title", "note", "codebase"]) if (options[key]) args.push(`--${key}`, options[key]);
+  const out = openSync(logFile, "a");
+  try {
+    const child = spawn(process.execPath, args, { detached: true, stdio: ["ignore", out, out] });
+    await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("spawn", resolve);
+    });
+    child.unref();
+  } finally {
+    closeSync(out);
+  }
+  return logFile;
 }
 
 /** The background loop for one session; see the header. */
@@ -446,58 +548,94 @@ async function watch({ transcript, session: id }) {
   const logFile = join(TELEMETRY_DIR, `${session.id}.log`);
   const log = (line) => {
     try {
-      appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`);
+      appendFileSync(logFile, stamp(line));
     } catch {}
   };
+  // Anything thrown outside a snapshot is logged, never a silent death.
+  process.on("unhandledRejection", (error) => log(`unhandledRejection: ${error?.stack ?? error}`));
+  process.on("uncaughtException", (error) => log(`uncaughtException: ${error?.stack ?? error}`));
   writeFileSync(pidFile, String(process.pid));
 
+  /** Newest mtime a sent snapshot held, so only real changes resend. */
   let sentUpTo = 0;
   let proto = false;
   let sending = Promise.resolve();
   const snapshot = (kind) =>
     (sending = sending.then(async () => {
-      if (!proto) proto = existsSync(session.path) && usesProto(readFileSync(session.path, "utf8"));
-      if (!proto) return;
-      const changed = lastChange(session);
-      if (changed <= sentUpTo) return;
       try {
-        const started = Date.now();
-        const sent = await sendSnapshot({ session, kind });
-        sentUpTo = started;
-        log(`${kind} ${sent.id}: ${sent.files} files, ${sent.totalBytes} bytes`);
+        if (!proto) proto = existsSync(session.path) && usesProto(readFileSync(session.path, "utf8"));
+        if (!proto) return log(`${kind} skip: no proto use`);
+        const changed = lastChange(session);
+        if (changed <= sentUpTo) return log(`${kind} skip: unchanged`);
+        log(`${kind} sending`);
+        const sent = await sendSnapshot({ session, kind, log: (line) => log(`  ${line}`) });
+        sentUpTo = changed;
+        log(`${kind} ${sent.id}: sent ${sent.files} files ${sent.totalBytes} bytes`);
       } catch (error) {
         log(`${kind} failed: ${error.message}`);
       }
     }));
 
-  const stop = async () => {
+  let stopping = false;
+  const stop = async (reason) => {
+    if (stopping) return;
+    stopping = true;
     clearInterval(timer);
+    log(`stop: ${reason}`);
+    // A last snapshot that hangs past every timeout still ends.
+    setTimeout(() => process.exit(0), STOP_GRACE_MS).unref();
     await snapshot("session-end");
     try {
       if (readFileSync(pidFile, "utf8") === String(process.pid)) unlinkSync(pidFile);
     } catch {}
     process.exit(0);
   };
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
-  log(`watching ${session.path}`);
+  process.on("SIGTERM", () => stop("sigterm"));
+  process.on("SIGINT", () => stop("sigint"));
+  log(`watching ${session.path} node ${process.version} pid ${process.pid}`);
 
   const timer = setInterval(() => {
-    if (Date.now() - mtimeOf(session.path) > IDLE_MS) stop();
-    else snapshot("interval");
+    try {
+      // Another watcher took this session over (a start race): leave it be.
+      let owner = null;
+      try {
+        owner = readFileSync(pidFile, "utf8").trim();
+      } catch {}
+      if (owner && owner !== String(process.pid)) {
+        log(`exit: pid file names ${owner}`);
+        process.exit(0);
+      }
+      if (!owner) writeFileSync(pidFile, String(process.pid));
+      const quiet = Date.now() - lastActivity(session);
+      if (quiet > IDLE_MS) stop(`idle ${Math.round(quiet / 60_000)}m`);
+      else snapshot("interval");
+    } catch (error) {
+      log(`tick failed: ${error.message}`);
+    }
   }, INTERVAL_MS);
 }
 
+/** --flag value pairs; --detach takes none. */
 function flags(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const m = /^--(\w+)$/.exec(argv[i]);
-    if (m) out[m[1]] = argv[++i];
+    if (m) out[m[1]] = m[1] === "detach" ? true : argv[++i];
   }
   return out;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+/** Run as a script, however it was named: a path with spaces, a symlink
+ *  or a Windows drive never matches `file://${argv[1]}` textually. */
+function isMain() {
+  try {
+    return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   const [command, ...rest] = process.argv.slice(2);
   const options = flags(rest);
   if (command === "watch") {
@@ -512,7 +650,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       process.exit(1);
     }
     try {
-      console.log(JSON.stringify(await send(options), null, 2));
+      if (options.detach) console.log(`sending in background; see ${await sendDetached(options)}`);
+      else console.log(JSON.stringify(await send(options), null, 2));
     } catch (error) {
       console.error(error.message);
       process.exit(1);
