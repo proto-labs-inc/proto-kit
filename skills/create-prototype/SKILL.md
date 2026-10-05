@@ -210,9 +210,13 @@ verified same-brief resume. Missing or contradictory state requires input.
 10. **Serve.** Continue in the serve skill at step 5 (verify through the
     edge, publish, report); `build-stream.mjs phase <briefId> --codebase
     <id> serving "<one sentence>"` and `report_progress serving` as it
-    starts. Registration flipped the brief to done. Tell the user once
-    the prototype is reachable, not before. Never commit anything into
-    the user's repos.
+    starts. When the prototype is reachable and published, close the
+    build: `report_progress { briefId, status: "done", prototypeSlug:
+    "<slug>", message: "<one sentence>" }`. Registration closes only a
+    build begun with `begin_prototype_build`; a website brief stays open,
+    and its gallery tile says the agent stopped reporting, until this
+    call. Tell the user once the prototype is reachable, not before.
+    Never commit anything into the user's repos.
 
 ## Blocked
 
