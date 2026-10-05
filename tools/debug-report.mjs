@@ -267,13 +267,17 @@ export function codexFiles(session) {
 }
 
 /** ~/.proto/traces/<session>/ is derived from transcripts (trace.mjs) and
- *  large; of it only each trace's report.md, summary.json and flags.json are sent. */
+ *  large; of it only each trace's report.md, summary.json and flags.json are sent,
+ *  and hooks.jsonl, the step times and outputs a Cursor transcript lacks. */
 const TRACES = join(PROTO_HOME, "traces");
-const TRACE_KEEP = new Set(["report.md", "summary.json", "flags.json"]);
+const TRACE_KEEP = new Set(["report.md", "summary.json", "flags.json", "hooks.jsonl"]);
 function keepTrace(p, isDir) {
   const parts = relative(TRACES, p).split(sep);
   if (isDir) return parts.length === 1 && parts[0] !== ".locks";
-  return parts.length === 2 && parts[0] !== ".locks" && TRACE_KEEP.has(parts[1]);
+  if (parts.length !== 2 || parts[0] === ".locks") return false;
+  // A Cursor session's transcript is found nowhere else (only its trace
+  // keeps hooks.jsonl), so its trace's copy goes too.
+  return TRACE_KEEP.has(parts[1]) || (parts[1] === "transcript.jsonl" && existsSync(join(TRACES, parts[0], "hooks.jsonl")));
 }
 
 /** Everything under ~/.proto worth reading. */

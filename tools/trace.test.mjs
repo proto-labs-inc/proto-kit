@@ -218,11 +218,13 @@ test("a downloaded debug report imports as a trace", () => {
   writeFileSync(join(folder, "session.jsonl.gz"), gzipSync(claudeSession()));
   writeFileSync(join(folder, "session__subagents__agent-sub1.jsonl.gz"), gzipSync(subagent()));
   writeFileSync(join(folder, "environment.json"), JSON.stringify({ harness: "claude-code", sessionId: id }));
+  writeFileSync(join(folder, `proto__traces__${id}__flags.json.gz`), gzipSync(JSON.stringify([{ id: "f1", target: "s2", kind: "error", note: "flagged on the laptop", by: "claude" }])));
   const res = run(env, "import", folder);
   assert.equal(res.status, 0, res.stderr);
   const s = JSON.parse(readFileSync(join(h, ".proto", "traces", id, "summary.json"), "utf8"));
   assert.equal(s.counts.subagents, 1);
   assert.equal(s.counts.errors, 3);
+  assert.match(readFileSync(join(h, ".proto", "traces", id, "transcript.html"), "utf8"), /flagged on the laptop/);
 });
 
 test("a step counts as a kit tool only when it runs one", async () => {

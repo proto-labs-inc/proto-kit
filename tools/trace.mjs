@@ -277,8 +277,11 @@ function importReport(folder) {
   let env = {};
   const envFile = files.find((p) => named(p).endsWith("environment.json"));
   if (envFile) env = JSON.parse(read(envFile).toString("utf8"));
-  const main = files.find((p) => /(^|\/)session\.jsonl$/.test(named(p))) ?? fail(`No session.jsonl in ${folder}.`);
   const id = env.sessionId ?? `report-${basename(folder)}`;
+  // The session's own trace files, when the laptop had a trace of it:
+  // its flags, and for Cursor its transcript and the hook's step log.
+  const own = (name) => files.find((p) => named(p).endsWith(`traces/${id}/${name}`));
+  const main = files.find((p) => /(^|\/)session\.jsonl$/.test(named(p))) ?? own("transcript.jsonl") ?? fail(`No session.jsonl in ${folder}.`);
   const dir = join(TRACES_DIR, id);
   mkdirSync(join(dir, "subagents"), { recursive: true });
   writeFileSync(join(dir, "transcript.jsonl"), read(main));
@@ -287,8 +290,9 @@ function importReport(folder) {
     const m = /(?:^|\/)(?:session\/)?subagents\/([^/]+\.(?:jsonl|meta\.json))$/.exec(n);
     if (m) writeFileSync(join(dir, "subagents", m[1]), read(p));
   }
+  for (const name of ["flags.json", "hooks.jsonl"]) if (own(name)) writeFileSync(join(dir, name), read(own(name)));
   const text = readFileSync(join(dir, "transcript.jsonl"), "utf8");
-  writeAtomic(join(dir, "meta.json"), JSON.stringify({ sessionId: id, harness: env.harness ?? "claude-code", source: null, report: folder, environment: env, ...touched(text), syncedAt: new Date().toISOString() }, null, 2) + "\n");
+  writeAtomic(join(dir, "meta.json"), JSON.stringify({ sessionId: id, harness: env.harness === "unknown" && own("hooks.jsonl") ? "cursor" : env.harness ?? "claude-code", source: null, report: folder, environment: env, ...touched(text), syncedAt: new Date().toISOString() }, null, 2) + "\n");
   workUp(dir);
   return dir;
 }

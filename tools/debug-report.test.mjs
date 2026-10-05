@@ -105,6 +105,10 @@ async function fakeSite(t, { hang = false } = {}) {
   mkdirSync(join(trace, "subagents"), { recursive: true });
   mkdirSync(join(proto, "traces", ".locks"), { recursive: true });
   for (const name of ["report.md", "summary.json", "steps.jsonl", "trace.html", "chat.md", "transcript.jsonl", "subagents/a.jsonl"]) writeFileSync(join(trace, name), "x\n");
+  // A Cursor session's trace: its transcript is found nowhere else, so it goes too.
+  const cursor = join(proto, "traces", "cursor-conv");
+  mkdirSync(join(cursor, "transcript"), { recursive: true });
+  for (const name of ["hooks.jsonl", "transcript.jsonl", "flags.json", "transcript.html", "transcript/s1.html"]) writeFileSync(join(cursor, name), "x\n");
   writeFileSync(join(proto, "traces", "sync.log"), "x\n");
   writeFileSync(join(proto, "traces", ".locks", "l"), "x\n");
   const children = [];
@@ -145,8 +149,12 @@ test("send uploads ~/.proto without the laptop secret or skipped folders", async
   assert.ok(names.includes("session.jsonl.gz"));
   assert.ok(names.includes("proto/acme/notes.md.gz"));
   assert.ok(!names.some((n) => /config\.json|node_modules|coverage/.test(n)), names.join(" "));
-  // Of traces/, only each trace's report and summary.
+  // Of traces/, each trace's report, summary and flags, and a Cursor
+  // trace's transcript and step log; never the pages built from them.
   assert.deepEqual(names.filter((n) => n.startsWith("proto/traces/")).sort(), [
+    "proto/traces/cursor-conv/flags.json.gz",
+    "proto/traces/cursor-conv/hooks.jsonl.gz",
+    "proto/traces/cursor-conv/transcript.jsonl.gz",
     "proto/traces/older-session/report.md.gz",
     "proto/traces/older-session/summary.json.gz",
   ]);
