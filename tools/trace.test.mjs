@@ -107,8 +107,9 @@ test("the transcript shows everything, with each subagent under the call that st
     assert.ok(html.includes(text), `html has ${text}`);
     assert.ok(md.includes(text), `md has ${text}`);
   }
-  assert.match(html, /sent while the agent worked/);
-  assert.match(html, /Subagent <b>proto:part-fixer<\/b>[\s\S]*Fix the header part[\s\S]*Header\.tsx/);
+  assert.match(html, /while the agent worked/);
+  assert.match(html, /subagent proto:part-fixer: Fix header[\s\S]*Fix the header part[\s\S]*Header\.tsx/);
+  assert.doesNotMatch(html, /<script/);
   assert.match(md, /# Subagent proto:part-fixer: Fix header[\s\S]*Fixed\./);
   const s = JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
   assert.equal(s.counts.personMessages, 2);

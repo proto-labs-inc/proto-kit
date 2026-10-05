@@ -16,8 +16,9 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const HTML_OUTPUT_CAP = 100_000;
+const HTML_OUTPUT_CAP = 8_000;
 const MD_OUTPUT_CAP = 50_000;
+const MD_HARNESS_CAP = 2_000;
 
 function lines(path) {
   if (!existsSync(path)) return [];
@@ -257,32 +258,25 @@ function grouped(items) {
 
 function htmlItems(t, agentId, seen) {
   const agent = t.agents.get(agentId);
-  let prev = null;
   const out = [];
   for (const it of grouped(agent.items)) {
-    const gap = prev != null && it.at - prev >= 30_000 ? `<div class="gap">${esc(took(prev, it.at))} later</div>` : "";
-    if (!Number.isNaN(it.at)) prev = it.end ?? it.at;
-    const time = `<span class="time">${clock(it.at)}</span>`;
-    if (it.kind === "person") out.push(`${gap}<div class="msg person" data-kind="person">${time}<h4>${it.queued ? "Person (sent while the agent worked)" : "Person"}${it.images ? ` · ${it.images} image${it.images > 1 ? "s" : ""}` : ""}</h4><pre>${esc(it.text)}</pre></div>`);
-    else if (it.kind === "background") out.push(`${gap}<details class="msg background" data-kind="background"><summary>${time}<b>Background</b> ${esc(it.from ? `${it.from}: ` : "")}${esc(it.text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160))}</summary><pre>${esc(it.text)}</pre></details>`);
-    else if (it.kind === "harness-run") {
-      const names = [...new Set(it.items.map((x) => x.label ?? (x.text ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60)))];
-      const inner = it.items.map((x) => `<details class="harness-item"><summary>${esc(x.label ?? (x.text ?? "").replace(/\s+/g, " ").slice(0, 120))}</summary><pre>${esc(cap(x.body ?? x.text, HTML_OUTPUT_CAP))}</pre></details>`).join("");
-      out.push(`${gap}<details class="harness" data-kind="harness"><summary>${time}harness: ${esc(names.join(" · ").slice(0, 200))}</summary>${inner}</details>`);
-    } else if (it.kind === "task") out.push(`${gap}<details class="msg task" data-kind="task"><summary>${time}<b>Task from the agent that started it</b> ${esc(it.text.replace(/\s+/g, " ").slice(0, 140))}</summary><pre>${esc(it.text)}</pre></details>`);
-    else if (it.kind === "text") out.push(`${gap}<div class="msg agent" data-kind="text">${time}<h4>Agent</h4><pre>${esc(it.text)}</pre></div>`);
-    else if (it.kind === "thinking") out.push(it.hidden ? `<div class="thinking hidden" data-kind="thinking">${time}thinking (its text is not kept in the transcript)</div>` : `${gap}<details class="thinking" data-kind="thinking" open><summary>${time}thinking</summary><pre>${esc(it.text)}</pre></details>`);
-    else if (it.kind === "event") out.push(`${gap}${it.body ? `<details class="event${it.bad ? " bad" : ""}${it.quiet ? " quiet" : ""}" data-kind="event"><summary>${time}${esc(it.label)}</summary><pre>${esc(it.body)}</pre></details>` : `<div class="event${it.bad ? " bad" : ""}${it.quiet ? " quiet" : ""}" data-kind="event">${time}${esc(it.label)}</div>`}`);
+    const time = clock(it.at);
+    if (it.kind === "person") out.push(`<h3>Person${it.queued ? " (while the agent worked)" : ""} <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
+    else if (it.kind === "task") out.push(`<h3>Task <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
+    else if (it.kind === "text") out.push(`<h3>Agent <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
+    else if (it.kind === "background") out.push(`<details><summary><small>${time}</small> background: ${esc(it.text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120))}</summary><pre>${esc(cap(it.text, HTML_OUTPUT_CAP))}</pre></details>`);
+    else if (it.kind === "harness-run") out.push(`<p class="m"><small>${time}</small> harness: ${esc([...new Set(it.items.map((x) => x.label ?? "message"))].join(", ").slice(0, 200))}</p>`);
+    else if (it.kind === "thinking") {
+      if (!it.hidden) out.push(`<details><summary><small>${time}</small> thinking</summary><pre>${esc(it.text)}</pre></details>`);
+    } else if (it.kind === "event") out.push(`<p class="m"><small>${time}</small> ${esc(it.label)}</p>`);
     else if (it.kind === "tool") {
-      const status = it.output == null ? `<span class="badge open">no result</span>` : it.error ? `<span class="badge bad">failed</span>` : "";
-      const sub = it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)
-        ? (() => {
-            const a = t.agents.get(it.subagent);
-            seen.add(it.subagent);
-            return `<details class="subagent"><summary>Subagent <b>${esc(a.type)}</b> ${esc(a.description)} · ${a.items.filter((x) => x.kind === "tool").length} tool calls</summary>${htmlItems(t, it.subagent, seen)}</details>`;
-          })()
-        : "";
-      out.push(`${gap}<details class="tool${it.error ? " failed" : ""}" data-kind="tool"><summary>${time}<b>${esc(it.name)}</b> <span class="took">${esc(took(it.at, it.end))}</span> ${status}<code>${esc(inputLine(it))}</code></summary><div class="io"><div class="label">input</div><pre>${esc(inputBody(it))}</pre><div class="label">output${it.output ? ` · ${it.output.length} chars` : ""}</div><pre>${esc(cap(it.output ?? "(no result recorded)", HTML_OUTPUT_CAP))}</pre>${it.stderr ? `<div class="label">stderr</div><pre>${esc(cap(it.stderr, HTML_OUTPUT_CAP))}</pre>` : ""}</div></details>${sub}`);
+      const status = it.output == null ? " (no result)" : it.error ? " <b>failed</b>" : "";
+      out.push(`<details><summary><small>${time}</small> <b>${esc(it.name)}</b> ${esc(took(it.at, it.end))}${status} <code>${esc(inputLine(it).slice(0, 140))}</code></summary><pre>${esc(cap(inputBody(it), HTML_OUTPUT_CAP))}</pre><pre>${esc(cap(it.output ?? "(no result recorded)", HTML_OUTPUT_CAP))}</pre></details>`);
+      if (it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)) {
+        const a = t.agents.get(it.subagent);
+        seen.add(it.subagent);
+        out.push(`<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, it.subagent, seen)}\n</details>`);
+      }
     }
   }
   return out.join("\n");
@@ -292,84 +286,27 @@ export function transcriptHtml(dir) {
   const t = readTranscript(dir);
   const seen = new Set(["main"]);
   const main = htmlItems(t, "main", seen);
-  const orphans = [...t.agents.keys()].filter((id) => !seen.has(id));
-  const rest = orphans.map((id) => {
+  const rest = [...t.agents.keys()].filter((id) => !seen.has(id)).map((id) => {
     const a = t.agents.get(id);
     seen.add(id);
-    return `<details class="subagent"><summary>Subagent <b>${esc(a.type)}</b> ${esc(a.description)} (not matched to a call)</summary>${htmlItems(t, id, seen)}</details>`;
+    return `<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, id, seen)}\n</details>`;
   }).join("\n");
   const id = t.meta.sessionId ?? "";
-  const counts = [...t.agents.values()].reduce((c, a) => {
-    for (const it of a.items) c[it.kind] = (c[it.kind] ?? 0) + 1;
-    return c;
-  }, {});
   return `<!doctype html>
-<html lang="en">
-<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Transcript ${esc(id.slice(0, 8))}</title>
 <style>
-:root{--bg:#fbfaf8;--panel:#fff;--ink:#1d1c1a;--muted:#6f6b64;--line:#e7e3dc;--accent:#2f5fd0;--bad:#c4372b;--soft:#f3f1ec;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#161615;--panel:#1f1e1c;--ink:#ecebe8;--muted:#9c978f;--line:#33312d;--accent:#7aa2ff;--bad:#ff6b5e;--soft:#262522}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
-main{max-width:1100px;margin:0 auto;padding:16px 16px 80px}
-header{position:sticky;top:0;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--line);z-index:2}
-h1{font-size:18px;margin:0 0 4px}.muted{color:var(--muted)}
-.bar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px;margin-top:6px}
-.bar button{font:inherit;padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
-pre{white-space:pre-wrap;word-break:break-word;margin:4px 0 0;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
-.time{color:var(--muted);font:11px ui-monospace,Menlo,monospace;margin-right:8px}
-.msg{margin:10px 0;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel)}
-.msg h4{display:inline;margin:0;font-size:12px;color:var(--muted)}
-.msg.person{border-left:3px solid var(--accent)}.msg.person pre{font:14px/1.5 ui-sans-serif,system-ui,sans-serif}
-.msg.agent pre{font:14px/1.5 ui-sans-serif,system-ui,sans-serif}
-.msg.background,.msg.task{background:var(--soft);font-size:12px}
-.harness{margin:2px 0;font-size:11.5px;color:var(--muted)}.harness>summary{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.harness-item{margin:2px 0 2px 16px}.harness-item pre{background:var(--soft);border-radius:6px;padding:6px 8px;max-height:400px;overflow:auto}
-a{color:var(--accent)}
-details>summary{cursor:pointer;list-style:none}details>summary::-webkit-details-marker{display:none}
-details>summary::before{content:"▸";display:inline-block;width:12px;color:var(--muted)}details[open]>summary::before{content:"▾"}
-.tool{margin:3px 0;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel)}
-.tool summary{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tool code{color:var(--muted);font:12px ui-monospace,Menlo,monospace;margin-left:6px}
-.tool.failed{border-color:color-mix(in srgb,var(--bad) 50%,var(--line))}
-.io{padding:4px 0 4px 12px}.io pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;max-height:520px;overflow:auto}
-.label{font-size:11px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.04em}
-.took{color:var(--muted);font-size:12px}
-.badge{font-size:11px;padding:0 6px;border-radius:4px;margin-left:4px}.badge.bad{background:var(--bad);color:#fff}.badge.open{border:1px solid var(--muted);color:var(--muted)}
-.thinking{margin:4px 0;padding:4px 10px;color:var(--muted);font-style:italic;font-size:13px;border-left:2px dashed var(--line)}.thinking.hidden{font-size:12px}
-.event{margin:4px 0;font-size:12px;color:var(--muted)}.event.bad{color:var(--bad)}
-.gap{text-align:center;color:var(--muted);font-size:11px;margin:12px 0;border-top:1px dashed var(--line);line-height:0}.gap{padding-top:2px}
-.subagent{margin:6px 0 10px 18px;padding:6px 10px;border-left:3px solid var(--line);background:color-mix(in srgb,var(--soft) 60%,transparent);border-radius:0 8px 8px 0}
-.subagent>summary{font-size:13px;color:var(--muted)}
-body.no-harness [data-kind=harness],body.no-harness [data-kind=background]{display:none}
-body.no-thinking [data-kind=thinking]{display:none}
-body.no-quiet .quiet{display:none}
-body.only-talk [data-kind=tool],body.only-talk [data-kind=event],body.only-talk [data-kind=thinking],body.only-talk [data-kind=harness]{display:none}
+body{max-width:900px;margin:2em auto;padding:0 1em;font:15px/1.5 system-ui,sans-serif}
+h3{margin:1.5em 0 .3em;font-size:1em}small,.m{color:#777}.m{margin:.3em 0;font-size:.85em}
+.say{white-space:pre-wrap}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f6f6f6;padding:.5em;max-height:30em;overflow:auto}
+code{font-size:12px}details{margin:.2em 0}summary{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sub{margin-left:1.5em;border-left:2px solid #ddd;padding-left:.8em}
+@media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub{border-color:#333}}
 </style>
-</head>
-<body class="no-quiet">
-<main>
-<header>
-<h1>Transcript <span class="muted" style="font:13px ui-monospace,Menlo,monospace">${esc(id)}</span></h1>
-<div class="muted" style="font-size:12px">${esc(t.harness)} · ${t.agents.get("main").items.filter((x) => x.kind === "person").length} from the person · ${counts.text ?? 0} agent messages · ${counts.tool ?? 0} tool calls · ${counts.background ?? 0} background · ${t.agents.size - 1} subagents · times are UTC · <a href="trace.html">analysis</a></div>
-<div class="bar">
-<label><input type="checkbox" data-hide="no-harness"> hide harness and background</label>
-<label><input type="checkbox" data-hide="no-thinking"> hide thinking</label>
-<label><input type="checkbox" data-hide="only-talk"> conversation only</label>
-<button id="open">open all</button><button id="close">close all</button>
-</div>
-</header>
+<h1>Transcript</h1>
+<p class="m">${esc(id)} · ${esc(t.harness)} · times UTC · <a href="trace.html">analysis</a> · full text in transcript.md</p>
 ${main}
 ${rest}
-</main>
-<script>
-document.querySelectorAll("[data-hide]").forEach(c=>c.addEventListener("change",()=>document.body.classList.toggle(c.dataset.hide,c.checked)));
-document.getElementById("open").onclick=()=>document.querySelectorAll("details").forEach(d=>d.open=true);
-document.getElementById("close").onclick=()=>document.querySelectorAll("details").forEach(d=>d.open=false);
-</script>
-</body>
-</html>
 `;
 }
 
@@ -387,7 +324,7 @@ function mdItems(t, agentId, depth, seen) {
     if (it.kind === "task") out.push(`**Task from the agent that started it · ${time}**\n\n${it.text.trim()}\n`);
     else if (it.kind === "person") out.push(`${h} Person${it.queued ? " (sent while the agent worked)" : ""} · ${time}\n\n${it.text.trim()}\n`);
     else if (it.kind === "background") out.push(`**Background · ${time}**${it.from ? ` (${it.from})` : ""}\n\n${fence(it.text.trim())}\n`);
-    else if (it.kind === "harness") out.push(`*Harness · ${time} · ${it.label ?? ""}*\n\n${fence(cap(it.body ?? it.text, MD_OUTPUT_CAP))}\n`);
+    else if (it.kind === "harness") out.push(`*Harness · ${time} · ${it.label ?? ""}*\n\n${fence(cap(it.body ?? it.text, MD_HARNESS_CAP))}\n`);
     else if (it.kind === "text") out.push(`${h} Agent · ${time}\n\n${it.text.trim()}\n`);
     else if (it.kind === "thinking") out.push(it.hidden ? `*thinking · ${time} (text not kept)*\n` : `*thinking · ${time}*\n\n> ${it.text.trim().replace(/\n/g, "\n> ")}\n`);
     else if (it.kind === "event") out.push(`*${time} · ${it.label}*${it.body ? `\n\n${fence(it.body)}` : ""}\n`);
