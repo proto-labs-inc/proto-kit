@@ -1,5 +1,5 @@
 /** Durable chat questions with bounded best-effort outbound history and progress. */
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 import { answerChatQuestion, chatAnswer, keepChatQuestion, needsChatInput, readChatQuestion } from "./chat-questions.mjs";
@@ -53,7 +53,9 @@ async function reportState(build, { status, message, pending }) {
 }
 
 export async function ask(build, fields) {
-  const id = keepChatQuestion(build, fields);
+  const workflowPath = join(build.runDir, "workflow.json");
+  const workflow = existsSync(workflowPath) ? JSON.parse(readFileSync(workflowPath, "utf8")) : null;
+  const id = keepChatQuestion(build, { ...fields, ...(workflow ? { step: workflow.step } : {}) });
   const answer = chatAnswer(build, id);
   await reportState(build, { ...(answer ? {} : { status: "needs-input", message: "Waiting for an answer in the agent conversation." }), pending: history(build, id, answer) });
   return id;

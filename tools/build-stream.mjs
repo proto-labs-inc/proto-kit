@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { workflowEvent } from "./workflow-report.mjs";
 // Streams a prototype build to the Proto site as it happens, so the user
 // watches it in New prototype: the reference page captured, its tree read
 // from the root down, curated, each leaf replicated pass by pass, the
@@ -19,7 +20,6 @@
 // Usage:
 //   node tools/build-stream.mjs read     <briefId> --codebase <id> --page <url-substring> [--port 9333]
 //   node tools/build-stream.mjs curate   <briefId> --codebase <id>
-//   node tools/build-stream.mjs phase    <briefId> --codebase <id> <phase> "<one sentence>"
 //   node tools/build-stream.mjs title    <briefId> --codebase <id> "<prototype title>"
 //   node tools/build-stream.mjs name     <briefId> --codebase <id> <curation.json>
 //   node tools/build-stream.mjs queue    <briefId> --codebase <id> [nodeId ...]   (no ids: every leaf)
@@ -57,7 +57,6 @@ import { createReporter } from "./build-report.mjs";
 import { draftCuration } from "./curate.mjs";
 import { captureAssets, overlayLine, readPage } from "./read-page.mjs";
 
-const PHASES = ["attaching", "reading", "curating", "replicating", "composing", "serving", "ready", "needs-input", "failed"];
 
 function fail(message) {
   console.error(message);
@@ -131,7 +130,7 @@ switch (command) {
     const port = Number(flags.port ?? 9333);
     const started = Date.now();
     const took = () => `${((Date.now() - started) / 1000).toFixed(1)} s`;
-    await report([{ kind: "phase", phase: "attaching", line: "Opening your page in the Proto window" }]);
+    await report([workflowEvent(runDir, "copy", "Accessing the reference screen")]);
     const tab = await findPage(match, port).catch(() => null);
     if (!tab) fail(`no tab in the Proto window (port ${port}) matches "${match}"`);
     const page = await connect(tab.webSocketDebuggerUrl);
@@ -159,7 +158,7 @@ switch (command) {
     const { viewport, nodes } = read.tree;
     const events = [
       { kind: "reference", image, url: read.tree.url, width: viewport.width, height: viewport.height },
-      { kind: "phase", phase: "reading", line: read.tree.overlay ? `Reading the page's structure, root first; ${overlayLine(read.tree.overlay)}` : "Reading the page's structure, root first" },
+      workflowEvent(runDir, "copy", "Read the reference screen and its structure"),
     ];
     nodes.forEach((node, index) => {
       if (index % 3 === 0) events.push({ kind: "focus", id: node.id });
@@ -182,12 +181,6 @@ switch (command) {
     console.log("review the names and roles, then run `name` with this file.");
     break;
   }
-  case "phase": {
-    const [phase, line] = positional;
-    if (!PHASES.includes(phase) || !line) fail(`phase needs one of ${PHASES.join(", ")} and a sentence`);
-    await report([{ kind: "phase", phase, line }]);
-    break;
-  }
   case "title": {
     const [title] = positional;
     if (!title) fail("title needs the prototype's title");
@@ -200,7 +193,7 @@ switch (command) {
     const tree = readTree();
     const known = new Set(tree.nodes.map((node) => node.id));
     const curation = JSON.parse(readFileSync(file, "utf8"));
-    const events = [{ kind: "phase", phase: "curating", line: "Naming sections, dropping the packaging" }];
+    const events = [workflowEvent(runDir, "copy", "Naming the components")];
     for (const entry of curation) {
       if (!known.has(entry.id)) fail(`curation names ${entry.id}, which \`read\` did not find`);
       if (!["section", "leaf", "packaging"].includes(entry.role)) fail(`${entry.id}: role must be section, leaf or packaging`);
@@ -221,7 +214,7 @@ switch (command) {
     if (ids.length === 0) ids = (tree.curation ?? []).filter((entry) => entry.role === "leaf").map((entry) => entry.id);
     if (ids.length === 0) fail("nothing to queue: name the tree first, or pass node ids");
     await report([
-      { kind: "phase", phase: "replicating", line: `Replicating ${ids.length} leaves against your page` },
+      workflowEvent(runDir, "copy", `Replicating ${ids.length} leaves against your page`),
       ...ids.map((id) => ({ kind: "queued", id })),
     ]);
     break;

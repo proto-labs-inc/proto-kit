@@ -32,6 +32,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildOfWorkspace } from "./build-folder.mjs";
+import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 
 const USAGE = 'usage: node tools/variant-set.mjs <workspace> <component> --title "<t>" --variants "id=Title|note;..." --default <id> [--baseline id=Title] [--state <id>] [--overview "<sentence>"]';
@@ -172,7 +173,7 @@ writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 const build = buildOfWorkspace(workspace);
 if (build) {
   const reporter = createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: options.noSend ? "file" : "site" });
-  reporter.send([{ kind: "phase", phase: "composing", line: `Writing the "${options.title}" variant set (${variants.length} variant${variants.length === 1 ? "" : "s"})` }]);
+  reporter.send([workflowEvent(build.dir, "build", `Writing the "${options.title}" variant set (${variants.length} variant${variants.length === 1 ? "" : "s"})`)]);
   await reporter.flush();
 }
 console.log(

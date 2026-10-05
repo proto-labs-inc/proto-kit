@@ -61,7 +61,7 @@ export function answerChatQuestion(build, id, input) {
     if (!question.options.some((option) => option.id === input.option)) throw new Error(`unknown option ${input.option}; choose ${question.options.map((option) => option.id).join(", ")}`);
     answer = { by: "option", option: input.option };
   } else {
-    if (typeof input.text !== "string" || !input.text.trim() || input.text.trim().length > 10_000) throw new Error("answer text must be 1 to 10000 characters");
+    if (typeof input.text !== "string" || !input.text.trim() || input.text.trim().length > 500) throw new Error("answer text must be 1 to 500 characters");
     answer = { by: "reply", text: input.text.trim() };
   }
   const path = questionPath(build, id).replace(/\.json$/, ".answer.json");
