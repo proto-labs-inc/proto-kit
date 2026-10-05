@@ -32,9 +32,10 @@ presented when the action reaches that boundary.
    upserts on (codebase, slug), so re-registering after a title change
    is correct. The row must exist before the next step: the site
    stores the prototype's address on it. An authorization error means
-   the laptop must be relinked through setup. Registering
-   also flips the build's brief to done, closing the gallery's loading
-   card; the tile waits for a heartbeat before it loads anything.
+   the laptop must be relinked through setup. Registering only records
+   the prototype: a running build's brief stays open (its card stays in
+   the gallery) until step 7 reports it done; the tile waits for a
+   heartbeat before it loads anything.
 
 2. **Provision the tunnel** (idempotent; reuses an existing tunnel):
    call the `provision_tunnel` MCP tool with
@@ -127,7 +128,15 @@ presented when the action reaches that boundary.
    URL. The Frame falls back to that URL when the laptop is gone, so
    viewers see the last checkpoint instead of nothing.
 
-7. **Report**: the live URL (step 2's `url`), the published URL, the
+7. **Report**. If a brief is running (create-prototype passes its
+   `briefId`) and step 5 verified the address through the edge and step
+   6 published, finish it first: `report_progress { briefId, status:
+   "done", prototypeSlug: "<slug>", message: "Ready" }`. That is what
+   closes the build's card in the gallery; registering and the
+   heartbeat do not. It is refused while the prototype has no fresh
+   heartbeat: check `supervise.mjs status` and report again. (After a
+   `blocked` network, the `failed` report of step 5 stands instead.)
+   Then tell the user the live URL (step 2's `url`), the published URL, the
    Frame URL (`<app>/p/<slug>`), and where the run lives. Tell the
    user plainly: the prototype is live while this laptop serves it,
    and falls back to the last published build when serving stops.

@@ -71,8 +71,10 @@ verified same-brief resume. Missing or contradictory state requires input.
 3. **Brief id.** For a website request, call
    `begin_prototype_build { codebase, slug, title, briefId }` with its existing
    ID, preserving the website card and action. Otherwise
-   `begin_prototype_build { codebase, slug, title }` returns a new/reused active
-   ID. Report `report_progress { briefId, status: "started" }` when work actually
+   `begin_prototype_build { codebase, slug, title, description, useRealData }`
+   returns a new/reused active ID; pass the brief's text you are building
+   from (a setup document's brief, the user's request) as `description`
+   and its `useRealData`, so the website shows what was asked. Report `report_progress { briefId, status: "started" }` when work actually
    begins, never merely because a prompt was copied.
 4. **Copy the page**, one command. The live URL is the visual source of truth.
    Before opening a browser or tab, inspect readable existing tabs in the
@@ -113,7 +115,9 @@ verified same-brief resume. Missing or contradictory state requires input.
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
    through the edge yet: the tunnel connects while you write the change.
-   `report_progress serving` comes later, at step 10.
+   Registering and the heartbeat do not finish the build: its card stays
+   up and every stage is still reported. `report_progress serving` comes
+   later, at step 10, and `done` at the very end.
 6. **The gate, then the parts left to fix.** The composed page is the
    copy's gate: the change is written on it when the page differs by at
    most `TAIL.PAGE_PROCEED_PCT` (0.5% of its pixels) and mounted.
@@ -210,8 +214,11 @@ verified same-brief resume. Missing or contradictory state requires input.
 10. **Serve.** Continue in the serve skill at step 5 (verify through the
     edge, publish, report); `build-stream.mjs phase <briefId> --codebase
     <id> serving "<one sentence>"` and `report_progress serving` as it
-    starts. Registration flipped the brief to done. Tell the user once
-    the prototype is reachable, not before. Never commit anything into
+    starts. When the edge check and the publish pass, report
+    `report_progress { briefId, status: "done", prototypeSlug: <slug>,
+    message: "Ready" }` (serve's step 7): that, and nothing earlier,
+    finishes the build and closes its card. Tell the user once the
+    prototype is reachable, not before. Never commit anything into
     the user's repos.
 
 ## Blocked
