@@ -59,6 +59,12 @@ Headlines read like a line in a log the team skims:
 Leave out `--note` or `--codebase` when there is none. It prints
 `{ id, files, totalBytes }` once the Proto site has every file.
 
+When you send one **on your own**, add `--detach`: it finds the session
+at once, then uploads in the background (a large `~/.proto` can take
+longer than a command is allowed to run) and prints `sending in
+background; see <log>`. When the user asked for it, leave `--detach`
+off, so you have the report ID to give them.
+
 ## After it sends
 
 When you sent it on your own, carry on with the work; don't mention it.

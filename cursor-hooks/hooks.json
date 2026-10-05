@@ -11,6 +11,28 @@
       {
         "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/cursor-post-tool-use.mjs\"",
         "timeout": 20
+      },
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/trace-hook.mjs\"",
+        "timeout": 10
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/trace-hook.mjs\"",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/trace-hook.mjs\"",
+        "timeout": 10
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/trace-hook.mjs\"",
+        "timeout": 10
       }
     ]
   }
