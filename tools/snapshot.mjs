@@ -51,6 +51,7 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { INSIDE, PICTURE_OF, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
 import { FORCEABLE, withForcedState } from "./verify-replica.mjs";
+import { STURDY_SELECTOR, positional } from "./live-selector.mjs";
 
 const USAGE = "usage: node tools/snapshot.mjs <codebase> <json | @file> [--theme <light|dark>]";
 
@@ -1157,6 +1158,10 @@ export async function readLiveInstances(live, states) {
       }
       return data;
     });
+    // A position names the element only while every sibling before it
+    // stays (a sign-in flash message gone on reload shifts it): record a
+    // position-free selector beside it (tools/live-selector.mjs).
+    if (positional(state.selector)) read.fallback = await evaluate(live, `(${STURDY_SELECTOR})(${JSON.stringify(state.selector)})`).catch(() => null);
     instances.push(instanceOf(state, read));
   }
   const faces = await fontFaces(live);
@@ -1730,6 +1735,7 @@ ${lines.join("\n")}
     }
     const live = { selector: inst.state.selector };
     if (inst.state.force) live.force = inst.state.force;
+    if (inst.fallback && inst.fallback !== inst.state.selector) live.fallback = inst.fallback;
     // The width the product gave it, which the library shows it at.
     const entry = { name: inst.state.name, props, live, width: inst.nodes[0].rect[2] };
     // A state sits on what the product painted under its own instance: a
