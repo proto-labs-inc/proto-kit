@@ -57,6 +57,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFolder, restartCopy } from "./build-folder.mjs";
 import { ask, waitForAnswer } from "./ask.mjs";
+import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 import { findPage } from "./cdp/attach.mjs";
 import { connect } from "./cdp/cdp.mjs";
@@ -266,7 +267,7 @@ writeFileSync(at("parts.json"), JSON.stringify(record, null, 2) + "\n");
 
 // The site: the copy is done, the change comes next.
 const reporter = createReporter({ codebase, briefId, runDir: buildDir, sink });
-reporter.send([{ kind: "phase", phase: "composing", line: `Building the change on top of the copy of ${workspace.title}` }]);
+reporter.send([workflowEvent(buildDir, "build", `Building the change on top of the copy of ${workspace.title}`)]);
 await reporter.flush();
 
 const { replicate: _, ...printed } = record;

@@ -42,6 +42,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
 import { findPage } from "./cdp/attach.mjs";
@@ -181,7 +182,7 @@ const baseline = await appBaseline(appUrl, kinds, viewport, display);
 stage("baseline", baselineBegan);
 
 reporter.send([
-  { kind: "phase", phase: "replicating", line: `Replicating ${parts.length} parts against your page` },
+  workflowEvent(buildDir, "copy", `Replicating ${parts.length} parts against your page`),
   ...selection.selected.map((part) => ({ kind: "queued", id: part.id })),
 ]);
 
@@ -307,7 +308,7 @@ async function check(part) {
 
 // ---- the page: sections and packaging composed around the parts ----
 const composeBegan = Date.now();
-reporter.send([{ kind: "phase", phase: "composing", line: "Putting the page together around its parts" }]);
+reporter.send([workflowEvent(buildDir, "copy", "Putting the page together around its parts")]);
 const built = parts.filter((part) => part.outcome);
 const page = await bounded(composePage(built), 5 * 60_000, "composing the page").catch((error) => fail(error.message));
 stage("compose", composeBegan);

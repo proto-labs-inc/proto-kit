@@ -26,6 +26,8 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildOfWorkspace, markerRects, nextPassFor } from "./build-folder.mjs";
+import { randomUUID } from "node:crypto";
+import { workflowEvent, activityEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { diffPngs, THRESHOLD } from "./cdp/diff.mjs";
@@ -64,7 +66,12 @@ const changed = new Set([...(options.changed ? options.changed.split(",") : []),
 const outDir = build ? join(build.dir, "checks", "after") : join(workspace, ".proto-checks");
 mkdirSync(outDir, { recursive: true });
 
-const dev = await ensureDevServer({ workspace, logPath: join(outDir, "dev.log") });
+const reporter = build ? createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: options.noSend ? "file" : "site" }) : null;
+const workflow = build ? workflowEvent(build.dir, "check", "Checking prototype views") : null;
+if (reporter) { reporter.send([workflow]); await reporter.flush(); }
+let dev;
+try {
+dev = await ensureDevServer({ workspace, logPath: join(outDir, "dev.log") });
 const views = viewsOf(manifest, dev.url);
 const copyView = views.some((view) => view.name === "copy") ? "copy" : "default";
 
@@ -200,19 +207,30 @@ async function copyCheck(marks, opened) {
 }
 
 // ---- every view, four at a time ----
+let previewPath = null;
 const results = [];
 let copy = null;
 let defaultMarks = null;
 const queue = [...views];
 async function lane() {
   for (let view = queue.shift(); view; view = queue.shift()) {
+    if (reporter) reporter.send([activityEvent(workflow, `view-${view.name}`, "active", `Checking ${view.name}`, "Inspecting rendering, errors, and layout")]);
     const { result, marks, page } = await checkView(view);
     results.push(result);
     const problems = (result.blank ? 1 : 0) + result.errors.length + result.missing.length + result.outside.length + result.overlap.length;
     step(`${view.name}: ${result.blank ? "blank" : `${result.markers} markers`}, ${result.errors.length} errors, ${result.outside.length} outside, ${result.overlap.length} overlapping${problems === 0 ? "" : "  <-"}`);
+    if (reporter) reporter.send([activityEvent(workflow, `view-${view.name}`, problems === 0 ? "completed" : "failed", `Checked ${view.name}`, `${problems} issues found`)]);
     if (page) {
-      if (view.name === "default") defaultMarks = marks?.marks ?? null;
       if (view.name === copyView) copy = await copyCheck(marks, page).catch((error) => ({ error: error.message }));
+      if (view.name === "default") {
+        defaultMarks = marks?.marks ?? null;
+        // Reuse the comparison capture only when it belongs to this view.
+        previewPath = view.name === copyView ? copy?.pixels?.screenshot : null;
+        if (!previewPath) {
+          previewPath = join(outDir, "prototype-preview.png");
+          await stableShot(page.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, previewPath);
+        }
+      }
       await page.close().catch(() => {});
     }
   }
@@ -223,10 +241,9 @@ results.sort((a, b) => views.findIndex((v) => v.name === a.view) - views.findInd
 const problems = results.reduce((n, r) => n + (r.blank ? 1 : 0) + r.errors.length + r.missing.length + r.outside.length + r.overlap.length, 0) + (copy?.moved?.length ?? 0) + (copy?.missing?.length ?? 0);
 
 // ---- the site: a pass per changed node, matched when clean ----
-if (options.brief && options.codebase && build) {
-  const reporter = createReporter({ codebase: options.codebase, briefId: options.brief, runDir: build.dir, sink: options.noSend ? "file" : "site" });
-  // The phase line is the tool's to send: the site never sits on the copy's last line while the states are checked.
-  reporter.send([{ kind: "phase", phase: "composing", line: `Checked ${results.length} view${results.length === 1 ? "" : "s"} of the prototype: ${problems === 0 ? "every one draws" : `${problems} problem${problems === 1 ? "" : "s"} to fix`}` }]);
+if (reporter && build) {
+  if (previewPath) reporter.send([{ kind: "preview", reportId: randomUUID(), revision: workflow.revision, image: await reporter.upload(readFileSync(previewPath)), width: viewport.width, height: viewport.height }]);
+  reporter.send([activityEvent(workflow, "check-summary", problems === 0 ? "completed" : "failed", "Checked the prototype", `${results.length} views checked; ${problems} issues found`)]);
   for (const marker of changed) {
     const nodeId = nodeIds.get(marker);
     if (!nodeId) continue;
@@ -240,7 +257,7 @@ if (options.brief && options.codebase && build) {
       const crop = cropPng(decodePng(readFileSync(copy.pixels.screenshot)), { x: Math.round(drawn.rect[0] * display.dpr), y: Math.round(drawn.rect[1] * display.dpr), width: Math.round(drawn.rect[2] * display.dpr), height: Math.round(drawn.rect[3] * display.dpr) });
       image = await reporter.upload(encodePng(crop));
     }
-    const pass = { kind: "pass", id: nodeId, pass: nextPassFor(build.dir, nodeId), mismatch: problems };
+    const pass = { kind: "pass", revision: workflow.revision, id: nodeId, pass: nextPassFor(build.dir, nodeId), mismatch: problems };
     if (image) pass.image = image;
     reporter.send([{ kind: "focus", id: nodeId }, pass]);
     if (problems === 0) {
@@ -256,6 +273,13 @@ if (options.brief && options.codebase && build) {
   await reporter.flush();
 }
 
-dev.stop();
 console.log(JSON.stringify({ ok: problems === 0, problems, seconds: Math.round((Date.now() - started) / 100) / 10, views: results, copy }));
-process.exit(0);
+} catch (error) {
+  if (reporter) {
+    reporter.send([activityEvent(workflow, "check-summary", "failed", "Could not complete the checks", error.message)]);
+    await reporter.flush();
+  }
+  throw error;
+} finally {
+  dev?.stop();
+}

@@ -30,6 +30,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve, relative, extname, sep } from "node:path";
+import { workflowEvent, activityEvent } from "./workflow-report.mjs";
+import { buildOfWorkspace } from "./build-folder.mjs";
+import { createReporter } from "./build-report.mjs";
+import { capturePublishedPreview } from "./publish-preview.mjs";
 import { callTool, readConfig } from "./mcp-call.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
 
@@ -243,14 +247,31 @@ else target = { kind, codebase };
 // of the @proto-labs-inc/rig-core the workspace's adapter resolves.
 let rigVersion = null;
 if (kind === "prototype") rigVersion = resolvedRigVersion(workspace);
+let progressBuild = kind === "prototype" ? buildOfWorkspace(workspace) : null;
+if (progressBuild) {
+  const response = await callTool("get_brief", { briefId: progressBuild.briefId });
+  const brief = unwrap(response);
+  if (response?.isError || !brief.status) throw new Error("Could not verify the saved request before publishing");
+  // Re-publishing an existing prototype never reopens its completed request.
+  if (brief.status === "done") progressBuild = null;
+}
+const progress = progressBuild ? createReporter({ codebase, briefId: progressBuild.briefId, runDir: progressBuild.dir }) : null;
+const publishing = progressBuild ? workflowEvent(progressBuild.dir, "publish", "Publishing the prototype") : null;
+try {
+if (progress) {
+  progress.send([publishing, activityEvent(publishing, "publish-capture", "active", "Capturing the final prototype", "Capturing the built page before upload")]);
+  await progress.flush();
+  await capturePublishedPreview(dist, progressBuild, progress, publishing.revision);
+  progress.send([activityEvent(publishing, "publish-capture", "completed", "Captured the final prototype", "Saved the clean final preview"), activityEvent(publishing, "publish-upload", "active", "Uploading the prototype", `Uploading ${manifest.length} files`)]);
+  await progress.flush();
+}
 const opened = unwrap(
   await callTool("begin_publish", { ...target, files: manifest }).catch((e) => ({
     content: [{ text: e.message }],
   })),
 );
 if (!opened.buildId || !Array.isArray(opened.uploads)) {
-  console.error(`begin_publish did not open a build: ${opened.error ?? JSON.stringify(opened)}`);
-  process.exit(1);
+  throw new Error(`Could not prepare publishing: ${opened.error ?? "the app did not return upload targets"}`);
 }
 const { buildId, pathnamePrefix, uploads } = opened;
 console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload URLs)`);
@@ -276,7 +297,7 @@ const failed = results.filter((r) => !r.ok);
 if (failed.length > 0) {
   for (const f of failed) console.error(`upload failed: ${f.path} (${f.status})`);
   console.error("nothing was finished; run publish again for a fresh build");
-  process.exit(1);
+  throw new Error("Publishing failed; the build remains unfinished");
 }
 
 const finishInput = { ...target, buildId };
@@ -287,23 +308,28 @@ const finished = unwrap(
   })),
 );
 if (!finished.publishedUrl) {
-  console.error(`finish_publish did not confirm: ${finished.error ?? JSON.stringify(finished)}`);
-  process.exit(1);
+  throw new Error(`Could not verify publishing: ${finished.error ?? "the app did not confirm availability"}`);
 }
 console.log(`published: ${finished.publishedUrl}`);
 if (kind === "library") console.log(`the app loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}manifest.json`);
 else console.log(`the Frame loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}prototype.json`);
-// The site hears the prototype is published from the tool itself: the
-// build's last phase line is never left to the agent to remember.
-if (kind === "prototype") {
-  const { buildOfWorkspace } = await import("./build-folder.mjs");
-  const build = buildOfWorkspace(workspace);
-  if (build) {
-    const { createReporter } = await import("./build-report.mjs");
-    const reporter = createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: "site" });
-    reporter.send([{ kind: "phase", phase: "ready", line: `Published: ${finished.publishedUrl}` }]);
-    await reporter.flush().catch((error) => console.error(`the site did not take the published line: ${error.message}`));
+if (progress) {
+  progress.send([
+    activityEvent(publishing, "publish-upload", "completed", "Uploaded the prototype", "Saved the published build"),
+    activityEvent(publishing, "publish-availability", "completed", "Verified availability", "Confirmed the published page is available"),
+    workflowEvent(progressBuild.dir, "publish", "Published the prototype", "completed"),
+  ]);
+  await progress.flush();
+  const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" });
+  if (completed?.isError) throw new Error(completed.content?.[0]?.text ?? "Completion report failed");
+}
+} catch (error) {
+  if (progress) {
+    progress.send([workflowEvent(progressBuild.dir, "publish", error.message.slice(0, 200), "failed"), activityEvent(publishing, "publish-result", "failed", "Publishing failed", error.message.slice(0, 1000))]);
+    await progress.flush().catch(() => {});
+    await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }).catch(() => {});
   }
+  throw error;
 }
 // The adapter is the workspace's own dependency; rig-core is the
 // adapter's, so it is resolved from there, wherever the package

@@ -7,7 +7,11 @@ the user for a current work prompt instead.
 
 For a prompt with a brief ID:
 
-1. Use the configured app and authenticated `get_brief { briefId }`. Match the
+1. For create-prototype, follow `docs/build-progress.md` immediately: enter
+   Connect with an active verification activity before whoami and get_brief
+   finish, using the existing credential. Do not report a verified connection
+   until those checks succeed. If authentication fails, reconnect through setup.
+   Use the configured app and authenticated `get_brief { briefId }`. Match the
    returned codebase and scoped target to the prompt. Do not switch teams to
    get around a refusal or treat the ID as a bearer credential.
 2. Read the persisted `action`: `create-prototype`, `add-variants`, or
@@ -33,3 +37,5 @@ Account linking is separate. Existing valid laptop credentials are reused;
 ordinary work prompts contain no new linking code or durable credential. Only
 an actual missing/invalid account link uses the setup flow. The website remains
 a place to prepare work and review outward progress and published results.
+
+For create-prototype progress, follow `docs/build-progress.md`: report on the saved brief before context access, keep its ID, and preserve questions and checkpoints. Registration and heartbeat are availability signals, not completion.

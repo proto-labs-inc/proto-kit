@@ -44,6 +44,16 @@ Then continue the same command without `--again`; do not re-create or overwrite
 completed work. The unused-slug rule below applies to new creation, not a
 verified same-brief resume. Missing or contradictory state requires input.
 
+## Progress reporting
+
+Follow `docs/build-progress.md` as soon as a saved request arrives. Report Connect
+as active on that exact briefId when connection verification starts, before
+`whoami` and `get_brief` finish. Complete that activity only after verification,
+then report Review before accessing external context. If authentication prevents
+the initial report, reconnect and deliver it as soon as possible. Do not wait for
+a title, slug, or workspace. Preserve completed requests and verified resume
+checkpoints.
+
 ## The runbook
 
 1. **Brief.** The site or a copied prompt hands you fields: `codebase`,
@@ -74,9 +84,13 @@ verified same-brief resume. Missing or contradictory state requires input.
    `begin_prototype_build { codebase, slug, title, description, useRealData }`
    returns a new/reused active ID; pass the brief's text you are building
    from (a setup document's brief, the user's request) as `description`
-   and its `useRealData`, so the website shows what was asked. Report `report_progress { briefId, status: "started" }` when work actually
-   begins, never merely because a prompt was copied.
-4. **Copy the page**, one command. The live URL is the visual source of truth.
+   and its `useRealData`, so the website shows what was asked. Early reports
+   already mark a saved request started; do not reset its status.
+   Copying a prompt never starts work.
+4. **Copy the page**, one command. This is the Copy workflow step, separate
+   from Build. Capture, curation, replication, and the copy-quality gate all
+   report `copy`; report `build` only after the gate allows the requested
+   change. The live URL is the visual source of truth.
    Before opening a browser or tab, inspect readable existing tabs in the
    in-app browser, the user's Chrome, and Proto Chrome on port 9333. Prefer an
    exact `referenceUrl` match, then the same path, then the same origin, and
@@ -100,8 +114,8 @@ verified same-brief resume. Missing or contradictory state requires input.
    list (also at `<build>/parts.json`): each part's node id, name,
    marker, files under `src/parts/<slug>/`, whether it came from the
    library, its check's status, its rect and its section. Every event
-   the site needs (phases, queued, pass, matched, composing) is sent by
-   the tools; you send none of them yourself. `--accept-curation` skips
+   the site needs for copying (workflow, queued, pass, matched) is sent by
+   the tools. Report agent-authored changes and context through docs/build-progress.md. `--accept-curation` skips
    the stop when the draft names are already right.
    Pictures (logos, icons, illustrations, charts: `<img>`, inline
    `<svg>`, `<canvas>` and stylesheet images) are copied as the page's
@@ -212,14 +226,10 @@ verified same-brief resume. Missing or contradictory state requires input.
      the variant previews from real renders, into the manifest, and the
      set's `status` cleared.
 10. **Serve.** Continue in the serve skill at step 5 (verify through the
-    edge, publish, report); `build-stream.mjs phase <briefId> --codebase
-    <id> serving "<one sentence>"` and `report_progress serving` as it
-    starts. When the edge check and the publish pass, report
-    `report_progress { briefId, status: "done", prototypeSlug: <slug>,
-    message: "Ready" }` (serve's step 7): that, and nothing earlier,
-    finishes the build and closes its card. Tell the user once the
-    prototype is reachable, not before. Never commit anything into
-    the user's repos.
+    edge, publish, report). Publishing reports its actual upload and availability
+    checks, a clean screenshot of the built files, and completion. Registration
+    and heartbeats do not complete the brief. Tell the user it is reachable only
+    after verification. Never commit anything into the user's repos.
 
 ## Blocked
 

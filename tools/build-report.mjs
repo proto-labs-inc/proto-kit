@@ -12,44 +12,50 @@
  *   upload(bytes)  one PNG, up now; -> the address events use
  * Everything is in-process: no node process per event.
  *
- * A site that cannot be reached does not stop a build: the first call
- * that fails switches the reporter to the build folder, says so once,
- * and every event and picture after it lands there (events.jsonl,
- * captures/), the same as --no-send.
+ * Site reports are persisted in outbox/ before delivery and removed only
+ * after acknowledgement. A subsequent flush or invocation retries them.
+ * Upload failures preserve the local capture and stop dependent reporting.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, renameSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { callTool } from "./mcp-call.mjs";
 
 const BATCH = 150;
 const FLUSH_MS = 700;
 const FLUSH_AT = 40;
 
-export function createReporter({ codebase, briefId, runDir, sink = "site" }) {
+export function createReporter({ codebase, briefId, runDir, sink = "site", transport = callTool }) {
   const waiting = [];
   let timer = null;
   let sending = Promise.resolve();
 
-  const toFile = (error) => {
-    if (sink === "file") return;
-    sink = "file";
-    console.error(`… the site could not be reached (${error.message.split("\n")[0]}); the build's events and pictures are kept in ${runDir} from here`);
-  };
   const toFolder = (events) => {
+    if (!events.length) return;
     mkdirSync(runDir, { recursive: true });
     const lines = events.map((event) => JSON.stringify({ at: new Date().toISOString(), event })).join("\n");
     writeFileSync(join(runDir, "events.jsonl"), lines + "\n", { flag: "a" });
   };
+  const outbox = join(runDir, "outbox");
   const deliver = async (events) => {
     if (sink === "file") return toFolder(events);
-    try {
-      for (let i = 0; i < events.length; i += BATCH) {
-        const result = await callTool("report_build_events", { codebase, briefId, events: events.slice(i, i + BATCH) });
-        if (result?.isError) throw new Error(`report_build_events: ${result?.content?.[0]?.text ?? ""}`);
+    mkdirSync(outbox, { recursive: true });
+
+    for (const file of readdirSync(outbox).filter(name => name.endsWith(".json")).sort()) {
+      const path = join(outbox, file);
+      try {
+        const pending = JSON.parse(readFileSync(path, "utf8"));
+        for (let i = 0; i < pending.length; i += BATCH) {
+          const result = await transport("report_build_events", { codebase, briefId, events: pending.slice(i, i + BATCH) });
+          if (result?.isError) throw new Error(result.content?.[0]?.text ?? "report rejected");
+        }
+        toFolder(pending);
+        unlinkSync(path);
+      } catch (error) {
+        if (error.code === "ENOENT") continue;
+        console.error(`Progress delivery pending in ${path}: ${error.message}`);
+        throw error;
       }
-    } catch (error) {
-      toFile(error);
-      toFolder(events);
     }
   };
 
@@ -58,17 +64,28 @@ export function createReporter({ codebase, briefId, runDir, sink = "site" }) {
       clearTimeout(timer);
       timer = null;
     }
-    if (waiting.length === 0) return sending;
+    if (waiting.length === 0) { sending = sending.catch(() => {}).then(() => deliver([])); return sending; }
     const events = waiting.splice(0, waiting.length);
     // One call at a time, in order: the site keeps events in sequence.
-    sending = sending.then(() => deliver(events));
+    sending = sending.catch(() => {}).then(() => deliver(events));
     return sending;
   };
 
+  let sequence = 0;
   const send = (events) => {
-    waiting.push(...events);
-    if (waiting.length >= FLUSH_AT) flush();
-    else if (!timer) timer = setTimeout(flush, FLUSH_MS);
+    const reports = events.map(event => {
+      if (["question", "answered"].includes(event.kind)) return event;
+      return { ...event, reportId: event.reportId ?? randomUUID() };
+    });
+    if (sink === "file") waiting.push(...reports);
+    else {
+      mkdirSync(outbox, { recursive: true });
+      const path = join(outbox, `${Date.now()}-${process.pid}-${String(sequence++).padStart(8, "0")}-${randomUUID()}`);
+      writeFileSync(path + ".pending", JSON.stringify(reports));
+      renameSync(path + ".pending", path + ".json");
+    }
+    if (waiting.length >= FLUSH_AT) void flush().catch(() => {});
+    else if (!timer) timer = setTimeout(() => { void flush().catch(() => {}); }, FLUSH_MS);
   };
 
   const toCaptures = (bytes) => {
@@ -81,7 +98,7 @@ export function createReporter({ codebase, briefId, runDir, sink = "site" }) {
   const upload = async (bytes, contentType = "image/png") => {
     if (sink === "file") return toCaptures(bytes);
     try {
-      const result = await callTool("begin_build_capture", { codebase, briefId, contentType, size: bytes.length });
+      const result = await transport("begin_build_capture", { codebase, briefId, contentType, size: bytes.length });
       const text = result?.content?.[0]?.text ?? "";
       if (result?.isError) throw new Error(`begin_build_capture: ${text}`);
       const { uploadUrl, url } = JSON.parse(text);
@@ -93,8 +110,8 @@ export function createReporter({ codebase, briefId, runDir, sink = "site" }) {
       if (!res.ok) throw new Error(`the capture upload answered ${res.status}`);
       return url;
     } catch (error) {
-      toFile(error);
-      return toCaptures(bytes);
+      toCaptures(bytes);
+      throw error;
     }
   };
 

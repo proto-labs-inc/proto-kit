@@ -15,7 +15,7 @@ const text = (value, max) => (typeof value === "string" && value.trim().length >
 /**
  * The question event the site stores, from the agent's fields, or an
  * Error naming everything the site would refuse. `form` is copy-gate or
- * generic; options are 2 or 3 { id, label }.
+ * generic; options are zero to three { id, label }.
  */
 export function questionEvent(fields) {
   const problems = [];
@@ -31,7 +31,11 @@ export function questionEvent(fields) {
   }
   const options = fields.options ?? [];
   event.options = options.map((option) => ({ id: option.id?.trim(), label: text(option.label, 40) }));
-  if (options.length < 2 || options.length > 3) problems.push("a question has 2 or 3 options");
+  if (options.length === 1 || options.length > 3) problems.push("a question has no options or 2 or 3 options");
+  if (fields.step !== undefined) {
+    if (!["connect", "review", "copy", "build", "check", "publish"].includes(fields.step)) problems.push("unknown workflow step");
+    else event.step = fields.step;
+  }
   for (const option of event.options) {
     if (!isId(option.id)) problems.push(`option id "${option.id}" must be lowercase letters, digits and dashes`);
     if (!option.label) problems.push(`option ${option.id} needs a label of 1 to 40 characters`);

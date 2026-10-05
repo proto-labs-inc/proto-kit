@@ -75,13 +75,15 @@ const out = join(buildDir, "checks", slug);
 const outcome = await checkComponent({ unit, slug, appUrl: dev.url, liveMatch: liveMatchOf(tree.url), out, codebase: options.codebase, port: Number(options.port) });
 
 const reporter = createReporter({ codebase: options.codebase, briefId, runDir: buildDir, sink: options.noSend ? "file" : "site" });
+const workflowPath = join(buildDir, "workflow.json");
+const revision = existsSync(workflowPath) ? JSON.parse(readFileSync(workflowPath, "utf8")).revision : undefined;
 reporter.send([{ kind: "focus", id: part.id }]);
 // Each pass with its crop (exactly the part's rect) and the red difference picture.
 const images = await Promise.all(
   outcome.states.map(async (state) => {
     if (!state.result) return null;
     const [image, diff] = await Promise.all([reporter.upload(readFileSync(state.result.screenshot)), reporter.upload(readFileSync(state.result.diff))]);
-    reporter.send([{ kind: "pass", id: part.id, pass: nextPassFor(buildDir, part.id), mismatch: state.result.mismatch, image, diff }]);
+    reporter.send([{ kind: "pass", revision, id: part.id, pass: nextPassFor(buildDir, part.id), mismatch: state.result.mismatch, image, diff }]);
     return image;
   }),
 );
