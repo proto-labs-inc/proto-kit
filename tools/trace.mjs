@@ -25,7 +25,11 @@
  * subagents) and every message one (m3). `flag` marks either with a kind
  * and a note; the page shows flags inline and in a list at the top, and
  * they survive every regeneration. That is how an agent reading a trace
- * reports back: it flags, the person reads the flags.
+ * reports back: it flags, the person reads the flags. A `phase` flag is a
+ * mark a person (or an agent asked to) puts where a phase of the work
+ * starts, its note the phase's name: the page and `compare` split time on
+ * these. Phases are read and marked, not inferred from what the skill
+ * prints, which changes with every skill.
  *
  * The end-of-turn hook (hooks/trace-sync.mjs) runs `sync` in the
  * background after every turn, so the folder is never more than a turn
@@ -43,7 +47,8 @@
  *   node trace.mjs show <session | latest> <step> [<step>…] [--full]   e.g. 12 or s12 or 10-14
  *   node trace.mjs grep <session | latest> <regex>
  *   node trace.mjs view [<session> | latest] [--open]      refresh and print transcript.html's path
- *   node trace.mjs flag <session | latest> <s12 | m3 | session> --kind error|slow|improve|note|good --note <text> [--by <who>]
+ *   node trace.mjs compare <session> <session> […]          runs side by side; the first is the baseline
+ *   node trace.mjs flag <session | latest> <s12 | m3 | session> --kind error|slow|improve|note|good|phase --note <text> [--by <who>]
  *   node trace.mjs flags <session | latest> [--json]
  *   node trace.mjs unflag <session | latest> <flag id | all>
  */
@@ -174,8 +179,8 @@ export function sync(session, { force = false } = {}) {
 /** The written-up forms of one trace folder. */
 export function workUp(dir) {
   const trace = readTrace(dir);
-  const summary = analyze(trace);
   const flags = readFlags(dir);
+  const summary = analyze(trace, flags);
   writeAtomic(join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
   writeAtomic(join(dir, "report.md"), reportMarkdown(trace, summary, flags));
   const transcript = transcriptHtml(dir, { trace, summary, flags });
@@ -400,6 +405,60 @@ function grep(dir, pattern) {
   }
 }
 
+/** Runs side by side: totals, each phase's working time, the tools that
+ *  took the most, against the first run. Phases match by name (a skill,
+ *  a build phase), so two runs of one flow line up. */
+function compare(dirs) {
+  const runs = dirs.map((dir) => {
+    refresh(dir);
+    const s = JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
+    return { id: basename(dir).slice(0, 8), s, flags: readFlags(dir) };
+  });
+  const delta = (v, base) => (base == null || v == null || base === 0 ? "" : ` (${v >= base ? "+" : ""}${Math.round((100 * (v - base)) / base)}%)`);
+  const row = (label, values, fmtv = (v) => String(v ?? "–")) => `| ${label} | ${values.map((v, i) => `${fmtv(v)}${i ? delta(v, values[0]) : ""}`).join(" | ")} |`;
+  const head = `| | ${runs.map((r) => `${r.id} ${r.s.session.firstAt.slice(5, 16).replace("T", " ")}`).join(" | ")} |\n|---|${runs.map(() => "---:").join("|")}|`;
+  const out = ["## Totals", "", head];
+  out.push(row("working", runs.map((r) => r.s.activeMs), duration));
+  out.push(row("model (thinking + writing)", runs.map((r) => r.s.mainBuckets["model (thinking + writing)"] ?? 0), duration));
+  out.push(row("steps", runs.map((r) => r.s.counts.toolCalls)));
+  out.push(row("failed steps", runs.map((r) => r.s.counts.errors)));
+  out.push(row("model requests", runs.map((r) => r.s.counts.modelRequests)));
+  out.push(row("subagents", runs.map((r) => r.s.counts.subagents)));
+  out.push(row("subagents that gave up", runs.map((r) => Number(/^(\d+) of/.exec(r.s.struggles.find((x) => x.kind === "subagents-gave-up")?.title ?? "")?.[1] ?? 0))));
+  out.push(row("output tokens", runs.map((r) => r.s.usage.output)));
+  out.push(row("flags", runs.map((r) => r.flags.filter((f) => f.kind !== "phase").length)));
+  const phaseNames = [];
+  const phaseOf = runs.map((r) => {
+    const m = new Map();
+    for (const p of r.s.phases) {
+      if (p.label.startsWith("person:")) continue;
+      const name = p.label.replace(/ \(read\)$/, "");
+      if (!phaseNames.includes(name)) phaseNames.push(name);
+      m.set(name, (m.get(name) ?? 0) + p.workingMs);
+    }
+    return m;
+  });
+  if (phaseNames.length) {
+    out.push("", "## Working time by phase", "", head);
+    for (const name of phaseNames) out.push(row(name, phaseOf.map((m) => m.get(name) ?? null), (v) => (v == null ? "–" : duration(v))));
+  }
+  const groupTotals = new Map();
+  for (const r of runs) for (const g of r.s.groups) if (!g.group.startsWith("waiting")) groupTotals.set(g.group, (groupTotals.get(g.group) ?? 0) + g.ms);
+  const top = [...groupTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([g]) => g);
+  out.push("", "## Tools by time (all agents)", "", head);
+  for (const g of top) out.push(row(g, runs.map((r) => r.s.groups.find((x) => x.group === g)?.ms ?? null), (v) => (v == null ? "–" : duration(v))));
+  const kinds = new Map();
+  for (const [i, r] of runs.entries()) for (const f of r.flags.filter((x) => x.kind !== "phase")) {
+    const k = `${f.kind}: ${f.note.slice(0, 80)}`;
+    (kinds.get(k) ?? kinds.set(k, new Set()).get(k)).add(i);
+  }
+  if (kinds.size) {
+    out.push("", "## Flags", "", head);
+    for (const [k, set] of kinds) out.push(`| ${k.replace(/\|/g, "/")} | ${runs.map((_, i) => (set.has(i) ? "✓" : "")).join(" | ")} |`);
+  }
+  return out.join("\n") + "\n";
+}
+
 /** A trace worked up again, from a fresh copy when its session is still
  *  on disk, so it covers what happened since the last turn ended. */
 function refresh(dir) {
@@ -453,6 +512,11 @@ async function main() {
     console.log(join(dir, "transcript.html"));
     if (args.includes("--open") && process.platform === "darwin") spawnSync("open", [join(dir, "transcript.html")]);
     return;
+  }
+  if (cmd === "compare") {
+    const refs = args.filter((a) => !a.startsWith("--"));
+    if (refs.length < 2) fail("compare needs two or more sessions");
+    return console.log(compare(refs.map(traceDir)));
   }
   if (cmd === "flag") {
     const dir = traceDir(args[0]);

@@ -19,6 +19,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { numberTranscript, readTranscript } from "./trace-transcript.mjs";
 
 const OUTPUT_KEEP = 4000;
 const SLOW_TOOL_MS = 60_000;
@@ -415,6 +416,7 @@ export function groupOf(t) {
 // ---------------------------------------------------------------------
 // Analysis
 
+
 const fmt = (n) => (n == null || Number.isNaN(n) ? "–" : n >= 3600e3 ? `${(n / 3600e3).toFixed(1)}h` : n >= 60e3 ? `${Math.floor(n / 60e3)}m${String(Math.round((n % 60e3) / 1e3)).padStart(2, "0")}s` : `${(n / 1e3).toFixed(1)}s`);
 export const duration = fmt;
 
@@ -456,7 +458,27 @@ function normalized(t) {
 
 /** The numbers and the struggles. Every struggle names the steps (by
  *  number) that show it, so `trace.mjs show` can open them. */
-export function analyze(trace) {
+/** When a step (s12) or message (m3) happened, for a mark placed on it. */
+function atOf(trace, target) {
+  const step = /^s(\d+)$/.exec(target);
+  if (step) return trace.tools.find((t) => t.n === Number(step[1]))?.at ?? NaN;
+  if (!/^m\d+$/.test(target)) return NaN;
+  // Messages are numbered the way the transcript page numbers them.
+  const t = numberTranscript(readTranscript(trace.dir), trace);
+  for (const a of t.agents.values()) for (const it of a.items) if (it.mid === target) return it.at;
+  return NaN;
+}
+
+/** Each skill the main agent started: through the Skill tool, or read
+ *  from its file (Codex, Cursor, or an agent told to), once per skill. */
+function skillMarks(trace, main) {
+  return [
+    ...trace.tools.filter((t) => t.agent === main.id && t.name === "Skill").map((t) => ({ at: t.at, label: `skill ${t.input.skill}` })),
+    ...[...new Map(trace.tools.filter((t) => t.agent === main.id && t.name !== "Skill").map((t) => [/skills\/([a-z0-9-]+)\/SKILL\.md/.exec(`${t.input.file_path ?? ""} ${commandOf(t)}`)?.[1], t]).filter(([k]) => k).reverse()).entries()].map(([k, t]) => ({ at: t.at, label: `skill ${k} (read)` })),
+  ];
+}
+
+export function analyze(trace, flags = []) {
   const s = trace.session;
   const main = trace.agents.find((a) => a.id === "main") ?? trace.agents[0];
   const buckets = partition(trace, main.id);
@@ -499,12 +521,14 @@ export function analyze(trace) {
 
   // Phases: the stretch between one skill start (or person's message)
   // and the next, on the main session.
+  // Phases marked by hand replace the skill starts: once someone has said
+  // where the phases are, theirs is the split.
+  const marked = flags.some((f) => f.kind === "phase");
   const marks = [
     ...trace.prompts.filter((p) => p.agent === main.id && p.from === "person").map((p) => ({ at: p.at, label: `person: ${promptLine(p.text)}` })),
-    ...trace.tools.filter((t) => t.agent === main.id && t.name === "Skill").map((t) => ({ at: t.at, label: `skill ${t.input.skill}` })),
-    // A skill read from its file (Codex, Cursor, or an agent told to)
-    // starts a phase too, once per skill.
-    ...[...new Map(trace.tools.filter((t) => t.agent === main.id && t.name !== "Skill").map((t) => [/skills\/([a-z0-9-]+)\/SKILL\.md/.exec(`${t.input.file_path ?? ""} ${commandOf(t)}`)?.[1], t]).filter(([k]) => k).reverse()).entries()].map(([k, t]) => ({ at: t.at, label: `skill ${k} (read)` })),
+    ...(marked ? [] : skillMarks(trace, main)),
+    // Phases a person or an agent marked on the trace (phase flags).
+    ...flags.filter((f) => f.kind === "phase").map((f) => ({ at: atOf(trace, f.target), label: `phase ${f.note}` })).filter((m) => !Number.isNaN(m.at)),
   ].sort((a, b) => a.at - b.at);
   const phases = marks.map((m, i) => {
     const end = i + 1 < marks.length ? marks[i + 1].at : s.lastAt;

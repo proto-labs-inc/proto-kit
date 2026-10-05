@@ -256,3 +256,21 @@ test("a poll that runs every round is flagged as never seeing its condition", ()
   assert.ok(cap, JSON.stringify(s.struggles));
   assert.deepEqual(cap.steps, [1]);
 });
+
+test("phases are marked by hand, split the page and line runs up in compare", () => {
+  const { h, env } = claudeHome();
+  run(env, "import", id);
+  assert.equal(run(env, "flag", id, "s2", "--kind", "phase", "--note", "copy").status, 0);
+  assert.equal(run(env, "flag", id, "s5", "--kind", "phase", "--note", "build").status, 0);
+  const dir = join(h, ".proto", "traces", id);
+  const s = JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
+  const copy = s.phases.find((p) => p.label === "phase copy");
+  assert.ok(copy && s.phases.some((p) => p.label === "phase build"), s.phases.map((p) => p.label).join(", "));
+  assert.equal(copy.ms, 15_000);
+  assert.match(readFileSync(join(dir, "transcript.html"), "utf8"), /<details class="phase" open><summary>phase copy/);
+  const compared = run(env, "compare", id, id.slice(0, 8));
+  assert.equal(compared.status, 0, compared.stderr);
+  assert.match(compared.stdout, /## Working time by phase[\s\S]*\| phase copy \| 15\.0s \| 15\.0s \(\+0%\) \|/);
+  assert.match(compared.stdout, /\| failed steps \| 3 \| 3 \(\+0%\) \|/);
+});
+

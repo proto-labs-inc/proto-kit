@@ -68,7 +68,10 @@ node <kit>/tools/trace.mjs flag <session> s103 --kind improve --by claude \
 Kinds: `error` (something failed or did the wrong thing), `slow` (time
 lost; say how much), `improve` (a skill or tool could have made this
 easier or avoided it), `note` (context worth keeping), `good` (worked
-well; keep it). `session` in place of a step flags the run as a whole:
+well; keep it), `phase` (marks where a phase of the work starts; its
+note is the phase's name, such as `copy` or `build`; the page and
+`compare` split time on these, so mark phases only when asked, with the
+names the person uses). `session` in place of a step flags the run as a whole:
 give it the one-line verdict. When the person asks you to flag specific
 things, flag those. `flags <session>` lists them and `unflag <session>
 f3` removes one. Flags survive every refresh of the trace.
@@ -102,6 +105,9 @@ outside the kit; say so in the first line.
 
 ## Comparing runs
 
-Run the flow again and compare the two `summary.json` files (`activeMs`,
-`counts.errors`, the `proto …` rows in `groups`) and their flags. Say
-what changed and by how much.
+`node <kit>/tools/trace.mjs compare <baseline> <run> [<run>…]` puts runs
+of one flow side by side against the first: working and model time,
+steps, failures, subagents that gave up, working time per phase, the
+tools that took the most, and each run's flags. Phases are the skills
+the agent started plus any marked by hand (below), matched by name. Several runs of each side tell a change from noise. Say
+what changed and by how much, and whether quality held.

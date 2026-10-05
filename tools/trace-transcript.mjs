@@ -233,12 +233,12 @@ export function numberTranscript(t, trace) {
   return t;
 }
 
-const FLAG_KINDS = ["error", "slow", "improve", "note", "good"];
+const FLAG_KINDS = ["error", "slow", "improve", "note", "good", "phase"];
 export { FLAG_KINDS };
 
 function flagsByTarget(flags) {
   const by = new Map();
-  for (const f of flags ?? []) (by.get(f.target) ?? by.set(f.target, []).get(f.target)).push(f);
+  for (const f of (flags ?? []).filter((x) => x.kind !== "phase")) (by.get(f.target) ?? by.set(f.target, []).get(f.target)).push(f);
   return by;
 }
 
@@ -396,7 +396,7 @@ export function transcriptHtml(dir, { trace, summary, flags = [] } = {}) {
     const failed = steps.filter((x) => x.error).length;
     // Within a turn, a section per skill the agent started, so a long
     // unattended run reads as setup, import, build, serve.
-    const marks = (summary?.phases ?? []).filter((p) => p.label.startsWith("skill ") && p.at > (timed[0]?.at ?? 0) && p.at <= (timed.at(-1)?.at ?? 0));
+    const marks = (summary?.phases ?? []).filter((p) => /^(skill|phase) /.test(p.label) && p.at > (timed[0]?.at ?? 0) && p.at <= (timed.at(-1)?.at ?? 0));
     let body;
     if (!marks.length) body = htmlItems(t, turn.items, seen, pages, byTarget);
     else {
@@ -427,7 +427,8 @@ export function transcriptHtml(dir, { trace, summary, flags = [] } = {}) {
     const ss = s.session;
     head.push(`<p class="m">${esc(ss.id)} · ${esc(ss.harness)}${ss.version ? ` ${esc(ss.version)}` : ""} · ${esc(ss.model ?? "")} · ${esc(ss.cwd ?? "")}${s.prototypes?.length ? ` · ${esc(s.prototypes.map((p) => `${p.codebase}/${p.slug}`).join(", "))}` : ""} · times UTC</p>`);
     head.push(`<p><b>${fmt(s.activeMs)} working</b> of ${fmt(s.wallMs)} (${fmt(s.waitingOnPersonMs)} waiting on the person) · ${s.counts.toolCalls} steps, ${s.counts.errors} failed · ${s.counts.subagents} subagents · ${s.counts.personMessages} messages from the person · ${Math.round(s.usage.output / 1000)}k tokens out, peak context ${Math.round(s.usage.peakContext / 1000)}k</p>`);
-    head.push(`<details open><summary><b>Flags</b> <small>(${flags.length})</small></summary>${flags.length ? table(["", "Where", "What", "By"], flags.map((f) => [`<b>${esc(f.kind)}</b>`, f.target === "session" ? "session" : `<a href="#${esc(f.target)}">${esc(f.target)}</a>`, esc(f.note), `<small>${esc(f.by ?? "")} · ${esc(f.id)}</small>`])) : `<p class="m">None yet. Flag a step or message with <code>trace.mjs flag ${esc(ss.id.slice(0, 8))} s12 --kind improve --note "…"</code>.</p>`}</details>`);
+    const shown = flags.filter((f) => f.kind !== "phase");
+    head.push(`<details open><summary><b>Flags</b> <small>(${shown.length})</small></summary>${shown.length ? table(["", "Where", "What", "By"], shown.map((f) => [`<b>${esc(f.kind)}</b>`, f.target === "session" ? "session" : `<a href="#${esc(f.target)}">${esc(f.target)}</a>`, esc(f.note), `<small>${esc(f.by ?? "")} · ${esc(f.id)}</small>`])) : `<p class="m">None yet. Flag a step or message with <code>trace.mjs flag ${esc(ss.id.slice(0, 8))} s12 --kind improve --note "…"</code>.</p>`}</details>`);
     head.push(`<details open><summary><b>Where the time went</b></summary>${table(["Start", "Phase", "Working", "Wall", "Steps", "Failed"], s.phases.map((p) => [clock(p.at), esc(p.label), fmt(p.workingMs), fmt(p.ms), p.toolCalls, p.errors || ""]), [2, 3, 4, 5])}
 <details><summary>by tool</summary>${table(["Tool", "Calls", "Failed", "Total", "Longest"], s.groups.filter((g) => !g.group.startsWith("waiting")).slice(0, 25).map((g) => [esc(g.group), g.calls, g.errors || "", fmt(g.ms), fmt(g.maxMs)]), [1, 2, 3, 4])}</details>
 <details><summary>slowest steps</summary>${table(["Step", "Took", "Tool", "What"], s.slowest.map((x) => [sid(x.n), fmt(x.ms), esc(x.group), `<code>${esc(x.label.slice(0, 100))}</code>`]), [1])}</details>
