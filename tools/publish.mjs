@@ -31,6 +31,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve, relative, extname, sep } from "node:path";
 import { callTool, readConfig } from "./mcp-call.mjs";
+import { IDENTITY_FILE } from "./dev-server.mjs";
 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
@@ -99,11 +100,18 @@ if (kind === "library") {
     fail(`${dist}/manifest.json names no codebase; a library with nothing imported has nothing to publish`);
   }
 }
+// What a build carries that is never published: the workspace's
+// identity record (public/__proto-workspace.json, the local dev server's
+// token; tools/dev-server.mjs), and Internet Explorer's .eot fonts that
+// stylesheets captured before snapshot.mjs dropped them still list. No
+// current browser loads an .eot, and the host refuses the type.
+const leftOut = [];
 const files = [];
 (function walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
+    else if ((dir === dist && entry.name === IDENTITY_FILE) || extname(entry.name).toLowerCase() === ".eot") leftOut.push(relative(dist, full));
     else files.push(full);
   }
 })(dist);
@@ -148,6 +156,7 @@ const totalBytes = manifest.reduce((n, f) => n + f.size, 0);
 let distLabel = dist;
 if (kind === "prototype") distLabel = relative(workspace, dist) || "dist";
 console.log(`${manifest.length} files, ${(totalBytes / 1024).toFixed(0)} KB in ${distLabel}`);
+if (leftOut.length) console.log(`left out (never published): ${leftOut.join(", ")}`);
 const problems = [];
 if (kind === "prototype" && !manifest.some((f) => f.path === "prototype.json"))
   problems.push("the build has no prototype.json (the workspace's public/ folder should carry it)");
@@ -157,7 +166,7 @@ const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 for (const f of manifest) {
   if (f.size > 8 * 1024 * 1024) problems.push(`${f.path} is ${(f.size / 1048576).toFixed(1)} MB; the per-file limit is 8 MB`);
   if (!f.path.split("/").every((seg) => SEGMENT.test(seg)))
-    problems.push(`${f.path} has a path segment the published host refuses (letters, digits, dot, dash, underscore; no leading dot)`);
+    problems.push(`${f.path} has a path segment the published host refuses (each part of a path must start with a letter or digit, then letters, digits, dot, dash or underscore)`);
 }
 // Every asset reference must resolve against the build's own base. A
 // published build lives under <codebase>/<slug>/<buildId>/, so a

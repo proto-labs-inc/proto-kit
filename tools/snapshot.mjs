@@ -505,10 +505,60 @@ export async function fontFaces(live) {
       const body = match[1];
       const family = /font-family\s*:\s*([^;]+)/.exec(body)?.[1].trim().replace(/^["']|["']$/g, "");
       if (!family) continue;
-      faces.push({ family, body, base: header.sourceURL || null });
+      const modern = withoutLegacySources(body);
+      if (modern) faces.push({ family, body: modern, base: header.sourceURL || null });
     }
   }
   return faces;
+}
+
+/** Splits `text` on `sep` outside parentheses and quotes, so a data:
+ *  URL's own ";" and "," stay inside its url(). */
+function splitOutside(text, sep) {
+  const out = [];
+  let depth = 0;
+  let quote = null;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote && text[i - 1] !== "\\") quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "(") depth++;
+    else if (c === ")") depth = Math.max(0, depth - 1);
+    else if (c === sep && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out;
+}
+
+const LEGACY_SOURCE = /url\(\s*["']?[^"')]*\.eot(?:[?#][^"')]*)?["']?\s*\)|format\(\s*["']?embedded-opentype["']?\s*\)/i;
+
+/**
+ * A @font-face body without its Internet Explorer sources: the `.eot`
+ * files (Embedded OpenType) older stylesheets such as Bootstrap 3's
+ * glyphicons still list. No current browser loads them, and the
+ * published host refuses their type, so a face that kept them could
+ * never be published. Each `src` keeps its other sources; a `src`
+ * that held only .eot goes; a face left with no source at all is
+ * null.
+ */
+export function withoutLegacySources(body) {
+  if (!LEGACY_SOURCE.test(body)) return body;
+  let sources = 0;
+  const kept = splitOutside(body, ";").flatMap((declaration) => {
+    const m = /^\s*src\s*:([\s\S]*)$/i.exec(declaration);
+    if (!m) return declaration.trim() ? [declaration] : [];
+    const entries = splitOutside(m[1], ",").filter((entry) => entry.trim() && !LEGACY_SOURCE.test(entry));
+    if (!entries.length) return [];
+    sources++;
+    return [`src: ${entries.map((e) => e.trim()).join(", ")}`];
+  });
+  if (!sources) return /\bsrc\s*:/i.test(body) ? null : body;
+  return kept.map((d) => d.trim()).join("; ") + ";";
 }
 
 export const familiesIn = (value) =>
