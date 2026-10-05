@@ -221,12 +221,16 @@ async function lane() {
     step(`${view.name}: ${result.blank ? "blank" : `${result.markers} markers`}, ${result.errors.length} errors, ${result.outside.length} outside, ${result.overlap.length} overlapping${problems === 0 ? "" : "  <-"}`);
     if (reporter) reporter.send([activityEvent(workflow, `view-${view.name}`, problems === 0 ? "completed" : "failed", `Checked ${view.name}`, `${problems} issues found`)]);
     if (page) {
-      if (view.name === "default") {
-        previewPath = join(outDir, "prototype-preview.png");
-        await stableShot(page.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, previewPath);
-      }
-      if (view.name === "default") defaultMarks = marks?.marks ?? null;
       if (view.name === copyView) copy = await copyCheck(marks, page).catch((error) => ({ error: error.message }));
+      if (view.name === "default") {
+        defaultMarks = marks?.marks ?? null;
+        // Reuse the comparison capture only when it belongs to this view.
+        previewPath = view.name === copyView ? copy?.pixels?.screenshot : null;
+        if (!previewPath) {
+          previewPath = join(outDir, "prototype-preview.png");
+          await stableShot(page.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, previewPath);
+        }
+      }
       await page.close().catch(() => {});
     }
   }
