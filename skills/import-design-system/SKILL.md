@@ -27,6 +27,32 @@ couple of minutes; if you find yourself writing CSS by hand, reading
 computed styles one at a time, or composing a script, stop: the tool
 exists.
 
+## Report every stop before completion
+
+Before stopping for any reason before the completion gate below passes,
+call `report_setup_action { codebase, action: { message } }`.
+The website derives the current step from setup progress and places the
+blocker there automatically. Report only the message; never send a step.
+This includes questions, sign-in, missing access or files, approvals, tool or
+service failures, exhausted recovery attempts, and user-requested pauses.
+Explain the blocker and the concrete next step in `message`; when user input
+is needed, tell them to reply in this conversation. A chat message alone does
+not show **Action needed** on the site. Routine tool execution and bounded
+retries while actively working are not stops.
+
+If the tool is not available, run
+`node <kit>/tools/setup-action.mjs <codebase> '<message>'`.
+Retry a transient reporting failure once; if reporting still fails, tell the
+user the site could not be updated. Do not claim success without confirmation.
+If no codebase id exists yet, preserve progress and explain the blocker in
+chat; report it once the id exists if still unresolved. Never invent an id.
+
+Verify the blocker is resolved, then call
+`report_setup_action { codebase, action: null }` (or
+`node <kit>/tools/setup-action.mjs <codebase> clear`) before resuming.
+Repeat for every later stop. A reply, heartbeat, or partial publication does
+not by itself resolve the blocker or satisfy the completion gate.
+
 ## The one rule
 
 Never invent a value. Every colour, size, gap, weight and wrap comes

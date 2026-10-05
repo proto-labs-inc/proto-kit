@@ -383,6 +383,43 @@ has a starter after the real codebase is ready. If it has
 none, the handoff runs **import-design-system**, which owns starting the local
 library host.
 
+### Report blockers to the setup surface
+
+**Before stopping for any reason while setup or the design-system import is
+incomplete, report the blocker to Proto.** This applies throughout setup and
+its handoff to **import-design-system**, not only to sign-in: questions,
+missing access or files, required approvals, failed tools, unavailable
+services, exhausted recovery attempts, and user-requested pauses all count.
+Do not end the turn with unfinished work and only a chat explanation.
+Routine tool execution and bounded retries while actively working are not stops.
+
+Once the codebase id is known, call
+`report_setup_action { codebase, action: { message } }` before pausing.
+The website places the blocker under the current step using actual setup
+progress. Report only the message; never choose or send a step.
+The message must explain why work stopped and the concrete next step to
+resume; when user input is needed, ask them to reply in this conversation.
+The site displays **Action needed** under the current step; a chat message alone
+cannot update it. If the host has not discovered the tool yet, use
+`node <kit>/tools/setup-action.mjs <codebase> '<message>'`.
+If reporting fails, retry once for a transient failure, then tell the user
+that the blocker could not be shown on the site. Never claim it was reported
+without a successful response.
+
+Before a codebase id exists, this API cannot report a blocker. Explain the
+blocker in chat, preserve progress, and report it as soon as an id is available
+if it remains unresolved. Never invent an id or create a placeholder codebase
+just to report a blocker.
+
+After verifying the blocker is resolved, clear it with
+`report_setup_action { codebase, action: null }` (or
+`node <kit>/tools/setup-action.mjs <codebase> clear`) before continuing.
+An answer alone is not proof of resolution. Do not clear a blocker merely
+because a heartbeat or published library exists. Apply this lifecycle again
+for every later stop, until the import's completion gate or a successful
+starter-library attachment completes the design system.
+Never invent a prototype brief to report a setup blocker.
+
 ### The reference page (the Proto window)
 
 Prototypes and imports read the user's live product through their own
