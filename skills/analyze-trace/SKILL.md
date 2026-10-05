@@ -147,9 +147,11 @@ be harmless (a long build that was just working, screenshots after each
 click), drop it, or say in one line why it isn't a problem.
 
 To show someone the session, `trace.mjs view <session> --open` opens
-`trace.html`: a timeline with a lane per agent, the struggles, every
-step with its input and output, and the conversation. It is a single
-file, so it can be shared as it is.
+`trace.html`, this report as a page, with every step number linking to
+that step in `transcript.html`; `trace.mjs transcript <session> --open`
+opens the transcript itself. Each step there is one line, linking to its
+full input and output on a page of its own under `transcript/`. Share
+the trace folder as a whole.
 
 ## Comparing runs
 

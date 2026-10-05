@@ -16,9 +16,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const HTML_OUTPUT_CAP = 8_000;
-const MD_OUTPUT_CAP = 50_000;
-const MD_HARNESS_CAP = 2_000;
+const MD_OUTPUT_CAP = Infinity;
+const MD_HARNESS_CAP = Infinity;
 
 function lines(path) {
   if (!existsSync(path)) return [];
@@ -256,58 +255,84 @@ function grouped(items) {
   return out;
 }
 
-function htmlItems(t, agentId, seen) {
+
+const PAGE_STYLE = `<style>
+body{max-width:900px;margin:2em auto;padding:0 1em;font:15px/1.5 system-ui,sans-serif}
+h3{margin:1.5em 0 .3em;font-size:1em}small,.m{color:#777}.m{margin:.3em 0;font-size:.85em}
+.say{white-space:pre-wrap}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f6f6f6;padding:.5em;max-height:30em;overflow:auto}
+code{font-size:12px}.step{margin:.15em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}details{margin:.2em 0}summary{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sub{margin-left:1.5em;border-left:2px solid #ddd;padding-left:.8em}
+table{border-collapse:collapse}td,th{text-align:left;padding:2px 10px 2px 0;vertical-align:top;font-size:.9em}
+@media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub{border-color:#333}a{color:#8ab4f8}}
+</style>`;
+export { PAGE_STYLE };
+
+/** A page under transcript/ holding texts in full, so the main page
+ *  carries one line per step and stays light. */
+function subpage(pages, name, title, sections) {
+  pages.set(name, `<!doctype html>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${esc(title)}</title>\n${PAGE_STYLE}\n<p class="m"><a href="../transcript.html">← transcript</a></p>\n<h2>${esc(title)}</h2>\n${sections.map(([heading, body]) => `<h3>${esc(heading)}${body ? ` <small>${String(body).length} characters</small>` : ""}</h3>\n<pre style="max-height:none">${esc(body ?? "")}</pre>`).join("\n")}\n`);
+  return `transcript/${name}`;
+}
+
+function htmlItems(t, agentId, seen, pages) {
   const agent = t.agents.get(agentId);
   const out = [];
+  const key = (suffix) => `${agentId === "main" ? "main" : agentId.slice(0, 12)}-${pages.size + 1}-${suffix}.html`;
   for (const it of grouped(agent.items)) {
     const time = clock(it.at);
     if (it.kind === "person") out.push(`<h3>Person${it.queued ? " (while the agent worked)" : ""} <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
     else if (it.kind === "task") out.push(`<h3>Task <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
     else if (it.kind === "text") out.push(`<h3>Agent <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
-    else if (it.kind === "background") out.push(`<details><summary><small>${time}</small> background: ${esc(it.text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120))}</summary><pre>${esc(cap(it.text, HTML_OUTPUT_CAP))}</pre></details>`);
-    else if (it.kind === "harness-run") out.push(`<p class="m"><small>${time}</small> harness: ${esc([...new Set(it.items.map((x) => x.label ?? "message"))].join(", ").slice(0, 200))}</p>`);
+    else if (it.kind === "background") out.push(`<details><summary><small>${time}</small> background: ${esc(it.text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120))}</summary><pre>${esc(it.text)}</pre></details>`);
+    else if (it.kind === "harness-run") {
+      const href = subpage(pages, key("harness"), `harness · ${time}`, it.items.map((x) => [x.label ?? "message", x.body ?? x.text ?? ""]));
+      out.push(`<p class="m"><small>${time}</small> <a href="${href}">harness</a>: ${esc([...new Set(it.items.map((x) => x.label ?? "message"))].join(", ").slice(0, 200))}</p>`);
+    }
     else if (it.kind === "thinking") {
       if (!it.hidden) out.push(`<details><summary><small>${time}</small> thinking</summary><pre>${esc(it.text)}</pre></details>`);
     } else if (it.kind === "event") out.push(`<p class="m"><small>${time}</small> ${esc(it.label)}</p>`);
     else if (it.kind === "tool") {
       const status = it.output == null ? " (no result)" : it.error ? " <b>failed</b>" : "";
-      out.push(`<details><summary><small>${time}</small> <b>${esc(it.name)}</b> ${esc(took(it.at, it.end))}${status} <code>${esc(inputLine(it).slice(0, 140))}</code></summary><pre>${esc(cap(inputBody(it), HTML_OUTPUT_CAP))}</pre><pre>${esc(cap(it.output ?? "(no result recorded)", HTML_OUTPUT_CAP))}</pre></details>`);
+      const href = subpage(pages, key("tool"), `${it.name} · ${time} · ${took(it.at, it.end)}${it.error ? " · failed" : ""}`, [["input", inputBody(it)], ["output", it.output ?? "(no result recorded)"], ...(it.stderr ? [["stderr", it.stderr]] : [])]);
+      const err = it.error && it.output ? `<br><small>${esc(it.output.replace(/<\/?[a-z_-]+>/g, "").split("\n").map((l) => l.trim()).find((l) => l && !/^Exit code \d+$/.test(l))?.slice(0, 200) ?? "")}</small>` : "";
+      out.push(`<p class="step"${it.id ? ` id="t-${esc(it.id)}"` : ""}><small>${time}</small> <a href="${href}"><b>${esc(it.name)}</b></a> <small>${esc(took(it.at, it.end))}</small>${status} <code>${esc(inputLine(it).slice(0, 140))}</code>${err}</p>`);
       if (it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)) {
         const a = t.agents.get(it.subagent);
         seen.add(it.subagent);
-        out.push(`<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, it.subagent, seen)}\n</details>`);
+        out.push(`<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, it.subagent, seen, pages)}\n</details>`);
       }
     }
   }
   return out.join("\n");
 }
 
+/** transcript.html, and the pages its long texts live on (name → html). */
 export function transcriptHtml(dir) {
   const t = readTranscript(dir);
   const seen = new Set(["main"]);
-  const main = htmlItems(t, "main", seen);
+  const pages = new Map();
+  const main = htmlItems(t, "main", seen, pages);
   const rest = [...t.agents.keys()].filter((id) => !seen.has(id)).map((id) => {
     const a = t.agents.get(id);
     seen.add(id);
-    return `<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, id, seen)}\n</details>`;
+    return `<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, id, seen, pages)}\n</details>`;
   }).join("\n");
   const id = t.meta.sessionId ?? "";
-  return `<!doctype html>
+  const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Transcript ${esc(id.slice(0, 8))}</title>
-<style>
-body{max-width:900px;margin:2em auto;padding:0 1em;font:15px/1.5 system-ui,sans-serif}
-h3{margin:1.5em 0 .3em;font-size:1em}small,.m{color:#777}.m{margin:.3em 0;font-size:.85em}
-.say{white-space:pre-wrap}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f6f6f6;padding:.5em;max-height:30em;overflow:auto}
-code{font-size:12px}details{margin:.2em 0}summary{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sub{margin-left:1.5em;border-left:2px solid #ddd;padding-left:.8em}
-@media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub{border-color:#333}}
-</style>
+${PAGE_STYLE}
 <h1>Transcript</h1>
-<p class="m">${esc(id)} · ${esc(t.harness)} · times UTC · <a href="trace.html">analysis</a> · full text in transcript.md</p>
+<p class="m">${esc(id)} · ${esc(t.harness)} · times UTC · <a href="trace.html">analysis</a> · long texts open on their own page; nothing is cut</p>
 ${main}
 ${rest}
+<script>
+// A link to one step (from trace.html) opens it and every section around it.
+function show(){const e=document.getElementById(location.hash.slice(1));for(let d=e;d;d=d.parentElement)if(d.tagName==="DETAILS")d.open=true;e&&e.scrollIntoView()}
+addEventListener("hashchange",show);if(location.hash)show();
+</script>
 `;
+  return { html, pages };
 }
 
 function mdItems(t, agentId, depth, seen) {
@@ -349,5 +374,5 @@ export function transcriptMarkdown(dir) {
     seen.add(id);
     return `## Subagent ${a.type}: ${a.description} (not matched to a call)\n\n${mdItems(t, id, 1, seen)}`;
   });
-  return `# Transcript ${t.meta.sessionId ?? ""}\n\nEverything the session recorded, in order (times UTC). Outputs over ${MD_OUTPUT_CAP / 1000}k characters are cut; transcript.jsonl has them whole.\n\n${main}\n${rest.join("\n")}`;
+  return `# Transcript ${t.meta.sessionId ?? ""}\n\nEverything the session recorded, in order (times UTC), nothing cut.\n\n${main}\n${rest.join("\n")}`;
 }

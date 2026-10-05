@@ -109,7 +109,11 @@ test("the transcript shows everything, with each subagent under the call that st
   }
   assert.match(html, /while the agent worked/);
   assert.match(html, /subagent proto:part-fixer: Fix header[\s\S]*Fix the header part[\s\S]*Header\.tsx/);
-  assert.doesNotMatch(html, /<script/);
+  // Each step is one line linking to a page with its full input and output.
+  const page = /id="t-u1"><small>[^<]*<\/small> <a href="([^"]+)"/.exec(html)?.[1];
+  assert.ok(page, "step links to its own page");
+  assert.match(readFileSync(join(dir, page), "utf8"), /old_string&quot;: &quot;a&quot;[\s\S]*ok/);
+  assert.match(readFileSync(join(dir, "trace.html"), "utf8"), /href="transcript\.html#t-t2"/);
   assert.match(md, /# Subagent proto:part-fixer: Fix header[\s\S]*Fixed\./);
   const s = JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
   assert.equal(s.counts.personMessages, 2);

@@ -93,7 +93,7 @@ Talking to the app, and the harness hooks:
 - `link-laptop.mjs`: redeem the setup document's code and save this laptop's token.
 - `hooks/post-edit-markers.mjs`: re-run the marker check on an edited workspace file.
 - `hooks/cursor-session-start.mjs`, `hooks/cursor-post-tool-use.mjs`: those two checks, Cursor's shape.
-- `trace.mjs`, `trace-read.mjs`, `trace-view.mjs`, `trace-transcript.mjs`: debug traces of every Proto session in `~/.proto/traces/` (transcripts, report, timeline); `hooks/trace-hook.mjs` keeps them current after each turn, for all three harnesses.
+- `trace.mjs`, `trace-read.mjs`, `trace-view.mjs`, `trace-transcript.mjs`: debug traces of every Proto session in `~/.proto/traces/` (transcripts, report, plain HTML pages); `hooks/trace-hook.mjs` keeps them current after each turn, for all three harnesses.
 
 `cdp/`, the browser toolkit:
 

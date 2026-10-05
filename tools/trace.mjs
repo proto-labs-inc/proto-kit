@@ -14,13 +14,14 @@
  *     subagents/         each subagent's own transcript (and .meta.json)
  *     meta.json          harness, source path, codebases and prototypes
  *     transcript.html    the whole transcript, readable: every message, thinking,
- *     transcript.md      tool call (full input and output), background notice and
- *                        subagent, nested where it was started (trace-transcript.mjs)
+ *     transcript/        tool call, background notice and subagent, nested where
+ *     transcript.md      it was started; long texts on their own page in
+ *                        transcript/ (trace-transcript.mjs)
  *     chat.md            the conversation, one line per step
  *     report.md          where the time went and where it struggled
  *     summary.json       the same numbers, for tools
  *     steps.jsonl        one record per tool call: input, output, time
- *     trace.html         a timeline to open in a browser
+ *     trace.html         report.md as a page, its steps linked into the transcript
  *
  * The end-of-turn hook (hooks/trace-sync.mjs) runs `sync` in the
  * background after every turn, so the folder is never more than a turn
@@ -175,7 +176,11 @@ export function workUp(dir) {
   writeAtomic(join(dir, "chat.md"), chatMarkdown(trace));
   writeAtomic(join(dir, "steps.jsonl"), trace.tools.map((t) => JSON.stringify({ n: t.n, agent: t.agent, name: t.name, group: t.group, label: t.label, at: new Date(t.at).toISOString(), ms: t.ms, error: t.error, unfinished: t.unfinished || undefined, input: t.input, output: t.output })).join("\n") + "\n");
   writeAtomic(join(dir, "trace.html"), traceHtml(trace, summary));
-  writeAtomic(join(dir, "transcript.html"), transcriptHtml(dir));
+  const transcript = transcriptHtml(dir);
+  rmSync(join(dir, "transcript"), { recursive: true, force: true });
+  mkdirSync(join(dir, "transcript"), { recursive: true });
+  for (const [name, page] of transcript.pages) writeFileSync(join(dir, "transcript", name), page);
+  writeAtomic(join(dir, "transcript.html"), transcript.html);
   writeAtomic(join(dir, "transcript.md"), transcriptMarkdown(dir));
   return { trace, summary };
 }
