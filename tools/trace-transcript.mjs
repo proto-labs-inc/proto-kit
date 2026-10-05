@@ -251,6 +251,8 @@ const fmt = (ms) => (ms == null ? "" : ms >= 3600e3 ? `${(ms / 3600e3).toFixed(1
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const oneLine = (s, n) => String(s ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const SLOW_MS = 30_000;
+/** How much of a step's command, and of a failed step's output, its row shows when opened. */
+const INLINE = 3_000;
 
 /** A tool call's input on one line, for its row. */
 function inputLine(it) {
@@ -311,14 +313,15 @@ body{max-width:960px;margin:2em auto;padding:0 1em;font:15px/1.5 system-ui,sans-
 h1{font-size:1.4em;margin:0}h2{font-size:1.1em;margin:1.6em 0 .4em}small,.m{color:#777}.m{font-size:.85em}
 .say{white-space:pre-wrap;margin:.2em 0 .8em}.who{font-weight:600;margin-top:1em}
 pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f6f6f6;padding:.5em;max-height:30em;overflow:auto}
-code{font-size:12px}.step{margin:.1em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.step .err{display:block;white-space:normal;color:#b42318;font-size:.85em;margin-left:5.5em}
+code{font-size:12px}details.step{margin:.1em 0}details.step>summary{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}details.step[open]>summary{white-space:normal}details.step>pre,details.step>p{margin-left:3.4em}.line{margin:.1em 0 .1em 1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.err{color:#b42318;font-size:.85em;margin:0 0 .2em 4.6em}pre.err{margin-left:3.4em;font-size:12px}
 .id{display:inline-block;min-width:3.2em;color:#777;font:12px ui-monospace,monospace;text-decoration:none}
 details{margin:.3em 0}summary{cursor:pointer}details.turn{border-top:1px solid #ddd;padding-top:.4em;margin-top:.8em}details.turn>summary{font-weight:600}details.phase{margin:.6em 0 .6em .4em}details.phase>summary{font-weight:600;font-size:.95em}
 .sub{margin:.3em 0 .3em 2em;border-left:2px solid #ddd;padding-left:.8em}
 .flag{background:#fff6d6}.flag.error{background:#fde7e7}.flag.good{background:#e6f6ea}
 .note{margin:.1em 0 .4em 3.4em;font-size:.88em}.note b{text-transform:uppercase;font-size:.8em;letter-spacing:.04em}
 table{border-collapse:collapse;margin:.3em 0}td,th{text-align:left;padding:2px 14px 2px 0;vertical-align:top;font-size:.9em}td.r,th.r{text-align:right}
-@media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub,details.turn{border-color:#333}a{color:#8ab4f8}.flag{background:#3a3214}.flag.error{background:#3d1d1d}.flag.good{background:#173322}.step .err{color:#ff8a80}}
+@media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub,details.turn{border-color:#333}a{color:#8ab4f8}.flag{background:#3a3214}.flag.error{background:#3d1d1d}.flag.good{background:#173322}.err{color:#ff8a80}}
 </style>`;
 
 /** A page under transcript/ holding texts in full, so the main page
@@ -343,16 +346,21 @@ function htmlItems(t, items, seen, pages, flags) {
     else if (it.kind === "background") out.push(`<details id="${it.mid}" class="m${cls}"><summary><a class="id" href="#${it.mid}">${it.mid}</a>${time} background: ${esc(oneLine(it.text, 140))}</summary><pre>${esc(it.text)}</pre></details>${notes(mine)}`);
     else if (it.kind === "harness-run") {
       const href = subpage(pages, `h${pages.size + 1}.html`, `harness · ${time}`, it.items.map((x) => [x.label ?? "message", x.body ?? x.text ?? ""]));
-      out.push(`<p class="step m"><span class="id"></span>${time} <a href="${href}">harness</a>: ${esc(oneLine([...new Set(it.items.map((x) => x.label ?? "message"))].join(", "), 180))}</p>`);
+      out.push(`<p class="line m"><span class="id"></span>${time} <a href="${href}">harness</a>: ${esc(oneLine([...new Set(it.items.map((x) => x.label ?? "message"))].join(", "), 180))}</p>`);
     } else if (it.kind === "thinking") {
       if (!it.hidden) out.push(`<details class="m"><summary><span class="id"></span>${time} thinking</summary><pre>${esc(it.text)}</pre></details>`);
-    } else if (it.kind === "event") out.push(`<p class="step m"><span class="id"></span>${time} ${esc(it.label)}</p>`);
+    } else if (it.kind === "event") out.push(`<p class="line m"><span class="id"></span>${time} ${esc(it.label)}</p>`);
     else if (it.kind === "tool") {
       const ms = span(it.at, it.end);
       const href = subpage(pages, `${it.sid}.html`, `${it.sid} · ${it.name} · ${time} · ${fmt(ms)}${it.error ? " · failed" : ""}`, [["input", inputBody(it)], ["output", it.output ?? "(no result recorded)"], ...(it.stderr ? [["stderr", it.stderr]] : [])]);
       const took = ms == null ? "" : ms >= SLOW_MS ? `<b>${fmt(ms)}</b>` : fmt(ms);
       const status = it.output == null ? " <small>(no result)</small>" : it.error ? " <b>failed</b>" : "";
-      out.push(`<div class="step${cls}" id="${it.sid}"><a class="id" href="#${it.sid}">${it.sid}</a>${time} <a href="${href}">${esc(it.name)}</a> <small>${took}</small>${status} <code>${esc(inputLine(it).slice(0, 150))}</code>${it.error && it.output ? `<span class="err">${esc(errorLine(it.output))}</span>` : ""}</div>${notes(mine)}`);
+      // One line, and on a click the command in full (and, for a failed
+      // step, what it said); the step's own page has every character.
+      const input = inputBody(it);
+      const output = it.output ?? "";
+      const more = `<pre>${esc(input.length > INLINE ? `${input.slice(0, INLINE)}…` : input)}</pre>${it.error && output ? `<pre class="err">${esc(output.length > INLINE ? `${output.slice(0, INLINE)}…` : output)}</pre>` : ""}<p class="m"><a href="${href}">full input and output</a> <small>(${input.length + output.length} characters)</small></p>`;
+      out.push(`<details class="step${cls}" id="${it.sid}"><summary><a class="id" href="#${it.sid}">${it.sid}</a>${time} <b>${esc(it.name)}</b> <small>${took}</small>${status} <code>${esc(inputLine(it).slice(0, 150))}</code></summary>${more}</details>${it.error && output ? `<div class="err">${esc(errorLine(output))}</div>` : ""}${notes(mine)}`);
       if (it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)) {
         const a = t.agents.get(it.subagent);
         seen.add(it.subagent);

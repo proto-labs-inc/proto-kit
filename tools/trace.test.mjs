@@ -110,7 +110,9 @@ test("the transcript shows everything, with each subagent under the call that st
   assert.match(html, /Person, while the agent worked/);
   assert.match(html, /subagent <b>proto:part-fixer<\/b>: Fix header[\s\S]*Fix the header part[\s\S]*Header\.tsx/);
   // Each step is one line linking to a page with its full input and output.
-  const page = /<a href="(transcript\/s\d+\.html)">Edit<\/a>/.exec(html)?.[1];
+  const page = /<b>Edit<\/b>[\s\S]*?<a href="(transcript\/s\d+\.html)">full input and output/.exec(html)?.[1];
+  // Opened in place, a failed step shows its command and what it said.
+  assert.match(html, /<b>Bash<\/b>[^\n]*failed[\s\S]*?<pre>node ~\/kit\/tools\/proto-build\.mjs[^<]*<\/pre><pre class="err">Error: page not found on port 9333/);
   assert.ok(page, "step links to its own page");
   assert.match(readFileSync(join(dir, page), "utf8"), /old_string&quot;: &quot;a&quot;[\s\S]*ok/);
   assert.match(html, /<details class="turn" id="turn1"/);
@@ -129,7 +131,7 @@ test("flags mark steps and messages, show on the page and in transcript.md, and 
   assert.equal(run(env, "flag", "latest", "s3", "--kind", "bogus", "--note", "x").status, 1);
   run(env, "import", id);
   const html = readFileSync(join(dir, "transcript.html"), "utf8");
-  assert.match(html, /<div class="step flag improve" id="s3">[\s\S]*?<div class="note"><b>improve<\/b> the build retried the same failing page/);
+  assert.match(html, /<details class="step flag improve" id="s3">[\s\S]*?<div class="note"><b>improve<\/b> the build retried the same failing page/);
   assert.match(html, /<a href="#s3">s3<\/a><\/td><td>the build retried/);
   assert.match(readFileSync(join(dir, "transcript.md"), "utf8"), /s3 · Bash[^\n]*\n> FLAG f1 improve: the build retried the same failing page \(claude\)/);
   assert.match(readFileSync(join(dir, "report.md"), "utf8"), /f1 \*\*improve\*\* on s3/);
