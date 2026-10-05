@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { evaluate } from "./cdp/cdp.mjs";
 import { PICTURE_OF } from "./pictures.mjs";
-import { fontFaces } from "./snapshot.mjs";
+import { fetchFile, fontFaces, refusalOf, sniffBody } from "./snapshot.mjs";
 
 /** How many boxes the tree shows at most, and how deep it goes. */
 export const MAX_NODES = 160;
@@ -374,8 +374,13 @@ export function overlayLine(overlay) {
 /**
  * The page's fonts and images, saved into `dir`: each @font-face rule
  * with its files (url → path) and each image (url → path). Files come
- * from the page's own cache first (Page.getResourceContent, so an image
- * behind the user's sign-in is theirs), then over the network.
+ * from the page's own cache first (Page.getResourceContent, which
+ * answers only when the Page domain was enabled before the load), then
+ * the page's own fetch with credentials (so an image behind the user's
+ * sign-in comes with their session), then a fetch here with the
+ * browser's cookies for that url. A body that is a web page (a sign-in
+ * redirect) is never saved, and an image must be an image: a file no
+ * source answers with is left out, with the reasons on stderr.
  */
 export async function captureAssets(live, read, dir) {
   mkdirSync(dir, { recursive: true });
@@ -389,10 +394,16 @@ export async function captureAssets(live, read, dir) {
       return null;
     }
   };
-  const fetched = async (url) => {
-    const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36" } });
-    if (!res.ok) throw new Error(`${url} answered ${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
+  // The page's own fetch, so the request carries the browser's session
+  // (cookies, the page's origin) the way the <img> that showed it did.
+  const inPage = (url) => fetchInPage(live, url);
+  // A file the page cannot fetch itself (another origin without CORS):
+  // fetched here with the browser's cookies for that url, no redirect followed.
+  const withCookies = async (url) => {
+    const { cookies = [] } = await live.send("Network.getCookies", { urls: [url] }).catch(() => ({}));
+    const headers = cookies.length ? { cookie: cookies.map((c) => `${c.name}=${c.value}`).join("; ") } : {};
+    const { bytes } = await fetchFile(url, { image: false, headers });
+    return { bytes, type: "" };
   };
   const taken = new Set();
   const nameFor = (url, fallback) => {
@@ -404,12 +415,38 @@ export async function captureAssets(live, read, dir) {
     taken.add(name);
     return name;
   };
-  const save = async (url, fallback) => {
-    const bytes = (await fromCache(url)) ?? (await fetched(url).catch(() => null));
-    if (!bytes || bytes.length === 0) return null;
-    const path = join(dir, nameFor(url, fallback));
-    writeFileSync(path, bytes);
-    return path;
+  // Each source in turn, the first whose body is the file wins: a web
+  // page (a sign-in redirect) is never saved, and an image must be one.
+  const save = async (url, fallback, { image = false } = {}) => {
+    const reasons = [];
+    const sources = [
+      ["the browser's cache", async () => ({ bytes: await fromCache(url), type: "" })],
+      ["the page's own fetch", () => inPage(url)],
+      ["a fetch with the browser's cookies", () => withCookies(url)],
+    ];
+    for (const [source, get] of sources) {
+      let got;
+      try {
+        got = await get();
+      } catch (error) {
+        reasons.push(`${source}: ${error.message.replace(/^not saved: \S+ /, "")}`);
+        continue;
+      }
+      if (!got?.bytes?.length) continue;
+      const refusal = refusalOf(got.bytes, got.type, { image });
+      if (refusal) {
+        reasons.push(`${source}: ${refusal}`);
+        continue;
+      }
+      let name = nameFor(url, fallback);
+      const sniffed = image ? sniffBody(got.bytes, got.type).extension : null;
+      if (sniffed && !/\.[a-z0-9]+$/i.test(name)) name = `${name}.${sniffed}`;
+      const path = join(dir, name);
+      writeFileSync(path, got.bytes);
+      return path;
+    }
+    console.error(`… ${image ? "image" : "file"} ${url} not saved${reasons.length ? `: ${reasons.join("; ")}` : ""}`);
+    return null;
   };
 
   const faces = [];
@@ -426,10 +463,44 @@ export async function captureAssets(live, read, dir) {
   }
   const assets = {};
   for (const url of read.images) {
-    const path = await save(url, `image-${Object.keys(assets).length + 1}`);
+    const path = await save(url, `image-${Object.keys(assets).length + 1}`, { image: true });
     if (path) assets[url] = path;
   }
   return { faces, assets };
+}
+
+// Largest piece of a fetched body read back from the page at once.
+const CHUNK = 48 * 1024;
+
+/**
+ * A file fetched by the page itself (credentials included, so the
+ * browser's session goes with it): { bytes, type, status, url }. The
+ * body is held in the page as base64 and read back in pieces, since one
+ * evaluate's value is bounded. Throws when the page's fetch fails or the
+ * answer is not 2xx; a redirect the page followed is reported with the
+ * url it ended on, and its body is judged by the caller.
+ */
+export async function fetchInPage(live, url) {
+  const key = `__protoAsset${Math.random().toString(36).slice(2)}`;
+  const head = await evaluate(
+    live,
+    `(async () => {
+      const res = await fetch(${JSON.stringify(url)}, { credentials: "include", cache: "force-cache" });
+      const buf = new Uint8Array(await res.arrayBuffer());
+      let s = "";
+      for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      window[${JSON.stringify(key)}] = btoa(s);
+      return { ok: res.ok, status: res.status, type: res.headers.get("content-type") || "", url: res.url, length: window[${JSON.stringify(key)}].length };
+    })()`,
+  );
+  try {
+    if (!head.ok) throw new Error(`the page's fetch answered ${head.status}`);
+    let base64 = "";
+    for (let at = 0; at < head.length; at += CHUNK) base64 += await evaluate(live, `window[${JSON.stringify(key)}].slice(${at}, ${at + CHUNK})`);
+    return { bytes: Buffer.from(base64, "base64"), type: head.type, status: head.status, url: head.url };
+  } finally {
+    await evaluate(live, `delete window[${JSON.stringify(key)}]`).catch(() => {});
+  }
 }
 
 /** The interned style of one element record as a { property: value } object. */

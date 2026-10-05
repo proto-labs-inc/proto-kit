@@ -358,5 +358,8 @@ and whose generated files still exist. Only failing, changed, or missing
 components are replicated again; the complete page is still composed and
 checked. `proto-build.mjs` uses this behavior by default. Use
 `--retry-mode full` for an explicit full retry, or `--again` to restart the
-initial copy. Missing or incompatible retry checkpoints fall back to copying
-all components.
+initial copy: it reads the page afresh, stops at the curation review again
+(unless `--accept-curation`) and copies anew, for a read that was itself wrong
+(the page mid-load, signed out, or showing a flash message). Run every later
+step without `--again`. Missing or incompatible retry checkpoints fall back to
+copying all components.

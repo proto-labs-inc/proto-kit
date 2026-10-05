@@ -24,7 +24,7 @@
  *              goes straight through.
  *   name       tree.json carries the curation     build-stream.mjs name
  *   scaffold   workspace.json                     scaffold.mjs (idempotent)
- *   replicate  parts.json                         replicate.mjs (--again redoes it)
+ *   replicate  parts.json                         replicate.mjs
  *   gate       steps.json records the decision    copy-gate.mjs
  *              A copy over its gate (the page differs by more than
  *              TAIL.PAGE_PROCEED_PCT, or did not mount) is copied once
@@ -32,6 +32,14 @@
  *              asked whether to start building anyway. The command
  *              returns needs-input immediately; record the chat answer
  *              with build-stream answered, then rerun without --again.
+ *
+ * --again starts the copy over: it clears the read, the curation, the
+ * copy and its gate from the build folder (build-folder.mjs
+ * RESTART_CLEARS), reads the page afresh (--page, else the tab the old
+ * read came from), stops at the curation review again (unless
+ * --accept-curation) and copies anew. Use it when the read itself was
+ * wrong (the page was mid-load, signed out, showing a flash message);
+ * every later run continues without it.
  *
  * Then it sends `phase composing` and prints parts.json: one JSON
  * line with the workspace, every part (its node id, name, marker, the
@@ -47,7 +55,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildFolder } from "./build-folder.mjs";
+import { buildFolder, restartCopy } from "./build-folder.mjs";
 import { ask, waitForAnswer } from "./ask.mjs";
 import { createReporter } from "./build-report.mjs";
 import { findPage } from "./cdp/attach.mjs";
@@ -108,6 +116,15 @@ const remember = (step) => {
 };
 const stream = (command, ...rest) => run("build-stream.mjs", [command, briefId, "--codebase", codebase, ...rest]);
 
+// ---- --again: the copy starts over from a fresh read of the page ----
+if (options.again) {
+  const previous = existsSync(at("tree.json")) ? JSON.parse(readFileSync(at("tree.json"), "utf8")).url : null;
+  if (!options.page && previous) options.page = liveMatchOf(previous);
+  restartCopy(buildDir, steps);
+  writeFileSync(stepsPath, JSON.stringify(steps, null, 2) + "\n");
+  say("--again: starting the copy over: the page is read afresh, the curation drafted again for review, then copied");
+}
+
 // ---- read ----
 if (!existsSync(at("tree.json"))) {
   if (!options.page) fail("--page <url-substring> names the reference tab in the Proto window (the build has no read yet)");
@@ -131,7 +148,7 @@ if (!existsSync(at("curation.json"))) {
     const curation = JSON.parse(readFileSync(at("curation.json"), "utf8"));
     const nodes = new Map(tree.nodes.map((node) => [node.id, node]));
     const list = (role) => curation.filter((entry) => entry.role === role).map((entry) => ({ id: entry.id, name: entry.name, marker: entry.marker, raw: nodes.get(entry.id)?.raw, text: nodes.get(entry.id)?.text ?? null }));
-    console.log(JSON.stringify({ stop: "review-curation", curation: at("curation.json"), leaves: list("leaf"), sections: list("section"), next: "fix names that read as Group, Block, Text or part-nN where the raw and text say what the part is (the marker follows the name, kebab-case), then run this command again" }));
+    console.log(JSON.stringify({ stop: "review-curation", curation: at("curation.json"), leaves: list("leaf"), sections: list("section"), next: "fix names that read as Group, Block, Text or part-nN where the raw and text say what the part is (the marker follows the name, kebab-case), then run this command again without --again (it would read the page afresh and discard this review)" }));
     process.exit(0);
   }
 }
@@ -155,7 +172,7 @@ if (checkpoint) {
   say("replicate: resuming the saved copy-gate checkpoint");
   replicated = checkpoint.replicated;
 } else if (existsSync(at("parts.json")) && !options.again) {
-  say("replicate: parts.json exists, kept (--again redoes it)");
+  say("replicate: parts.json exists, kept (--again starts the copy over from a fresh read)");
   replicated = JSON.parse(readFileSync(at("parts.json"), "utf8")).replicate;
 } else {
   say("replicating the page");
