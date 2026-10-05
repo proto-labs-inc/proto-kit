@@ -8,7 +8,7 @@
  *                    subagents/), as { session, agents, prompts,
  *                    requests, tools, errors, compactions }
  *   analyze(trace)   the numbers and the struggles, as a plain object
- *   reportMarkdown(trace, summary), chatMarkdown(trace)
+ *   reportMarkdown(trace, summary, flags)
  *
  * Time is partitioned, never double counted: every gap between two
  * consecutive records of one agent goes to exactly one bucket. A gap
@@ -690,7 +690,7 @@ function bucketTable(buckets, total) {
   return ["| Where | Time | Share |", "|---|---:|---:|", ...rows.filter(([, v]) => v >= 1000 || rows.length < 12).slice(0, 18).map(([k, v]) => `| ${k} | ${fmt(v)} | ${pct(v, total)} |`)].join("\n");
 }
 
-export function reportMarkdown(trace, a) {
+export function reportMarkdown(trace, a, flags = []) {
   const s = a.session;
   const out = [];
   out.push(`# Trace ${s.id}`);
@@ -702,11 +702,18 @@ export function reportMarkdown(trace, a) {
   out.push(`- **Work:** ${a.counts.toolCalls} tool calls (${a.counts.errors} failed), ${a.counts.modelRequests} model requests, ${a.counts.subagents} subagents, ${a.counts.personMessages} messages from the person, ${a.counts.compactions} compactions`);
   out.push(`- **Tokens:** ${Math.round(a.usage.output / 1000)}k out, ${Math.round(a.usage.input / 1000)}k fresh in, ${Math.round(a.usage.cacheRead / 1e6 * 10) / 10}M cache read, peak context ${Math.round(a.usage.peakContext / 1000)}k`);
   out.push("");
-  out.push("## Struggles");
+  out.push("## Flags");
   out.push("");
-  if (!a.struggles.length) out.push("Nothing flagged.");
+  if (!flags.length) out.push("None yet. `trace.mjs flag <session> s12 --kind improve --note \"…\"` adds one.");
+  for (const f of flags) out.push(`- ${f.id} **${f.kind}** on ${f.target}: ${f.note}${f.by ? ` (${f.by})` : ""}`);
+  out.push("");
+  out.push("## Signals");
+  out.push("");
+  out.push("Found by rule, not by reading: a place to start, not a verdict.");
+  out.push("");
+  if (!a.struggles.length) out.push("None.");
   for (const x of a.struggles.slice(0, 30)) {
-    out.push(`- **${x.severity}** ${x.title}${x.costMs ? ` — ${fmt(x.costMs)}` : ""}${x.steps.length ? ` (steps ${x.steps.slice(0, 8).join(", ")}${x.steps.length > 8 ? ", …" : ""})` : ""}`);
+    out.push(`- **${x.severity}** ${x.title}${x.costMs ? ` — ${fmt(x.costMs)}` : ""}${x.steps.length ? ` (${x.steps.slice(0, 8).map((n) => `s${n}`).join(", ")}${x.steps.length > 8 ? ", …" : ""})` : ""}`);
     if (x.detail) out.push(`  - ${x.detail.replace(/\s+/g, " ").slice(0, 300)}`);
   }
   out.push("");
@@ -715,7 +722,7 @@ export function reportMarkdown(trace, a) {
     out.push("");
     out.push("Sentences where an agent said something went wrong. Kit bugs that exit cleanly but do the wrong thing often show only here.");
     out.push("");
-    for (const x of a.noted.slice(0, 25)) out.push(`- ${clock(x.at)}${x.agent !== "main" ? ` (${x.agent.slice(0, 8)})` : ""}${x.step ? ` before step ${x.step}` : ""}: ${x.text.replace(/\s+/g, " ")}`);
+    for (const x of a.noted.slice(0, 25)) out.push(`- ${clock(x.at)}${x.agent !== "main" ? ` (${x.agent.slice(0, 8)})` : ""}${x.step ? ` before s${x.step}` : ""}: ${x.text.replace(/\s+/g, " ")}`);
     out.push("");
   }
   out.push("## Where the main session's time went");
@@ -753,38 +760,8 @@ export function reportMarkdown(trace, a) {
   out.push("");
   out.push("## Slowest steps");
   out.push("");
-  for (const t of a.slowest) out.push(`- step ${t.n} — ${fmt(t.ms)}${t.error ? " **failed**" : ""} — ${t.group}${t.agent !== "main" ? ` (${t.agent.slice(0, 8)})` : ""}: \`${t.label.slice(0, 120).replace(/`/g, "'")}\``);
+  for (const t of a.slowest) out.push(`- s${t.n} — ${fmt(t.ms)}${t.error ? " **failed**" : ""} — ${t.group}${t.agent !== "main" ? ` (${t.agent.slice(0, 8)})` : ""}: \`${t.label.slice(0, 120).replace(/`/g, "'")}\``);
   out.push("");
-  out.push(`Open any step with \`node <kit>/tools/trace.mjs show ${s.id} <step>\`.`);
+  out.push(`Open any step with \`node <kit>/tools/trace.mjs show ${s.id} s12\`, or read transcript.md beside this file.`);
   return out.join("\n") + "\n";
-}
-
-/** The conversation as a person would read it: what was said, and each
- *  step on one line with how long it took and whether it failed. */
-export function chatMarkdown(trace) {
-  const items = [
-    ...trace.prompts.filter((p) => p.agent === "main").map((p) => ({ at: p.at, kind: "prompt", p })),
-    ...trace.requests.filter((r) => r.agent === "main" && r.text.trim()).map((r) => ({ at: r.end, kind: "text", r })),
-    ...trace.tools.filter((t) => t.agent === "main").map((t) => ({ at: t.at, kind: "tool", t })),
-  ].sort((a, b) => a.at - b.at);
-  const out = [`# Conversation ${trace.session.id}`, "", trace.agents.length > 1 ? `Main session only. Subagents' steps (${trace.tools.filter((t) => t.agent !== "main").length} of them) are numbered in the same sequence, so numbers skip here; open them with \`trace.mjs show\` or in trace.html.\n` : ""];
-  for (const it of items) {
-    if (it.kind === "prompt") {
-      const who = it.p.from === "person" ? "Person" : it.p.from === "background" ? "Background" : "Harness";
-      const text = it.p.from === "person" ? it.p.text : it.p.text.replace(/\s+/g, " ").slice(0, 300) + (it.p.text.length > 300 ? " …" : "");
-      out.push(`### ${who} · ${clock(it.at)}`, "", text.trim(), "");
-    } else if (it.kind === "text") {
-      out.push(`**Agent · ${clock(it.at)}**`, "", it.r.text.trim(), "");
-    } else {
-      const t = it.t;
-      out.push(`- \`#${t.n}\` ${clock(t.at)} **${t.name}** ${fmt(t.ms)}${t.error ? " ❌" : ""}${t.unfinished ? " (never returned)" : ""} — \`${t.label.slice(0, 140).replace(/`/g, "'")}\``);
-      if (t.error) out.push(`  - ${errorLine(t.output)}`);
-      if (t.subagent) {
-        const sub = trace.tools.filter((x) => x.agent === t.subagent);
-        out.push(`  - subagent \`${t.subagent}\`: ${sub.length} steps, ${sub.filter((x) => x.error).length} failed`);
-      }
-      out.push("");
-    }
-  }
-  return out.join("\n");
 }

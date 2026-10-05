@@ -16,8 +16,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const MD_OUTPUT_CAP = Infinity;
-const MD_HARNESS_CAP = Infinity;
 
 function lines(path) {
   if (!existsSync(path)) return [];
@@ -216,25 +214,52 @@ export function readTranscript(dir) {
 }
 
 // ---------------------------------------------------------------------
+// Ids and flags
+
+/**
+ * Every step and message gets a short id a person and an agent can both
+ * say: s12 is the twelfth tool call of the session (the analysis counts
+ * the same way, across subagents, by time), m3 the third message. Both
+ * count in time order, so a session that grows keeps its earlier ids,
+ * and flags written against them stay put.
+ */
+export function numberTranscript(t, trace) {
+  const stepOf = new Map((trace?.tools ?? []).map((x) => [x.id, x.n]));
+  let fallback = stepOf.size;
+  const all = [...t.agents.values()].flatMap((a) => a.items.map((it) => ({ it, a })));
+  for (const { it } of all) if (it.kind === "tool") it.sid = `s${stepOf.get(it.id) ?? ++fallback}`;
+  const said = all.filter(({ it }) => ["person", "task", "text", "background"].includes(it.kind)).sort((x, y) => (x.it.at || 0) - (y.it.at || 0));
+  said.forEach(({ it }, i) => (it.mid = `m${i + 1}`));
+  return t;
+}
+
+const FLAG_KINDS = ["error", "slow", "improve", "note", "good"];
+export { FLAG_KINDS };
+
+function flagsByTarget(flags) {
+  const by = new Map();
+  for (const f of flags ?? []) (by.get(f.target) ?? by.set(f.target, []).get(f.target)).push(f);
+  return by;
+}
+
+// ---------------------------------------------------------------------
 // Writing it out
 
 const clock = (t) => (Number.isNaN(t) || t == null ? "" : new Date(t).toISOString().slice(11, 19));
-const took = (a, b) => {
-  if (a == null || b == null || Number.isNaN(a) || Number.isNaN(b)) return "";
-  const s = (b - a) / 1000;
-  return s >= 60 ? `${Math.floor(s / 60)}m${String(Math.round(s % 60)).padStart(2, "0")}s` : `${s.toFixed(1)}s`;
-};
+const span = (a, b) => (a == null || b == null || Number.isNaN(a) || Number.isNaN(b) ? null : b - a);
+const fmt = (ms) => (ms == null ? "" : ms >= 3600e3 ? `${(ms / 3600e3).toFixed(1)}h` : ms >= 60e3 ? `${Math.floor(ms / 60e3)}m${String(Math.round((ms % 60e3) / 1e3)).padStart(2, "0")}s` : `${(ms / 1e3).toFixed(1)}s`);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const cap = (s, n) => (s && s.length > n ? `${s.slice(0, n)}\n… [${s.length - n} more characters in transcript.jsonl]` : s ?? "");
+const oneLine = (s, n) => String(s ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+const SLOW_MS = 30_000;
 
-/** A tool call's input on one line, for its summary row. */
+/** A tool call's input on one line, for its row. */
 function inputLine(it) {
   const i = it.input ?? {};
   const s = i.command ?? i.cmd ?? (i.file_path ? `${i.file_path}` : null) ?? i.pattern ?? i.url ?? i.description ?? i.skill ?? i.prompt ?? JSON.stringify(i);
   return String(Array.isArray(s) ? s.join(" ") : s).replace(/\s+/g, " ").slice(0, 220);
 }
 
-/** The input in full: a command as a command, an edit as its two sides, anything else as JSON. */
+/** The input in full: a command as a command, anything else as JSON. */
 function inputBody(it) {
   const i = it.input ?? {};
   const cmd = i.command ?? i.cmd;
@@ -242,8 +267,9 @@ function inputBody(it) {
   return JSON.stringify(i, null, 2);
 }
 
-/** Runs of harness items (context the harness injects each turn) as one
- *  folded row, so the conversation stays readable. */
+const errorLine = (out) => (out ?? "").replace(/<\/?[a-z_-]+>/g, "").split("\n").map((l) => l.trim()).find((l) => l && !/^Exit code \d+$/.test(l))?.slice(0, 200) ?? "";
+
+/** Runs of harness items (context the harness injects each turn) as one. */
 function grouped(items) {
   const out = [];
   for (const it of items) {
@@ -255,124 +281,209 @@ function grouped(items) {
   return out;
 }
 
+/** The main session in turns: each starts at a message the person typed
+ *  between turns, and holds everything until the next. */
+function turnsOf(items) {
+  const turns = [];
+  for (const it of grouped(items)) {
+    if ((it.kind === "person" && !it.queued) || !turns.length) turns.push({ items: [] });
+    turns.at(-1).items.push(it);
+  }
+  return turns;
+}
 
-const PAGE_STYLE = `<style>
-body{max-width:900px;margin:2em auto;padding:0 1em;font:15px/1.5 system-ui,sans-serif}
-h3{margin:1.5em 0 .3em;font-size:1em}small,.m{color:#777}.m{margin:.3em 0;font-size:.85em}
-.say{white-space:pre-wrap}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f6f6f6;padding:.5em;max-height:30em;overflow:auto}
-code{font-size:12px}.step{margin:.15em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}details{margin:.2em 0}summary{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sub{margin-left:1.5em;border-left:2px solid #ddd;padding-left:.8em}
-table{border-collapse:collapse}td,th{text-align:left;padding:2px 10px 2px 0;vertical-align:top;font-size:.9em}
-@media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub{border-color:#333}a{color:#8ab4f8}}
+/** Tool calls of an agent and of every subagent it started. */
+function stepsUnder(t, items, seen = new Set()) {
+  const out = [];
+  for (const it of items) {
+    if (it.kind !== "tool") continue;
+    out.push(it);
+    if (it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)) {
+      seen.add(it.subagent);
+      out.push(...stepsUnder(t, t.agents.get(it.subagent).items, seen));
+    }
+  }
+  return out;
+}
+
+export const PAGE_STYLE = `<style>
+body{max-width:960px;margin:2em auto;padding:0 1em;font:15px/1.5 system-ui,sans-serif}
+h1{font-size:1.4em;margin:0}h2{font-size:1.1em;margin:1.6em 0 .4em}small,.m{color:#777}.m{font-size:.85em}
+.say{white-space:pre-wrap;margin:.2em 0 .8em}.who{font-weight:600;margin-top:1em}
+pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f6f6f6;padding:.5em;max-height:30em;overflow:auto}
+code{font-size:12px}.step{margin:.1em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.step .err{display:block;white-space:normal;color:#b42318;font-size:.85em;margin-left:5.5em}
+.id{display:inline-block;min-width:3.2em;color:#777;font:12px ui-monospace,monospace;text-decoration:none}
+details{margin:.3em 0}summary{cursor:pointer}details.turn{border-top:1px solid #ddd;padding-top:.4em;margin-top:.8em}details.turn>summary{font-weight:600}details.phase{margin:.6em 0 .6em .4em}details.phase>summary{font-weight:600;font-size:.95em}
+.sub{margin:.3em 0 .3em 2em;border-left:2px solid #ddd;padding-left:.8em}
+.flag{background:#fff6d6}.flag.error{background:#fde7e7}.flag.good{background:#e6f6ea}
+.note{margin:.1em 0 .4em 3.4em;font-size:.88em}.note b{text-transform:uppercase;font-size:.8em;letter-spacing:.04em}
+table{border-collapse:collapse;margin:.3em 0}td,th{text-align:left;padding:2px 14px 2px 0;vertical-align:top;font-size:.9em}td.r,th.r{text-align:right}
+@media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub,details.turn{border-color:#333}a{color:#8ab4f8}.flag{background:#3a3214}.flag.error{background:#3d1d1d}.flag.good{background:#173322}.step .err{color:#ff8a80}}
 </style>`;
-export { PAGE_STYLE };
 
 /** A page under transcript/ holding texts in full, so the main page
  *  carries one line per step and stays light. */
 function subpage(pages, name, title, sections) {
-  pages.set(name, `<!doctype html>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${esc(title)}</title>\n${PAGE_STYLE}\n<p class="m"><a href="../transcript.html">← transcript</a></p>\n<h2>${esc(title)}</h2>\n${sections.map(([heading, body]) => `<h3>${esc(heading)}${body ? ` <small>${String(body).length} characters</small>` : ""}</h3>\n<pre style="max-height:none">${esc(body ?? "")}</pre>`).join("\n")}\n`);
+  pages.set(name, `<!doctype html>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${esc(title)}</title>\n${PAGE_STYLE}\n<p class="m"><a href="../transcript.html">← transcript</a></p>\n<h1>${esc(title)}</h1>\n${sections.map(([heading, body]) => `<h2>${esc(heading)} <small>${String(body ?? "").length} characters</small></h2>\n<pre style="max-height:none">${esc(body ?? "")}</pre>`).join("\n")}\n`);
   return `transcript/${name}`;
 }
 
-function htmlItems(t, agentId, seen, pages) {
-  const agent = t.agents.get(agentId);
+function notes(list) {
+  return (list ?? []).map((f) => `<div class="note"><b>${esc(f.kind)}</b> ${esc(f.note)} <small>${esc(f.by ?? "")} · ${esc(f.id)}</small></div>`).join("");
+}
+
+function htmlItems(t, items, seen, pages, flags) {
   const out = [];
-  const key = (suffix) => `${agentId === "main" ? "main" : agentId.slice(0, 12)}-${pages.size + 1}-${suffix}.html`;
-  for (const it of grouped(agent.items)) {
+  for (const it of items) {
     const time = clock(it.at);
-    if (it.kind === "person") out.push(`<h3>Person${it.queued ? " (while the agent worked)" : ""} <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
-    else if (it.kind === "task") out.push(`<h3>Task <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
-    else if (it.kind === "text") out.push(`<h3>Agent <small>${time}</small></h3>\n<div class="say">${esc(it.text.trim())}</div>`);
-    else if (it.kind === "background") out.push(`<details><summary><small>${time}</small> background: ${esc(it.text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120))}</summary><pre>${esc(it.text)}</pre></details>`);
+    const mine = flags.get(it.sid ?? it.mid);
+    const cls = mine ? ` flag ${mine.map((f) => f.kind).join(" ")}` : "";
+    const who = { person: it.queued ? "Person, while the agent worked" : "Person", task: "Task from the agent that started it", text: "Agent" }[it.kind];
+    if (who) out.push(`<div id="${it.mid}" class="msg${cls}"><div class="who"><a class="id" href="#${it.mid}">${it.mid}</a>${esc(who)} <small>${time}</small></div><div class="say">${esc(it.text.trim())}</div>${notes(mine)}</div>`);
+    else if (it.kind === "background") out.push(`<details id="${it.mid}" class="m${cls}"><summary><a class="id" href="#${it.mid}">${it.mid}</a>${time} background: ${esc(oneLine(it.text, 140))}</summary><pre>${esc(it.text)}</pre></details>${notes(mine)}`);
     else if (it.kind === "harness-run") {
-      const href = subpage(pages, key("harness"), `harness · ${time}`, it.items.map((x) => [x.label ?? "message", x.body ?? x.text ?? ""]));
-      out.push(`<p class="m"><small>${time}</small> <a href="${href}">harness</a>: ${esc([...new Set(it.items.map((x) => x.label ?? "message"))].join(", ").slice(0, 200))}</p>`);
-    }
-    else if (it.kind === "thinking") {
-      if (!it.hidden) out.push(`<details><summary><small>${time}</small> thinking</summary><pre>${esc(it.text)}</pre></details>`);
-    } else if (it.kind === "event") out.push(`<p class="m"><small>${time}</small> ${esc(it.label)}</p>`);
+      const href = subpage(pages, `h${pages.size + 1}.html`, `harness · ${time}`, it.items.map((x) => [x.label ?? "message", x.body ?? x.text ?? ""]));
+      out.push(`<p class="step m"><span class="id"></span>${time} <a href="${href}">harness</a>: ${esc(oneLine([...new Set(it.items.map((x) => x.label ?? "message"))].join(", "), 180))}</p>`);
+    } else if (it.kind === "thinking") {
+      if (!it.hidden) out.push(`<details class="m"><summary><span class="id"></span>${time} thinking</summary><pre>${esc(it.text)}</pre></details>`);
+    } else if (it.kind === "event") out.push(`<p class="step m"><span class="id"></span>${time} ${esc(it.label)}</p>`);
     else if (it.kind === "tool") {
-      const status = it.output == null ? " (no result)" : it.error ? " <b>failed</b>" : "";
-      const href = subpage(pages, key("tool"), `${it.name} · ${time} · ${took(it.at, it.end)}${it.error ? " · failed" : ""}`, [["input", inputBody(it)], ["output", it.output ?? "(no result recorded)"], ...(it.stderr ? [["stderr", it.stderr]] : [])]);
-      const err = it.error && it.output ? `<br><small>${esc(it.output.replace(/<\/?[a-z_-]+>/g, "").split("\n").map((l) => l.trim()).find((l) => l && !/^Exit code \d+$/.test(l))?.slice(0, 200) ?? "")}</small>` : "";
-      out.push(`<p class="step"${it.id ? ` id="t-${esc(it.id)}"` : ""}><small>${time}</small> <a href="${href}"><b>${esc(it.name)}</b></a> <small>${esc(took(it.at, it.end))}</small>${status} <code>${esc(inputLine(it).slice(0, 140))}</code>${err}</p>`);
+      const ms = span(it.at, it.end);
+      const href = subpage(pages, `${it.sid}.html`, `${it.sid} · ${it.name} · ${time} · ${fmt(ms)}${it.error ? " · failed" : ""}`, [["input", inputBody(it)], ["output", it.output ?? "(no result recorded)"], ...(it.stderr ? [["stderr", it.stderr]] : [])]);
+      const took = ms == null ? "" : ms >= SLOW_MS ? `<b>${fmt(ms)}</b>` : fmt(ms);
+      const status = it.output == null ? " <small>(no result)</small>" : it.error ? " <b>failed</b>" : "";
+      out.push(`<div class="step${cls}" id="${it.sid}"><a class="id" href="#${it.sid}">${it.sid}</a>${time} <a href="${href}">${esc(it.name)}</a> <small>${took}</small>${status} <code>${esc(inputLine(it).slice(0, 150))}</code>${it.error && it.output ? `<span class="err">${esc(errorLine(it.output))}</span>` : ""}</div>${notes(mine)}`);
       if (it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)) {
         const a = t.agents.get(it.subagent);
         seen.add(it.subagent);
-        out.push(`<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, it.subagent, seen, pages)}\n</details>`);
+        const steps = stepsUnder(t, a.items, new Set(seen));
+        const first = a.items.find((x) => !Number.isNaN(x.at))?.at;
+        const last = a.items.findLast((x) => !Number.isNaN(x.at));
+        out.push(`<details class="sub"><summary>subagent <b>${esc(a.type)}</b>: ${esc(a.description)} <small>· ${fmt(span(first, last?.end ?? last?.at))} · ${steps.length} steps${steps.some((x) => x.error) ? ` · ${steps.filter((x) => x.error).length} failed` : ""}</small></summary>\n${htmlItems(t, grouped(a.items), seen, pages, flags)}\n</details>`);
       }
     }
   }
   return out.join("\n");
 }
 
+function table(head, rows, right = []) {
+  return `<table>\n<tr>${head.map((h, i) => `<th${right.includes(i) ? ' class="r"' : ""}>${esc(h)}</th>`).join("")}</tr>\n${rows.map((r) => `<tr>${r.map((c, i) => `<td${right.includes(i) ? ' class="r"' : ""}>${c}</td>`).join("")}</tr>`).join("\n")}\n</table>`;
+}
+
 /** transcript.html, and the pages its long texts live on (name → html). */
-export function transcriptHtml(dir) {
-  const t = readTranscript(dir);
-  const seen = new Set(["main"]);
+export function transcriptHtml(dir, { trace, summary, flags = [] } = {}) {
+  const t = numberTranscript(readTranscript(dir), trace);
+  const byTarget = flagsByTarget(flags);
   const pages = new Map();
-  const main = htmlItems(t, "main", seen, pages);
-  const rest = [...t.agents.keys()].filter((id) => !seen.has(id)).map((id) => {
+  const seen = new Set(["main"]);
+  const main = t.agents.get("main");
+  const sid = (n) => `<a href="#s${n}">s${n}</a>`;
+
+  const turns = turnsOf(main.items).map((turn, i) => {
+    const steps = stepsUnder(t, turn.items, new Set(seen));
+    const timed = turn.items.filter((x) => !Number.isNaN(x.at));
+    const working = span(timed[0]?.at, Math.max(...timed.map((x) => x.end ?? x.at)));
+    const opener = turn.items.find((x) => x.kind === "person");
+    const flagged = [...turn.items, ...steps].filter((x) => byTarget.has(x.sid ?? x.mid)).length;
+    const failed = steps.filter((x) => x.error).length;
+    // Within a turn, a section per skill the agent started, so a long
+    // unattended run reads as setup, import, build, serve.
+    const marks = (summary?.phases ?? []).filter((p) => p.label.startsWith("skill ") && p.at > (timed[0]?.at ?? 0) && p.at <= (timed.at(-1)?.at ?? 0));
+    let body;
+    if (!marks.length) body = htmlItems(t, turn.items, seen, pages, byTarget);
+    else {
+      const parts = [{ label: null, items: [] }];
+      for (const it of turn.items) {
+        while (marks.length && !Number.isNaN(it.at) && it.at >= marks[0].at) parts.push({ label: marks.shift(), items: [] });
+        parts.at(-1).items.push(it);
+      }
+      body = parts.filter((p) => p.items.length).map((p) => {
+        if (!p.label) return htmlItems(t, p.items, seen, pages, byTarget);
+        const st = stepsUnder(t, p.items, new Set(seen));
+        const f = st.filter((x) => x.error).length;
+        const fl = [...p.items, ...st].filter((x) => byTarget.has(x.sid ?? x.mid)).length;
+        return `<details class="phase" open><summary>${esc(p.label.label)} <small>${clock(p.label.at)} · ${fmt(p.label.workingMs)} · ${st.length} steps${f ? ` · ${f} failed` : ""}${fl ? ` · ${fl} flagged` : ""}</small></summary>\n${htmlItems(t, p.items, seen, pages, byTarget)}\n</details>`;
+      }).join("\n");
+    }
+    return `<details class="turn" id="turn${i + 1}"${i < 2 || flagged || failed ? " open" : ""}><summary>Turn ${i + 1} <small>${clock(timed[0]?.at)} · ${fmt(working)} · ${steps.length} steps${failed ? ` · ${failed} failed` : ""}${flagged ? ` · ${flagged} flagged` : ""}</small> — ${esc(oneLine(opener?.text ?? "", 110))}</summary>\n${body}\n</details>`;
+  });
+  const orphans = [...t.agents.keys()].filter((id) => !seen.has(id)).map((id) => {
     const a = t.agents.get(id);
     seen.add(id);
-    return `<details class="sub"><summary>subagent ${esc(a.type)}: ${esc(a.description)}</summary>\n${htmlItems(t, id, seen, pages)}\n</details>`;
-  }).join("\n");
-  const id = t.meta.sessionId ?? "";
+    return `<details class="sub"><summary>subagent <b>${esc(a.type)}</b>: ${esc(a.description)} <small>(not matched to a call)</small></summary>\n${htmlItems(t, grouped(a.items), seen, pages, byTarget)}\n</details>`;
+  });
+
+  const s = summary ?? {};
+  const head = [];
+  if (summary) {
+    const ss = s.session;
+    head.push(`<p class="m">${esc(ss.id)} · ${esc(ss.harness)}${ss.version ? ` ${esc(ss.version)}` : ""} · ${esc(ss.model ?? "")} · ${esc(ss.cwd ?? "")}${s.prototypes?.length ? ` · ${esc(s.prototypes.map((p) => `${p.codebase}/${p.slug}`).join(", "))}` : ""} · times UTC</p>`);
+    head.push(`<p><b>${fmt(s.activeMs)} working</b> of ${fmt(s.wallMs)} (${fmt(s.waitingOnPersonMs)} waiting on the person) · ${s.counts.toolCalls} steps, ${s.counts.errors} failed · ${s.counts.subagents} subagents · ${s.counts.personMessages} messages from the person · ${Math.round(s.usage.output / 1000)}k tokens out, peak context ${Math.round(s.usage.peakContext / 1000)}k</p>`);
+    head.push(`<details open><summary><b>Flags</b> <small>(${flags.length})</small></summary>${flags.length ? table(["", "Where", "What", "By"], flags.map((f) => [`<b>${esc(f.kind)}</b>`, f.target === "session" ? "session" : `<a href="#${esc(f.target)}">${esc(f.target)}</a>`, esc(f.note), `<small>${esc(f.by ?? "")} · ${esc(f.id)}</small>`])) : `<p class="m">None yet. Flag a step or message with <code>trace.mjs flag ${esc(ss.id.slice(0, 8))} s12 --kind improve --note "…"</code>.</p>`}</details>`);
+    head.push(`<details open><summary><b>Where the time went</b></summary>${table(["Start", "Phase", "Working", "Wall", "Steps", "Failed"], s.phases.map((p) => [clock(p.at), esc(p.label), fmt(p.workingMs), fmt(p.ms), p.toolCalls, p.errors || ""]), [2, 3, 4, 5])}
+<details><summary>by tool</summary>${table(["Tool", "Calls", "Failed", "Total", "Longest"], s.groups.filter((g) => !g.group.startsWith("waiting")).slice(0, 25).map((g) => [esc(g.group), g.calls, g.errors || "", fmt(g.ms), fmt(g.maxMs)]), [1, 2, 3, 4])}</details>
+<details><summary>slowest steps</summary>${table(["Step", "Took", "Tool", "What"], s.slowest.map((x) => [sid(x.n), fmt(x.ms), esc(x.group), `<code>${esc(x.label.slice(0, 100))}</code>`]), [1])}</details>
+${s.agents.length > 1 ? `<details><summary>subagents</summary>${table(["Agent", "Task", "Wall", "Steps", "Failed", "Ended with"], s.agents.filter((g) => g.id !== "main").map((g) => [esc(g.type), esc(g.description), fmt(g.wallMs), g.toolCalls, g.errors || "", `<small>${esc(g.ended.slice(0, 160))}</small>`]), [2, 3, 4])}</details>` : ""}</details>`);
+    head.push(`<details><summary><b>Signals</b> <small>(${s.struggles.length}, found by rule, not read; a starting point)</small></summary><ul>${s.struggles.map((x) => `<li><b>${esc(x.severity)}</b> ${esc(x.title)}${x.costMs ? ` — ${fmt(x.costMs)}` : ""}${x.steps.length ? ` (${x.steps.slice(0, 10).map(sid).join(", ")}${x.steps.length > 10 ? ", …" : ""})` : ""}${x.detail ? `<br><small>${esc(oneLine(x.detail, 300))}</small>` : ""}</li>`).join("")}</ul></details>`);
+  }
+
   const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Transcript ${esc(id.slice(0, 8))}</title>
+<title>Trace ${esc((t.meta.sessionId ?? "").slice(0, 8))}</title>
 ${PAGE_STYLE}
-<h1>Transcript</h1>
-<p class="m">${esc(id)} · ${esc(t.harness)} · times UTC · <a href="trace.html">analysis</a> · long texts open on their own page; nothing is cut</p>
-${main}
-${rest}
+<h1>Trace</h1>
+${head.join("\n")}
+<h2>Conversation <small>${turns.length} turns · each step links to its full input and output</small></h2>
+${turns.join("\n")}
+${orphans.join("\n")}
 <script>
-// A link to one step (from trace.html) opens it and every section around it.
-function show(){const e=document.getElementById(location.hash.slice(1));for(let d=e;d;d=d.parentElement)if(d.tagName==="DETAILS")d.open=true;e&&e.scrollIntoView()}
+// A link to a step or message opens it and every section around it.
+function show(){const e=document.getElementById(decodeURIComponent(location.hash.slice(1)));for(let d=e;d;d=d.parentElement)if(d.tagName==="DETAILS")d.open=true;e&&e.scrollIntoView({block:"center"})}
 addEventListener("hashchange",show);if(location.hash)show();
 </script>
 `;
   return { html, pages };
 }
 
-function mdItems(t, agentId, depth, seen) {
-  const agent = t.agents.get(agentId);
-  const h = "#".repeat(Math.min(6, depth + 2));
+/** transcript.md: the same transcript for an agent to read, ids and flags
+ *  included, nothing cut. */
+export function transcriptMarkdown(dir, { trace, flags = [] } = {}) {
+  const t = numberTranscript(readTranscript(dir), trace);
+  const byTarget = flagsByTarget(flags);
+  const seen = new Set(["main"]);
   const fence = (s) => {
     const body = String(s ?? "");
     const ticks = "`".repeat(Math.max(3, ...[...body.matchAll(/`+/g)].map((m) => m[0].length + 1)));
     return `${ticks}\n${body}\n${ticks}`;
   };
-  const out = [];
-  for (const it of agent.items) {
-    const time = clock(it.at);
-    if (it.kind === "task") out.push(`**Task from the agent that started it · ${time}**\n\n${it.text.trim()}\n`);
-    else if (it.kind === "person") out.push(`${h} Person${it.queued ? " (sent while the agent worked)" : ""} · ${time}\n\n${it.text.trim()}\n`);
-    else if (it.kind === "background") out.push(`**Background · ${time}**${it.from ? ` (${it.from})` : ""}\n\n${fence(it.text.trim())}\n`);
-    else if (it.kind === "harness") out.push(`*Harness · ${time} · ${it.label ?? ""}*\n\n${fence(cap(it.body ?? it.text, MD_HARNESS_CAP))}\n`);
-    else if (it.kind === "text") out.push(`${h} Agent · ${time}\n\n${it.text.trim()}\n`);
-    else if (it.kind === "thinking") out.push(it.hidden ? `*thinking · ${time} (text not kept)*\n` : `*thinking · ${time}*\n\n> ${it.text.trim().replace(/\n/g, "\n> ")}\n`);
-    else if (it.kind === "event") out.push(`*${time} · ${it.label}*${it.body ? `\n\n${fence(it.body)}` : ""}\n`);
-    else if (it.kind === "tool") {
-      out.push(`**Tool · ${time} · ${it.name}** ${took(it.at, it.end)}${it.error ? " · FAILED" : ""}${it.output == null ? " · no result" : ""}\n\n${fence(inputBody(it))}\n\nOutput:\n\n${fence(cap(it.output ?? "(no result recorded)", MD_OUTPUT_CAP))}\n${it.stderr ? `\nStderr:\n\n${fence(cap(it.stderr, MD_OUTPUT_CAP))}\n` : ""}`);
-      if (it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)) {
-        const a = t.agents.get(it.subagent);
-        seen.add(it.subagent);
-        out.push(`${h}# Subagent ${a.type}: ${a.description}\n\n${mdItems(t, it.subagent, depth + 1, seen)}\n${h}# End of subagent ${a.type}\n`);
+  const flagLines = (id) => (byTarget.get(id) ?? []).map((f) => `> FLAG ${f.id} ${f.kind}: ${f.note}${f.by ? ` (${f.by})` : ""}\n`).join("");
+  const items = (list, depth) => {
+    const out = [];
+    for (const it of list) {
+      const time = clock(it.at);
+      if (it.kind === "person" || it.kind === "task" || it.kind === "text") out.push(`**${it.mid} · ${{ person: it.queued ? "Person (while the agent worked)" : "Person", task: "Task", text: "Agent" }[it.kind]} · ${time}**\n\n${it.text.trim()}\n${flagLines(it.mid)}`);
+      else if (it.kind === "background") out.push(`**${it.mid} · Background · ${time}**\n\n${fence(it.text.trim())}\n${flagLines(it.mid)}`);
+      else if (it.kind === "harness-run") out.push(`*${time} · harness: ${[...new Set(it.items.map((x) => x.label ?? "message"))].join(", ")}*\n\n${it.items.map((x) => fence(x.body ?? x.text ?? "")).join("\n")}\n`);
+      else if (it.kind === "thinking") out.push(it.hidden ? "" : `*thinking · ${time}*\n\n> ${it.text.trim().replace(/\n/g, "\n> ")}\n`);
+      else if (it.kind === "event") out.push(`*${time} · ${it.label}*\n`);
+      else if (it.kind === "tool") {
+        out.push(`**${it.sid} · ${it.name} · ${time} · ${fmt(span(it.at, it.end))}${it.error ? " · FAILED" : ""}${it.output == null ? " · no result" : ""}**\n${flagLines(it.sid)}\n${fence(inputBody(it))}\n\n${fence(it.output ?? "(no result recorded)")}\n${it.stderr ? `\nstderr:\n\n${fence(it.stderr)}\n` : ""}`);
+        if (it.subagent && t.agents.has(it.subagent) && !seen.has(it.subagent)) {
+          const a = t.agents.get(it.subagent);
+          seen.add(it.subagent);
+          out.push(`${"#".repeat(Math.min(6, depth + 3))} Subagent ${a.type}: ${a.description}\n\n${items(grouped(a.items), depth + 1)}\n*end of subagent ${a.type}*\n`);
+        }
       }
     }
-  }
-  return out.join("\n");
-}
-
-export function transcriptMarkdown(dir) {
-  const t = readTranscript(dir);
-  const seen = new Set(["main"]);
-  const main = mdItems(t, "main", 0, seen);
+    return out.filter(Boolean).join("\n");
+  };
+  const turns = turnsOf(t.agents.get("main").items).map((turn, i) => `## Turn ${i + 1}\n\n${items(turn.items, 0)}`);
   const rest = [...t.agents.keys()].filter((id) => !seen.has(id)).map((id) => {
     const a = t.agents.get(id);
     seen.add(id);
-    return `## Subagent ${a.type}: ${a.description} (not matched to a call)\n\n${mdItems(t, id, 1, seen)}`;
+    return `## Subagent ${a.type}: ${a.description} (not matched to a call)\n\n${items(grouped(a.items), 1)}`;
   });
-  return `# Transcript ${t.meta.sessionId ?? ""}\n\nEverything the session recorded, in order (times UTC), nothing cut.\n\n${main}\n${rest.join("\n")}`;
+  const sessionFlags = flagLines("session");
+  return `# Transcript ${t.meta.sessionId ?? ""}\n\nEverything the session recorded, in order, nothing cut. Times UTC. s12 is the twelfth step (tool call), m3 the third message; flag one with \`trace.mjs flag <session> s12 --kind improve --note "…"\`.\n\n${sessionFlags}\n${turns.join("\n\n")}\n${rest.join("\n")}`;
 }

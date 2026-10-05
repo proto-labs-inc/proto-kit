@@ -13,15 +13,19 @@
  *     transcript.jsonl   the session as the harness wrote it
  *     subagents/         each subagent's own transcript (and .meta.json)
  *     meta.json          harness, source path, codebases and prototypes
- *     transcript.html    the whole transcript, readable: every message, thinking,
- *     transcript/        tool call, background notice and subagent, nested where
- *     transcript.md      it was started; long texts on their own page in
- *                        transcript/ (trace-transcript.mjs)
- *     chat.md            the conversation, one line per step
- *     report.md          where the time went and where it struggled
+ *     transcript.html    the page to read: where the time went, the flags, then
+ *                        the conversation turn by turn, each step one line
+ *     transcript/        each step's full input and output, a page apiece
+ *     transcript.md      the same transcript for an agent to read, nothing cut
+ *     report.md          the numbers and the rule-found signals, short
  *     summary.json       the same numbers, for tools
- *     steps.jsonl        one record per tool call: input, output, time
- *     trace.html         report.md as a page, its steps linked into the transcript
+ *     flags.json         flags on steps and messages, by an agent or a person
+ *
+ * Every step has an id (s12, the twelfth tool call, counted by time across
+ * subagents) and every message one (m3). `flag` marks either with a kind
+ * and a note; the page shows flags inline and in a list at the top, and
+ * they survive every regeneration. That is how an agent reading a trace
+ * reports back: it flags, the person reads the flags.
  *
  * The end-of-turn hook (hooks/trace-sync.mjs) runs `sync` in the
  * background after every turn, so the folder is never more than a turn
@@ -36,11 +40,12 @@
  *                                                          session/subagents/…, environment.json)
  *   node trace.mjs list [--codebase <cb>] [--slug <slug>]
  *   node trace.mjs report [<session> | latest] [--json]    work it up again and print it
- *   node trace.mjs show <session | latest> <step> [<step>…] [--full]   e.g. 12 or 10-14 or 3,7
- *   node trace.mjs chat <session | latest> [--from HH:MM] [--to HH:MM]  the conversation, in a window
+ *   node trace.mjs show <session | latest> <step> [<step>…] [--full]   e.g. 12 or s12 or 10-14
  *   node trace.mjs grep <session | latest> <regex>
- *   node trace.mjs view [<session> | latest] [--open]      print trace.html's path
- *   node trace.mjs transcript [<session> | latest] [--open]  print transcript.html's path
+ *   node trace.mjs view [<session> | latest] [--open]      refresh and print transcript.html's path
+ *   node trace.mjs flag <session | latest> <s12 | m3 | session> --kind error|slow|improve|note|good --note <text> [--by <who>]
+ *   node trace.mjs flags <session | latest> [--json]
+ *   node trace.mjs unflag <session | latest> <flag id | all>
  */
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -49,9 +54,8 @@ import { basename, dirname, join, relative } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { claudeFiles, codexFiles, codexRollout, sessionAt, usesProto } from "./debug-report.mjs";
-import { analyze, chatMarkdown, duration, readTrace, reportMarkdown } from "./trace-read.mjs";
-import { traceHtml } from "./trace-view.mjs";
-import { transcriptHtml, transcriptMarkdown } from "./trace-transcript.mjs";
+import { analyze, duration, readTrace, reportMarkdown } from "./trace-read.mjs";
+import { FLAG_KINDS, transcriptHtml, transcriptMarkdown } from "./trace-transcript.mjs";
 
 const PROTO_HOME = join(homedir(), ".proto");
 export const TRACES_DIR = join(PROTO_HOME, "traces");
@@ -171,18 +175,41 @@ export function sync(session, { force = false } = {}) {
 export function workUp(dir) {
   const trace = readTrace(dir);
   const summary = analyze(trace);
+  const flags = readFlags(dir);
   writeAtomic(join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
-  writeAtomic(join(dir, "report.md"), reportMarkdown(trace, summary));
-  writeAtomic(join(dir, "chat.md"), chatMarkdown(trace));
-  writeAtomic(join(dir, "steps.jsonl"), trace.tools.map((t) => JSON.stringify({ n: t.n, agent: t.agent, name: t.name, group: t.group, label: t.label, at: new Date(t.at).toISOString(), ms: t.ms, error: t.error, unfinished: t.unfinished || undefined, input: t.input, output: t.output })).join("\n") + "\n");
-  writeAtomic(join(dir, "trace.html"), traceHtml(trace, summary));
-  const transcript = transcriptHtml(dir);
+  writeAtomic(join(dir, "report.md"), reportMarkdown(trace, summary, flags));
+  const transcript = transcriptHtml(dir, { trace, summary, flags });
   rmSync(join(dir, "transcript"), { recursive: true, force: true });
   mkdirSync(join(dir, "transcript"), { recursive: true });
   for (const [name, page] of transcript.pages) writeFileSync(join(dir, "transcript", name), page);
   writeAtomic(join(dir, "transcript.html"), transcript.html);
-  writeAtomic(join(dir, "transcript.md"), transcriptMarkdown(dir));
+  writeAtomic(join(dir, "transcript.md"), transcriptMarkdown(dir, { trace, flags }));
+  // Files earlier versions wrote, now folded into the transcript.
+  for (const old of ["trace.html", "chat.md", "steps.jsonl"]) rmSync(join(dir, old), { force: true });
   return { trace, summary };
+}
+
+// ---------------------------------------------------------------------
+// Flags
+
+function readFlags(dir) {
+  try {
+    return JSON.parse(readFileSync(join(dir, "flags.json"), "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+function flag(dir, args) {
+  const target = args.find((a) => /^(s\d+|m\d+|session)$/.test(a)) ?? fail("flag needs a step (s12), a message (m3) or session");
+  const kind = arg(args, "--kind") ?? "note";
+  if (!FLAG_KINDS.includes(kind)) fail(`--kind is one of ${FLAG_KINDS.join(", ")}`);
+  const note = arg(args, "--note") ?? fail("flag needs --note <text>");
+  const flags = readFlags(dir);
+  const id = `f${flags.reduce((n, f) => Math.max(n, Number(f.id.slice(1)) || 0), 0) + 1}`;
+  flags.push({ id, target, kind, note, by: arg(args, "--by") ?? process.env.USER ?? "", at: new Date().toISOString() });
+  writeAtomic(join(dir, "flags.json"), JSON.stringify(flags, null, 2) + "\n");
+  return id;
 }
 
 /** The hook's sync: one at a time per session. A turn that ends while
@@ -338,15 +365,11 @@ function list(args) {
   console.log(rows.length ? rows.join("\n") : "No traces yet in ~/.proto/traces.");
 }
 
-function steps(dir) {
-  return readFileSync(join(dir, "steps.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-}
-
 /** Steps in full: what went in, what came out, and what the model said
  *  just before (from the transcript, not cut). */
 function show(dir, which, full) {
   const wanted = new Set(
-    which.split(",").flatMap((w) => {
+    which.replace(/s/g, "").split(",").flatMap((w) => {
       const [a, b] = w.split("-").map(Number);
       return b ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a];
     }),
@@ -354,7 +377,7 @@ function show(dir, which, full) {
   const trace = readTrace(dir);
   for (const t of trace.tools.filter((x) => wanted.has(x.n))) {
     const req = trace.requests.find((r) => r.id === t.request);
-    console.log(`── step ${t.n} · ${t.agent === "main" ? "main" : `subagent ${t.agent}`} · ${t.name} · ${new Date(t.at).toISOString().slice(11, 19)} · ${duration(t.ms)}${t.error ? " · FAILED" : ""}${t.unfinished ? " · never returned" : ""}`);
+    console.log(`── s${t.n} · ${t.agent === "main" ? "main" : `subagent ${t.agent}`} · ${t.name} · ${new Date(t.at).toISOString().slice(11, 19)} · ${duration(t.ms)}${t.error ? " · FAILED" : ""}${t.unfinished ? " · never returned" : ""}`);
     if (req?.text) console.log(`model said: ${req.text.trim().slice(0, full ? Infinity : 600)}`);
     console.log(`input: ${JSON.stringify(t.input, null, 2).slice(0, full ? Infinity : 3000)}`);
     console.log(`output (${t.outputBytes} chars): ${full ? t.output : t.output.slice(0, 2500)}`);
@@ -362,28 +385,27 @@ function show(dir, which, full) {
   }
 }
 
-/** chat.md between two times of day (UTC, as chat.md shows them). */
-function chat(dir, from, to) {
-  const text = readFileSync(join(dir, "chat.md"), "utf8");
-  if (!from && !to) return console.log(text);
-  const pad = (t) => (t ? (t.length === 5 ? `${t}:00` : t) : null);
-  const [a, b] = [pad(from) ?? "00:00:00", pad(to) ?? "99:99:99"];
-  const blocks = text.split(/\n(?=### |\*\*Agent · |- `#)/);
-  for (const block of blocks) {
-    const at = /(\d\d:\d\d:\d\d)/.exec(block)?.[1];
-    if (at && at >= a && at <= b) console.log(block.trimEnd());
-  }
-}
-
 function grep(dir, pattern) {
   const re = new RegExp(pattern, "i");
-  for (const t of steps(dir)) {
+  for (const t of readTrace(dir).tools) {
     const hay = `${t.label}\n${JSON.stringify(t.input)}\n${t.output}`;
     if (re.test(hay)) {
       const line = hay.split("\n").find((l) => re.test(l)) ?? "";
-      console.log(`step ${t.n} ${t.error ? "FAILED " : ""}${t.group}: ${line.trim().slice(0, 200)}`);
+      console.log(`s${t.n} ${t.error ? "FAILED " : ""}${t.group}: ${line.trim().slice(0, 200)}`);
     }
   }
+}
+
+/** A trace worked up again, from a fresh copy when its session is still
+ *  on disk, so it covers what happened since the last turn ended. */
+function refresh(dir) {
+  let meta = {};
+  try {
+    meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8"));
+  } catch {}
+  if (meta.source && existsSync(meta.source)) sync({ id: meta.sessionId, path: meta.source, harness: meta.harness }, { force: true });
+  else workUp(dir);
+  return dir;
 }
 
 async function main() {
@@ -412,15 +434,7 @@ async function main() {
   }
   if (cmd === "list") return list(args);
   if (cmd === "report") {
-    const dir = traceDir(args.find((a) => !a.startsWith("--")));
-    let meta = {};
-    try {
-      meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8"));
-    } catch {}
-    // A fresh copy first when the session is still on disk, so the
-    // report covers what happened since the last turn ended.
-    if (meta.source && existsSync(meta.source)) sync({ id: meta.sessionId, path: meta.source, harness: meta.harness }, { force: true });
-    else workUp(dir);
+    const dir = refresh(traceDir(args.find((a) => !a.startsWith("--"))));
     console.log(args.includes("--json") ? readFileSync(join(dir, "summary.json"), "utf8") : readFileSync(join(dir, "report.md"), "utf8"));
     console.log(`Trace: ${dir}`);
     return;
@@ -429,25 +443,31 @@ async function main() {
     const which = args.slice(1).filter((a) => !a.startsWith("--")).join(",");
     return show(traceDir(args[0]), which || fail("show needs step numbers, e.g. 12 or 10-14"), args.includes("--full"));
   }
-  if (cmd === "chat") return chat(traceDir(args[0]?.startsWith("--") ? undefined : args[0]), arg(args, "--from"), arg(args, "--to"));
   if (cmd === "grep") return grep(traceDir(args[0]), args[1] ?? fail("grep needs a pattern"));
-  if (cmd === "transcript") {
-    const dir = traceDir(args.find((a) => !a.startsWith("--")));
-    let meta = {};
-    try {
-      meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8"));
-    } catch {}
-    if (meta.source && existsSync(meta.source)) sync({ id: meta.sessionId, path: meta.source, harness: meta.harness }, { force: true });
-    else workUp(dir);
+  if (cmd === "view" || cmd === "transcript") {
+    const dir = refresh(traceDir(args.find((a) => !a.startsWith("--"))));
     console.log(join(dir, "transcript.html"));
     if (args.includes("--open") && process.platform === "darwin") spawnSync("open", [join(dir, "transcript.html")]);
     return;
   }
-  if (cmd === "view") {
+  if (cmd === "flag") {
     const dir = traceDir(args[0]);
-    if (!existsSync(join(dir, "trace.html"))) workUp(dir);
-    console.log(join(dir, "trace.html"));
-    if (args.includes("--open") && process.platform === "darwin") spawnSync("open", [join(dir, "trace.html")]);
+    const id = flag(dir, args.slice(1));
+    workUp(dir);
+    console.log(`${id} on ${args.slice(1).find((a) => /^(s\d+|m\d+|session)$/.test(a))}; ${join(dir, "transcript.html")}`);
+    return;
+  }
+  if (cmd === "flags") {
+    const flags = readFlags(traceDir(args[0]));
+    if (args.includes("--json")) return console.log(JSON.stringify(flags, null, 2));
+    console.log(flags.length ? flags.map((f) => `${f.id}  ${f.target.padEnd(7)} ${f.kind.padEnd(8)} ${f.note}${f.by ? `  (${f.by})` : ""}`).join("\n") : "No flags.");
+    return;
+  }
+  if (cmd === "unflag") {
+    const dir = traceDir(args[0]);
+    const which = args[1] ?? fail("unflag needs a flag id (f3) or all");
+    writeAtomic(join(dir, "flags.json"), JSON.stringify(which === "all" ? [] : readFlags(dir).filter((f) => f.id !== which), null, 2) + "\n");
+    workUp(dir);
     return;
   }
   console.error(readFileSync(fileURLToPath(import.meta.url), "utf8").match(/Usage:[\s\S]*?\*\//)[0].replace(/\n \*\/?/g, "\n"));

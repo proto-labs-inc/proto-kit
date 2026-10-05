@@ -72,7 +72,7 @@ test("import lays a Claude Code session out as a trace and flags the struggle", 
   const res = run(env, "import", id);
   assert.equal(res.status, 0, res.stderr);
   const dir = join(h, ".proto", "traces", id);
-  for (const f of ["transcript.jsonl", "subagents/agent-sub1.jsonl", "meta.json", "report.md", "chat.md", "summary.json", "steps.jsonl", "trace.html"]) assert.ok(existsSync(join(dir, f)), f);
+  for (const f of ["transcript.jsonl", "subagents/agent-sub1.jsonl", "meta.json", "report.md", "summary.json", "transcript.html", "transcript.md", "transcript/s2.html"]) assert.ok(existsSync(join(dir, f)), f);
   const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8"));
   assert.deepEqual(meta.prototypes, [{ codebase: "calibre", slug: "book-detail" }]);
   const s = JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
@@ -88,7 +88,7 @@ test("import lays a Claude Code session out as a trace and flags the struggle", 
   // Time is partitioned: the main session's buckets add up to its wall clock.
   const sum = Object.values(s.mainBuckets).reduce((n, v) => n + v, 0);
   assert.equal(sum, s.wallMs);
-  assert.match(readFileSync(join(dir, "chat.md"), "utf8"), /Build the book detail prototype[\s\S]*#2.*❌/);
+  assert.match(readFileSync(join(dir, "transcript.md"), "utf8"), /m1 · Person[\s\S]*Build the book detail prototype[\s\S]*s2 · Bash · [^\n]*FAILED/);
 });
 
 test("the transcript shows everything, with each subagent under the call that started it", () => {
@@ -107,24 +107,44 @@ test("the transcript shows everything, with each subagent under the call that st
     assert.ok(html.includes(text), `html has ${text}`);
     assert.ok(md.includes(text), `md has ${text}`);
   }
-  assert.match(html, /while the agent worked/);
-  assert.match(html, /subagent proto:part-fixer: Fix header[\s\S]*Fix the header part[\s\S]*Header\.tsx/);
+  assert.match(html, /Person, while the agent worked/);
+  assert.match(html, /subagent <b>proto:part-fixer<\/b>: Fix header[\s\S]*Fix the header part[\s\S]*Header\.tsx/);
   // Each step is one line linking to a page with its full input and output.
-  const page = /id="t-u1"><small>[^<]*<\/small> <a href="([^"]+)"/.exec(html)?.[1];
+  const page = /<a href="(transcript\/s\d+\.html)">Edit<\/a>/.exec(html)?.[1];
   assert.ok(page, "step links to its own page");
   assert.match(readFileSync(join(dir, page), "utf8"), /old_string&quot;: &quot;a&quot;[\s\S]*ok/);
-  assert.match(readFileSync(join(dir, "trace.html"), "utf8"), /href="transcript\.html#t-t2"/);
+  assert.match(html, /<details class="turn" id="turn1"/);
+  assert.match(html, /href="#s2">s2<\/a>/);
   assert.match(md, /# Subagent proto:part-fixer: Fix header[\s\S]*Fixed\./);
   const s = JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
   assert.equal(s.counts.personMessages, 2);
+});
+
+test("flags mark steps and messages, show on the page and in transcript.md, and survive regeneration", () => {
+  const { h, env } = claudeHome();
+  run(env, "import", id);
+  const dir = join(h, ".proto", "traces", id);
+  assert.match(run(env, "flag", id.slice(0, 8), "s3", "--kind", "improve", "--note", "the build retried the same failing page", "--by", "claude").stdout, /^f1 on s3/);
+  assert.match(run(env, "flag", "latest", "m1", "--kind", "note", "--note", "the ask").stdout, /^f2 on m1/);
+  assert.equal(run(env, "flag", "latest", "s3", "--kind", "bogus", "--note", "x").status, 1);
+  run(env, "import", id);
+  const html = readFileSync(join(dir, "transcript.html"), "utf8");
+  assert.match(html, /<div class="step flag improve" id="s3">[\s\S]*?<div class="note"><b>improve<\/b> the build retried the same failing page/);
+  assert.match(html, /<a href="#s3">s3<\/a><\/td><td>the build retried/);
+  assert.match(readFileSync(join(dir, "transcript.md"), "utf8"), /s3 · Bash[^\n]*\n> FLAG f1 improve: the build retried the same failing page \(claude\)/);
+  assert.match(readFileSync(join(dir, "report.md"), "utf8"), /f1 \*\*improve\*\* on s3/);
+  assert.match(run(env, "flags", "latest").stdout, /f1\s+s3\s+improve/);
+  run(env, "unflag", "latest", "f1");
+  assert.doesNotMatch(run(env, "flags", "latest").stdout, /f1/);
 });
 
 test("show and grep open steps; list finds the trace by prototype", () => {
   const { env } = claudeHome();
   run(env, "import", id);
   const shown = run(env, "show", id.slice(0, 8), "2-3");
-  assert.match(shown.stdout, /step 2 .*FAILED[\s\S]*proto-build[\s\S]*step 3/);
-  assert.match(run(env, "grep", "latest", "port 9333").stdout, /step 2 FAILED/);
+  assert.match(shown.stdout, /s2 .*FAILED[\s\S]*proto-build[\s\S]*s3/);
+  assert.match(run(env, "show", id.slice(0, 8), "s4").stdout, /s4 .*FAILED/);
+  assert.match(run(env, "grep", "latest", "port 9333").stdout, /s2 FAILED/);
   assert.match(run(env, "list", "--slug", "book-detail").stdout, new RegExp(id));
   assert.match(run(env, "list", "--slug", "other").stdout, /No traces/);
 });

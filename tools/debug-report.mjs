@@ -17,7 +17,7 @@
  * A snapshot is the session's whole transcript and its subagents'
  * transcripts, plus everything under ~/.proto except dependencies,
  * build output, the browser profile, the laptop's config.json and all of
- * traces/ but each trace's report.md and summary.json. The user's own repository is
+ * traces/ but each trace's report.md, summary.json and flags.json. The user's own repository is
  * never collected; whatever of it the agent read is in the transcript.
  * Nothing is changed or trimmed: each file is gzipped as it is and PUT
  * to the signed URL begin_debug_report returns, streamed with its exact
@@ -267,9 +267,9 @@ export function codexFiles(session) {
 }
 
 /** ~/.proto/traces/<session>/ is derived from transcripts (trace.mjs) and
- *  large; of it only each trace's report.md and summary.json are sent. */
+ *  large; of it only each trace's report.md, summary.json and flags.json are sent. */
 const TRACES = join(PROTO_HOME, "traces");
-const TRACE_KEEP = new Set(["report.md", "summary.json"]);
+const TRACE_KEEP = new Set(["report.md", "summary.json", "flags.json"]);
 function keepTrace(p, isDir) {
   const parts = relative(TRACES, p).split(sep);
   if (isDir) return parts.length === 1 && parts[0] !== ".locks";
