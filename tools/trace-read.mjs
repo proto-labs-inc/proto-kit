@@ -122,6 +122,13 @@ function readClaudeFile(path, agent, trace) {
           trace.prompts.push({ agent, at, from, text });
         }
       }
+    } else if (r.type === "attachment" && r.attachment?.type === "queued_command") {
+      // A message that arrived while the agent worked: the person's, or a
+      // background notification or subagent hand-back.
+      const q = r.attachment;
+      const text = textOf(q.prompt);
+      if (!text.trim()) continue;
+      trace.prompts.push({ agent, at, from: q.origin?.kind === "human" || q.humanTurn ? "person" : "background", text, queued: true });
     } else if (r.type === "system") {
       if (r.subtype === "api_error") trace.errors.push({ agent, at, kind: "api_error", text: String(r.error?.message ?? r.error?.error?.message ?? JSON.stringify(r.error ?? {})).slice(0, 300), attempt: r.retryAttempt, max: r.maxRetries });
       if (r.subtype === "compact_boundary") trace.compactions.push({ agent, at, trigger: r.compactMetadata?.trigger, preTokens: r.compactMetadata?.preTokens });

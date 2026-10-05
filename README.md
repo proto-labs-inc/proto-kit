@@ -93,7 +93,7 @@ Talking to the app, and the harness hooks:
 - `link-laptop.mjs`: redeem the setup document's code and save this laptop's token.
 - `hooks/post-edit-markers.mjs`: re-run the marker check on an edited workspace file.
 - `hooks/cursor-session-start.mjs`, `hooks/cursor-post-tool-use.mjs`: those two checks, Cursor's shape.
-- `trace.mjs`, `trace-read.mjs`, `trace-view.mjs`: debug traces of every Proto session in `~/.proto/traces/` (transcripts, report, timeline); `hooks/trace-hook.mjs` keeps them current after each turn, for all three harnesses.
+- `trace.mjs`, `trace-read.mjs`, `trace-view.mjs`, `trace-transcript.mjs`: debug traces of every Proto session in `~/.proto/traces/` (transcripts, report, timeline); `hooks/trace-hook.mjs` keeps them current after each turn, for all three harnesses.
 
 `cdp/`, the browser toolkit:
 
@@ -239,7 +239,7 @@ and on in Customize.
 ```
 ~/.proto/
 ├─ config.json              laptop links (app origin, one credential per team, rig source), shape in skills/setup
-├─ traces/<session>/        one per agent session that used Proto: its transcripts, chat.md, report.md, trace.html (tools/trace.mjs)
+├─ traces/<session>/        one per agent session that used Proto: its transcripts, transcript.html (the whole transcript, readable), report.md, trace.html (tools/trace.mjs)
 └─ <codebase>/               one per codebase being prototyped
    ├─ codebase.json          the team that owns it and source pointers (repo path, remote, live URL)
    ├─ library/              the design-system library app; the import fills its public/

@@ -91,6 +91,14 @@ node <kit>/tools/trace.mjs grep <session> 'timed out|ECONNREFUSED'
 node <kit>/tools/trace.mjs chat <session> --from 08:21 --to 08:55
 ```
 
+The whole transcript, nothing left out, is `transcript.md` in the trace
+folder (and `transcript.html`, `trace.mjs transcript <session> --open`):
+every message from the person (including ones sent while the agent
+worked), the agent's text and thinking, each tool call with its full
+input and output, background notifications, what the harness injected,
+and each subagent's transcript nested under the call that started it.
+Read it when the report and `show` don't explain what happened.
+
 `chat` prints the conversation in a window of time (UTC, as the report
 shows it): what the agent was trying to do and what the person said
 around a struggle. It is the quickest way to understand one. Subagents' steps carry their

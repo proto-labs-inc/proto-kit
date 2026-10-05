@@ -91,6 +91,29 @@ test("import lays a Claude Code session out as a trace and flags the struggle", 
   assert.match(readFileSync(join(dir, "chat.md"), "utf8"), /Build the book detail prototype[\s\S]*#2.*❌/);
 });
 
+test("the transcript shows everything, with each subagent under the call that started it", () => {
+  const { h, env } = claudeHome();
+  const transcript = join(h, ".claude", "projects", "-work", `${id}.jsonl`);
+  writeFileSync(transcript, readFileSync(transcript, "utf8") + jsonl([
+    { sessionId: id, type: "attachment", timestamp: t(121), attachment: { type: "queued_command", prompt: "also check the cover", origin: { kind: "human" }, humanTurn: true } },
+    { sessionId: id, type: "attachment", timestamp: t(122), attachment: { type: "queued_command", prompt: "<task-notification><task-id>sub1</task-id></task-notification>", origin: { kind: "task-notification" } } },
+  ]));
+  writeFileSync(join(dirname(transcript), id, "subagents", "agent-sub1.meta.json"), JSON.stringify({ agentType: "proto:part-fixer", description: "Fix header", toolUseId: "t5" }));
+  assert.equal(run(env, "import", id).status, 0);
+  const dir = join(h, ".proto", "traces", id);
+  const html = readFileSync(join(dir, "transcript.html"), "utf8");
+  const md = readFileSync(join(dir, "transcript.md"), "utf8");
+  for (const text of ["Build the book detail prototype", "Error: page not found on port 9333", "The prototype is built.", "also check the cover"]) {
+    assert.ok(html.includes(text), `html has ${text}`);
+    assert.ok(md.includes(text), `md has ${text}`);
+  }
+  assert.match(html, /sent while the agent worked/);
+  assert.match(html, /Subagent <b>proto:part-fixer<\/b>[\s\S]*Fix the header part[\s\S]*Header\.tsx/);
+  assert.match(md, /# Subagent proto:part-fixer: Fix header[\s\S]*Fixed\./);
+  const s = JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
+  assert.equal(s.counts.personMessages, 2);
+});
+
 test("show and grep open steps; list finds the trace by prototype", () => {
   const { env } = claudeHome();
   run(env, "import", id);

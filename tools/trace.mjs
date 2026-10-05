@@ -13,6 +13,9 @@
  *     transcript.jsonl   the session as the harness wrote it
  *     subagents/         each subagent's own transcript (and .meta.json)
  *     meta.json          harness, source path, codebases and prototypes
+ *     transcript.html    the whole transcript, readable: every message, thinking,
+ *     transcript.md      tool call (full input and output), background notice and
+ *                        subagent, nested where it was started (trace-transcript.mjs)
  *     chat.md            the conversation, one line per step
  *     report.md          where the time went and where it struggled
  *     summary.json       the same numbers, for tools
@@ -35,7 +38,8 @@
  *   node trace.mjs show <session | latest> <step> [<step>…] [--full]   e.g. 12 or 10-14 or 3,7
  *   node trace.mjs chat <session | latest> [--from HH:MM] [--to HH:MM]  the conversation, in a window
  *   node trace.mjs grep <session | latest> <regex>
- *   node trace.mjs view [<session> | latest]               print trace.html's path
+ *   node trace.mjs view [<session> | latest] [--open]      print trace.html's path
+ *   node trace.mjs transcript [<session> | latest] [--open]  print transcript.html's path
  */
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -46,6 +50,7 @@ import { fileURLToPath } from "node:url";
 import { claudeFiles, codexFiles, codexRollout, sessionAt, usesProto } from "./debug-report.mjs";
 import { analyze, chatMarkdown, duration, readTrace, reportMarkdown } from "./trace-read.mjs";
 import { traceHtml } from "./trace-view.mjs";
+import { transcriptHtml, transcriptMarkdown } from "./trace-transcript.mjs";
 
 const PROTO_HOME = join(homedir(), ".proto");
 export const TRACES_DIR = join(PROTO_HOME, "traces");
@@ -170,6 +175,8 @@ export function workUp(dir) {
   writeAtomic(join(dir, "chat.md"), chatMarkdown(trace));
   writeAtomic(join(dir, "steps.jsonl"), trace.tools.map((t) => JSON.stringify({ n: t.n, agent: t.agent, name: t.name, group: t.group, label: t.label, at: new Date(t.at).toISOString(), ms: t.ms, error: t.error, unfinished: t.unfinished || undefined, input: t.input, output: t.output })).join("\n") + "\n");
   writeAtomic(join(dir, "trace.html"), traceHtml(trace, summary));
+  writeAtomic(join(dir, "transcript.html"), transcriptHtml(dir));
+  writeAtomic(join(dir, "transcript.md"), transcriptMarkdown(dir));
   return { trace, summary };
 }
 
@@ -419,6 +426,18 @@ async function main() {
   }
   if (cmd === "chat") return chat(traceDir(args[0]?.startsWith("--") ? undefined : args[0]), arg(args, "--from"), arg(args, "--to"));
   if (cmd === "grep") return grep(traceDir(args[0]), args[1] ?? fail("grep needs a pattern"));
+  if (cmd === "transcript") {
+    const dir = traceDir(args.find((a) => !a.startsWith("--")));
+    let meta = {};
+    try {
+      meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8"));
+    } catch {}
+    if (meta.source && existsSync(meta.source)) sync({ id: meta.sessionId, path: meta.source, harness: meta.harness }, { force: true });
+    else workUp(dir);
+    console.log(join(dir, "transcript.html"));
+    if (args.includes("--open") && process.platform === "darwin") spawnSync("open", [join(dir, "transcript.html")]);
+    return;
+  }
   if (cmd === "view") {
     const dir = traceDir(args[0]);
     if (!existsSync(join(dir, "trace.html"))) workUp(dir);
