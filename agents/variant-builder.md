@@ -1,7 +1,7 @@
 ---
 name: variant-builder
 description: Writes one variant of one variant set in a Proto prototype workspace, in the variant's own module, from the copied part and the page's tokens. Dispatch one per variant, all in parallel, with the create-prototype skill's variant brief; the main agent owns the set's skeleton, App.tsx and the manifest.
-model: sonnet
+model: haiku
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
