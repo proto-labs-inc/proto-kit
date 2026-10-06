@@ -102,23 +102,30 @@ checkpoints.
    cannot be read, stop rather than inventing the page from source or memory.
    `node tools/proto-build.mjs <briefId> --codebase <id> --page
    <referenceUrl substring> --slug <slug> --title "<title>"`.
-   It reads the page (styles, variables, fonts, images: everything the
-   change needs, in the build folder), sends the title, drafts the
-   curation and **stops once**, printing the leaves and sections with
-   their draft names. Fix names that read as "Group", "Block", "Text" or
-   "part-nN" in the printed `curation.json` (the `raw` and `text` fields
-   say what the part is; the marker follows the name, kebab-case) and
-   leave the rest. Names become `data-proto-id` markers, which are
-   comment anchors for the prototype's life, so this is the one review
-   worth an agent turn. Then run **the same command again**: it names
-   the tree, scaffolds the workspace, replicates every leaf in parallel
-   lanes, composes `src/App.tsx`, checks the page, and prints the parts
-   list (also at `<build>/parts.json`): each part's node id, name,
-   marker, files under `src/parts/<slug>/`, whether it came from the
-   library, its check's status, its rect and its section. Every event
-   the site needs for copying (workflow, queued, pass, matched) is sent by
-   the tools. Report agent-authored changes and context through docs/build-progress.md. `--accept-curation` skips
-   the stop when the draft names are already right.
+   It **freezes** the page (the default, `--copy freeze`): it reads the
+   page, names its boxes from the read without stopping, scaffolds the
+   workspace, and lifts the rendered page into it as it is: the DOM after
+   the page's scripts ran (scripts removed), the page's own stylesheets
+   as written, and every font and image it loaded, saved locally. Nothing
+   is rebuilt, so there is no part to fix and no copy gate; it takes
+   seconds. It then renders the workspace and checks every named box's
+   position against the read. It prints the parts list (also at
+   `<build>/parts.json`): each named box's node id, name, marker
+   (`data-proto-id` in the frozen markup), rect, and `status` (`matched`,
+   or `moved`/`missing` with `delta` px), the sections, `off` (any box not
+   in place) and the frozen files:
+   - `src/frozen/page.html`: the body's markup. Every element carries
+     `data-pf` (its number in the read); named boxes carry their marker.
+   - `public/frozen/styles/`, `public/frozen/assets/`: the page's CSS and
+     files. Never edit these; they are the page.
+   - `src/frozen/Frozen.tsx`: mounts the page into `<body>` and swaps
+     marked elements for React components (`replace`).
+   - `src/App.tsx`: `<Frozen />`, where the change goes (step 7).
+   Every event the site needs for copying is sent by the tools. Report
+   agent-authored changes and context through docs/build-progress.md.
+   `--copy rebuild` is the older copy that rebuilds every part as a
+   component and checks it against the page (curation review stop,
+   replicate, gate, part-fixers); use it only when asked.
    Pictures (logos, icons, illustrations, charts: `<img>`, inline
    `<svg>`, `<canvas>` and stylesheet images) are copied as the page's
    own files and set in as they are, never redrawn; nobody edits one to
@@ -134,7 +141,11 @@ checkpoints.
    Registering and the heartbeat do not finish the build: its card stays
    up and every stage is still reported. `report_progress serving` comes
    later, at step 10, and `done` at the very end.
-6. **The gate, then the parts left to fix.** The composed page is the
+6. **The gate, then the parts left to fix.** A frozen copy has neither:
+   `gate.outcome` is `proceed` and `toFix` is empty. If `off` names a box,
+   say so in one line ("The logo link sits 9 px off in the copy") and carry
+   on; never patch the frozen markup or styles to move it. The rest of
+   this step is the rebuild copy's (`--copy rebuild`). The composed page is the
    copy's gate: the change is written on it when the page differs by at
    most `TAIL.PAGE_PROCEED_PCT` (0.5% of its pixels) and mounted.
    `proto-build.mjs` takes a copy over the gate through it itself: it
@@ -164,7 +175,26 @@ checkpoints.
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
-7. **Write the change.** Edit only the parts the brief is about, from the
+7. **Write the change.** On a frozen copy, find the elements the brief is
+   about in `src/frozen/page.html` (by marker, or by text and `data-pf`;
+   the parts list's rects say where each sits) and change only those:
+   - A redesigned region: write it as a React component under
+     `src/change/`, styled to match the page. Reuse the page's own class
+     names from the frozen markup (they carry the page's exact styles from
+     `public/frozen/styles`), and the codebase's source for structure and
+     wording when it helps. Put it in place of the marked element:
+     `<Frozen replace={{ "<marker>": <PausedNotice /> }} />`. Its root keeps
+     the marker (`data-proto-id`). A region with no marker gets one: add
+     `data-proto-id="<kebab-name>"` to that element in `page.html`.
+   - Small edits (a word, an attribute, removing an element): edit
+     `page.html` directly.
+   - Interaction: the frozen page has no scripts. Hover, focus and
+     transitions still work (they are CSS). Anything that must happen on
+     click, inside the change, is React state in your component (and a
+     preview state when a reviewer should reach it).
+   - The frozen page is in the theme it was captured in (`frozen.json`
+     `htmlAttrs`); keep the change in that theme.
+   On the rebuild copy, edit only the parts the brief is about, from the
    parts list and the copied files: never re-read the live page with
    ad-hoc scripts, the read has everything. A part from the library is a
    library component copied into `src/parts/`; edit the copy. Send
@@ -210,6 +240,11 @@ checkpoints.
    parallel, in the background, with the variant brief below; do not
    pass a model, and never a `name` (step 6 says why). Mobbin
    references are not gathered in a build: the baseline is the reference.
+   On a frozen copy the baseline is the frozen element itself:
+   `<Frozen replace={{ "<marker>": <XVariants baseline={<FrozenHtml marker="<marker>" />} /> }} />`
+   (`FrozenHtml` from `src/frozen/Frozen`). Variant builders write their
+   variant against the frozen markup and the page's class names, not a
+   copied part file.
 9. **Check, as tools.** When the variant units are back (the part
    fixers are the tail: `node tools/tail.mjs decide <codebase> --build
    <briefId>` prints where they stand, at once; relay its one line and

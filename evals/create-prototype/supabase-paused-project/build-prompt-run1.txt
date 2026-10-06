@@ -1,0 +1,30 @@
+Carry out this saved Proto request in this chat using the Proto plugin. Do not assume work has already started or that this laptop is connected.
+
+This screenshot-based request requires Proto Kit 0.1.0+codex.20261006000949 or newer. Read the installed .codex-plugin/plugin.json version and verify tools/brief-inputs.mjs, tools/screenshot-reference.mjs, tools/screenshot-check.mjs, tools/runner-state.mjs and tools/host-prototype.mjs exist. For an older installation, update the whole plugin using the supplied commands, resolve its updated root, and re-read the create-prototype skill before continuing. If Proto is absent, install the whole plugin. Do not pull or replace a local development checkout with uncommitted work; verify that it supports this screenshot workflow instead. If the required kit is not published or updating fails, report the blocker and preserve this request. Never run the old live-page copier.
+
+For create-prototype, require both a source URL and a full-page reference screenshot. The screenshot is authoritative for appearance. Use the URL only to locate the screen in the local codebase; never visit it, inspect its browser tab, or import a design system from it. Reuse the codebase's components, styles and assets. Inspect and test only the generated prototype in a browser. If an unfinished request lacks either reference, ask for it in this conversation before copying; preserve the exact brief ID. Use the screenshot-based create-prototype workflow. If the installed kit does not support referenceImage, update the whole plugin and reload its skill before proceeding; if unavailable, report the blocker rather than use the live-page copier.
+
+Use the installed create-prototype runner: node tools/proto-build.mjs prepare <briefId> --codebase <codebase>. It verifies the connection with whoami, reads get_brief and brief.inputs, checks ownership and status, claims the slug through begin_prototype_build, and prepares the saved screenshot and workspace. Do not repeat those steps manually. Read request content from brief.inputs returned by the runner, never from the retired top-level input columns. Identity, action, status, and target stay top-level. If inputs is missing or malformed, report the contract blocker. Follow needs-agent diagnostics, including choosing a meaningful title with --title when requested. After implementing the baseline, run check-baseline with the same briefId and codebase; after implementing and testing the change, run finish with the changed markers. Preserve this exact briefId for every build, progress report and event; a completed request stays complete. If the runner reports missing credentials or source, use setup to reconnect this existing codebase and team. A missing or revoked credential requires a fresh setup prompt; do not invent a linking code or expose credentials. Never create a replacement codebase or request.
+
+Copying this prompt only saved the request; it did not start work or connect the laptop. Receiving this request in the agent chat is the instruction to verify the connection and carry it out now.
+
+{
+  "app": "https://prototypes.fun",
+  "install": {
+    "claude": {
+      "install": "claude plugin marketplace add proto-labs-inc/proto-kit && claude plugin install proto@proto-kit",
+      "update": "claude plugin marketplace update proto-kit && claude plugin update proto@proto-kit"
+    },
+    "codex": {
+      "install": "codex plugin marketplace add proto-labs-inc/proto-kit && codex plugin add proto@proto-kit",
+      "update": "codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit"
+    },
+    "cursor": {
+      "install": "git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto, then run \"Developer: Reload Window\" in Cursor.",
+      "update": "git -C ~/.cursor/plugins/local/proto pull, then run \"Developer: Reload Window\" in Cursor (or Refresh in the Customize panel for a marketplace install)."
+    }
+  },
+  "codebase": "iizza72u",
+  "briefId": "8b33393d34",
+  "action": "create-prototype"
+}

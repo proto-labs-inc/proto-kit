@@ -8,7 +8,14 @@
  *
  * Usage:
  *   node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>"
- *                              [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send] [--port 9333]
+ *                              [--copy freeze|rebuild] [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send] [--port 9333]
+ *
+ * --copy freeze (the default) lifts the page as it renders into the
+ * workspace (tools/freeze.mjs): read, title, curation taken as drafted,
+ * scaffold, freeze. There are no parts to rebuild, no gate and nothing to
+ * fix; it prints the parts list (named boxes and their place) and exits.
+ * --copy rebuild is the older copy described below: every part rebuilt
+ * as a component and checked against the page.
  *
  * Every step is skipped when its output already exists in the build
  * folder (~/.proto/<codebase>/run/builds/<briefId>/), so the same
@@ -72,9 +79,9 @@ const started = Date.now();
 // turn, a toast leaving) to finish before it is captured again.
 const SETTLE_MS = 3_000;
 
-const USAGE = 'usage: node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>" [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send]';
+const USAGE = 'usage: node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>" [--copy freeze|rebuild] [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send]';
 
-const options = { lanes: "12", port: "9333", "retry-mode": "failing" };
+const options = { lanes: "12", port: "9333", "retry-mode": "failing", copy: "freeze" };
 const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
@@ -91,6 +98,11 @@ const fail = (message) => {
 };
 if (!briefId || !options.codebase || !options.slug) fail(USAGE);
 if (!["full", "failing"].includes(options["retry-mode"])) fail("--retry-mode must be full or failing");
+if (!["freeze", "rebuild"].includes(options.copy)) fail("--copy must be freeze or rebuild");
+// The freeze lifts the page as it renders, so its names are only
+// markers (comment anchors), never component files: the curation is
+// taken as drafted and the build does not stop to review it.
+if (options.copy === "freeze") options["accept-curation"] = true;
 const codebase = options.codebase;
 const buildDir = buildFolder(codebase, briefId);
 const at = (name) => join(buildDir, name);
@@ -164,7 +176,45 @@ if (!named) {
 say("scaffolding the workspace");
 const workspace = run("scaffold.mjs", [options.slug, "--codebase", codebase, "--brief", briefId, ...(options.title ? ["--title", options.title] : [])], { json: true, sends: false });
 
-// ---- replicate ----
+// ---- freeze: the page as it renders, no parts to rebuild or fix ----
+if (options.copy === "freeze") {
+  let frozen;
+  if (existsSync(at("freeze.json")) && !options.again) {
+    say("freeze: freeze.json exists, kept (--again freezes the page afresh)");
+    frozen = JSON.parse(readFileSync(at("freeze.json"), "utf8"));
+  } else {
+    say("freezing the page");
+    frozen = run("freeze.mjs", [briefId, "--codebase", codebase, "--port", options.port, ...(options["keep-dev"] ? ["--keep-dev"] : [])], { json: true });
+  }
+  if (!frozen.mounted) fail(`the frozen page did not mount in the workspace (see ${at("dev.log")})`);
+  steps.gate = { outcome: "proceed" };
+  remember("gateAt");
+  const record = {
+    briefId,
+    codebase,
+    copy: "freeze",
+    title: workspace.title,
+    workspace: { slug: workspace.slug, path: workspace.path, port: workspace.port, framework: workspace.framework, tailwind: workspace.tailwind },
+    reference: { url: tree.url, viewport: tree.viewport },
+    app: "src/App.tsx",
+    frozen: { page: "src/frozen/page.html", component: "src/frozen/Frozen.tsx", meta: "src/frozen/frozen.json", styles: "public/frozen/styles", assets: "public/frozen/assets" },
+    manifest: "public/prototype.json",
+    parts: frozen.parts.filter((part) => part.role === "leaf").map(({ role, ...part }) => part),
+    sections: frozen.parts.filter((part) => part.role === "section").map(({ role, ...part }) => part),
+    toFix: [],
+    off: frozen.off,
+    page: { elements: frozen.elements, stylesheets: frozen.stylesheets, assets: frozen.assets, screenshot: frozen.screenshot },
+    gate: { outcome: "proceed", line: `Froze ${frozen.elements} elements; ${frozen.parts.length - frozen.off.length} of ${frozen.parts.length} named boxes in place` },
+  };
+  writeFileSync(at("parts.json"), JSON.stringify(record, null, 2) + "\n");
+  const reporter = createReporter({ codebase, briefId, runDir: buildDir, sink: options["no-send"] ? "file" : "site" });
+  reporter.send([workflowEvent(buildDir, "build", `Building the change on the frozen copy of ${workspace.title}`)]);
+  await reporter.flush();
+  console.log(JSON.stringify({ ...record, timings: { ...timings, freeze: frozen.timings, total: Math.round((Date.now() - started) / 100) / 10 }, partsFile: at("parts.json") }));
+  process.exit(0);
+}
+
+// ---- replicate (--copy rebuild) ----
 const replicate = (retry = false) => run("replicate.mjs", [briefId, "--codebase", codebase, "--lanes", options.lanes, "--port", options.port, ...(retry && options["retry-mode"] === "failing" ? ["--retry-failing"] : []), ...(options["keep-dev"] ? ["--keep-dev"] : [])], { json: true });
 let replicated;
 const checkpointPath = at("copy-gate.json");

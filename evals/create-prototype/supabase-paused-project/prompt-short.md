@@ -1,0 +1,1 @@
+Redesign the "Project is paused" notice on this project's home page so the critical information is clear at a glance: that the project is paused, that the data is safe, the deadline to resume it, and what I can do now. Keep the rest of the page as it is. Give me 3 variants that show this information in different ways.

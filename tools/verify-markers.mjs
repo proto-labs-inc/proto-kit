@@ -9,7 +9,7 @@
  *
  * Usage: node verify-markers.mjs <workspace-dir>
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const [target] = process.argv.slice(2);
@@ -32,7 +32,19 @@ const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 const ids = new Map(); // id -> files using it
 let failed = false;
 
+// A frozen copy (tools/freeze.mjs): its markers are in the frozen
+// markup, and its mounting component renders the page, not a part.
+const frozenPage = join(src, "frozen", "page.html");
+if (existsSync(frozenPage)) {
+  for (const m of readFileSync(frozenPage, "utf8").matchAll(/\bdata-proto-id="([^"]*)"/g)) {
+    if (!ids.has(m[1])) ids.set(m[1], []);
+    ids.get(m[1]).push("src/frozen/page.html");
+  }
+}
+const frozenDir = join(src, "frozen") + "/";
+
 for (const file of files) {
+  if (file.startsWith(frozenDir)) continue;
   const source = readFileSync(file, "utf8");
   const rel = relative(target, file);
 

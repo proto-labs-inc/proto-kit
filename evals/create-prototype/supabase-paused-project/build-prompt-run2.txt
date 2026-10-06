@@ -1,0 +1,30 @@
+Carry out this saved Proto request in this chat using the Proto plugin. Do not assume work has already started or that this laptop is connected.
+
+Use the installed Proto Kit for this request without checking for updates. If Proto is absent, install the whole plugin using the supplied install commands.
+
+First verify this laptop's connection to the Proto app and the codebase's team with whoami, using an existing credential if available. If disconnected, use the plugin's setup workflow to reconnect this laptop and the existing codebase, then verify the connection again. If linking requires a missing or revoked credential to be replaced, ask for a fresh setup prompt for this app/team and use it to link the laptop before returning to this exact request. Do not create a replacement codebase or request, invent a linking code, or expose credentials.
+
+Read get_brief with the briefId below from this Proto app, then follow the saved action and target. Read request content from brief.inputs (description, documentUrl, referenceUrl, referenceImage, referenceHtml, useRealData), never from the retired top-level input columns. Identity, action, status, and target stay top-level. If inputs is missing or malformed, report the contract blocker in this conversation. Check its recorded status: start work if it has not begun; resume from a verified checkpoint only if it has; if already completed, report that rather than starting it again. Keep this exact briefId for every build, progress report and event; do not create a replacement request. For create-prototype, pass this briefId to begin_prototype_build. For rebuild-section, follow create-prototype's section-rebuild workflow.
+
+Copying this prompt only saved the request; it did not start work or connect the laptop. Receiving this request in the agent chat is the instruction to verify the connection and carry it out now.
+
+{
+  "app": "https://prototypes.fun",
+  "install": {
+    "claude": {
+      "install": "claude plugin marketplace add proto-labs-inc/proto-kit && claude plugin install proto@proto-kit",
+      "update": "claude plugin marketplace update proto-kit && claude plugin update proto@proto-kit"
+    },
+    "codex": {
+      "install": "codex plugin marketplace add proto-labs-inc/proto-kit && codex plugin add proto@proto-kit",
+      "update": "codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit"
+    },
+    "cursor": {
+      "install": "git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto, then run \"Developer: Reload Window\" in Cursor.",
+      "update": "git -C ~/.cursor/plugins/local/proto pull, then run \"Developer: Reload Window\" in Cursor (or Refresh in the Customize panel for a marketplace install)."
+    }
+  },
+  "codebase": "iizza72u",
+  "briefId": "23b121e7f2",
+  "action": "create-prototype"
+}
