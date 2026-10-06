@@ -14,7 +14,14 @@ For a prompt with a brief ID:
    Use the configured app and authenticated `get_brief { briefId }`. Match the
    returned codebase and scoped target to the prompt. Do not switch teams to
    get around a refusal or treat the ID as a bearer credential.
-2. Read the persisted `action`: `create-prototype`, `add-variants`, or
+2. Read request content exclusively from `brief.inputs`: `description`,
+   `documentUrl`, `referenceUrl`, `referenceImage`, `referenceHtml`, and
+   `useRealData`. The retired top-level input columns may remain in responses
+   during deployment; do not use them. This applies to creation, variations,
+   section rebuilds, and resume. Identity, action, status, and target remain
+   top-level. If `inputs` is absent or malformed, report a contract blocker in
+   the active conversation instead of reconstructing it from retired columns.
+   Read the persisted `action`: `create-prototype`, `add-variants`, or
    `rebuild-section`. Route to the matching skill (section changes use the
    create-prototype skill's section-only procedure). Do not infer action from
    a prototype slug: creation briefs also gain a slug when built.

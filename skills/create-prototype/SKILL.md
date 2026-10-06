@@ -34,7 +34,9 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
 
 When the user pastes a website work prompt with a `briefId`, read
 `docs/work-handoff.md` first. Fetch the brief with `get_brief`, use its persisted
-`action` and target, and preserve its ID. A variations action belongs to
+`action` and target, and preserve its ID. Read request content exclusively from
+`brief.inputs` using `tools/brief-inputs.mjs`; identity, action and target stay
+top-level. A variations action belongs to
 `add-variants`, not new-prototype creation. An old courier-delivery envelope
 is not a current work request: ask the user for a current copied prompt.
 
