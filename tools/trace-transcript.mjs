@@ -322,6 +322,17 @@ details{margin:.3em 0}summary{cursor:pointer}details.turn{border-top:1px solid #
 .note{margin:.1em 0 .4em 3.4em;font-size:.88em}.note b{text-transform:uppercase;font-size:.8em;letter-spacing:.04em}
 table{border-collapse:collapse;margin:.3em 0}td,th{text-align:left;padding:2px 14px 2px 0;vertical-align:top;font-size:.9em}td.r,th.r{text-align:right}
 @media (prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#1c1c1c}.sub,details.turn{border-color:#333}a{color:#8ab4f8}.flag{background:#3a3214}.flag.error{background:#3d1d1d}.flag.good{background:#173322}.err{color:#ff8a80}}
+.tl{position:relative;width:min(1500px,96vw);left:50%;transform:translateX(-50%);margin:.4em 0 1em;font-size:12px}
+.tl-axis,.tl-body{position:relative;margin-left:230px}.tl-axis{height:16px;border-bottom:1px solid #ccc}
+.tl-tick{position:absolute;top:0;bottom:0;border-left:1px solid #ccc}.tl-tick span{position:absolute;left:3px;top:0;color:#888;font-size:10px}
+.tl-lane{position:relative;height:18px;margin:3px 0 3px -230px;display:flex}.tl-name{width:222px;flex:none;padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#555;font-size:11px;line-height:18px;text-align:right}
+.tl-track{position:relative;flex:1;background:#f4f4f2;border-radius:3px}
+.tb{position:absolute;top:2px;bottom:2px;display:block;border-radius:2px;min-width:2px}
+.tb.model{background:#c9ccd3;top:6px;bottom:6px}.tb.kit{background:#2f6fd6}.tb.file{background:#2f9e6a}.tb.shell{background:#6b6f78}.tb.look{background:#a24bd1}.tb.dispatch{background:#e08a1e}.tb.person{background:#d6452f}.tb.poll{background:#b9a26a}
+.tl-mark{position:absolute;top:-18px;bottom:0;border-left:2px solid #222;z-index:1;pointer-events:none}.tl-mark span{position:absolute;left:4px;top:0;background:#fff;padding:0 3px;font-weight:600;font-size:11px;white-space:nowrap}
+.tl-fold{position:absolute;top:0;bottom:0;border-left:2px dashed #e0a33a}
+.tl-legend{margin:.5em 0 0 230px;display:flex;flex-wrap:wrap;gap:4px 14px;color:#555}.tl-legend span{display:inline-flex;align-items:center;gap:5px}.tl-legend .tb{position:static;display:inline-block;width:14px;height:9px}
+@media (prefers-color-scheme:dark){.tl-track{background:#1d1d1d}.tl-name,.tl-legend{color:#aaa}.tl-mark{border-color:#ddd}.tl-mark span{background:#111}.tb.model{background:#4a4e57}}
 </style>`;
 
 /** A page under transcript/ holding texts in full, so the main page
@@ -379,6 +390,66 @@ function table(head, rows, right = []) {
 }
 
 /** transcript.html, and the pages its long texts live on (name → html). */
+
+// The kinds a step's bar is drawn in, by what the step did.
+const KIND_OF = (t) => {
+  const file = t.input?.file_path ?? "";
+  if (["AskUserQuestion"].includes(t.name) || (t.group ?? "").startsWith("waiting on the person")) return ["person", "asks the person"];
+  if (t.name === "Read" && /\.(png|jpe?g|webp)$/i.test(file)) return ["look", "looks at a screenshot"];
+  if (t.name === "Agent" || t.name === "Task") return ["dispatch", "starts a subagent"];
+  if ((t.group ?? "").startsWith("proto")) return ["kit", "kit tool"];
+  if (["Read", "Edit", "Write", "MultiEdit", "Glob", "Grep"].includes(t.name)) return ["file", "reads or edits files"];
+  if (t.name === "Bash" && /\bsleep\b|until /.test(t.input?.command ?? "")) return ["poll", "sleeps or polls"];
+  return ["shell", "shell and other tools"];
+};
+
+/** One lane per agent on a shared time axis: the model's turns, each step
+ *  as a bar coloured by what it did, the build's stages as dividers. Long
+ *  idle stretches on every lane at once (a person away) are folded. */
+function timelineHtml(trace, summary) {
+  const tools = trace.tools.filter((t) => t.at && (t.end ?? t.at));
+  if (!tools.length) return "";
+  const reqs = trace.requests.filter((r) => r.start || r.at);
+  const spans = [...tools.map((t) => [t.at, t.end ?? t.at + (t.ms ?? 0)]), ...reqs.map((r) => [r.start ?? r.at, r.end ?? r.at])].sort((a, b) => a[0] - b[0]);
+  // Fold gaps of more than a minute where nothing ran anywhere.
+  const segs = [];
+  for (const [a, b] of spans) {
+    const last = segs.at(-1);
+    if (last && a - last[1] <= 60e3) last[1] = Math.max(last[1], b);
+    else segs.push([a, b]);
+  }
+  const FOLD = 4e3;
+  const total = segs.reduce((n, [a, b]) => n + (b - a), 0) + FOLD * (segs.length - 1);
+  const x = (t) => {
+    let off = 0;
+    for (const [i, [a, b]] of segs.entries()) {
+      if (t <= b) return ((off + Math.max(0, t - a)) / total) * 100;
+      off += b - a + (i < segs.length - 1 ? FOLD : 0);
+    }
+    return 100;
+  };
+  const pct = (n) => `${Math.max(0, Math.min(100, n)).toFixed(3)}%`;
+  const bar = (a, b, cls, title, href) => {
+    const l = x(a), w = Math.max(0.12, x(b) - l);
+    return href ? `<a class="tb ${cls}" style="left:${pct(l)};width:${pct(w)}" href="${href}" title="${esc(title)}"></a>` : `<i class="tb ${cls}" style="left:${pct(l)};width:${pct(w)}" title="${esc(title)}"></i>`;
+  };
+  const step = new Map(trace.tools.map((t) => [t.id, t.n]));
+  const lanes = trace.agents.map((agent) => {
+    const own = tools.filter((t) => t.agent === agent.id);
+    const model = reqs.filter((r) => r.agent === agent.id).map((r) => bar(r.start ?? r.at, r.end ?? r.at, "model", `model ${fmt((r.end ?? r.at) - (r.start ?? r.at))}${r.text ? `: ${oneLine(r.text, 140)}` : ""}`)).join("");
+    const steps = own.map((t) => { const [cls, kind] = KIND_OF(t); const n = t.n ?? step.get(t.id); return bar(t.at, t.end ?? t.at + (t.ms ?? 0), cls, `s${n} ${clock(t.at)} ${kind} · ${fmt(t.ms)}${t.error ? " · failed" : ""} · ${oneLine(t.label ?? t.name, 160)}`, n ? `#s${n}` : null); }).join("");
+    const name = agent.id === "main" ? "main" : `${agent.type ?? "subagent"}: ${agent.description ?? ""}`;
+    return `<div class="tl-lane"><div class="tl-name" title="${esc(name)}">${esc(name)}</div><div class="tl-track">${model}${steps}</div></div>`;
+  }).join("");
+  const marks = (summary?.phases ?? []).filter((p) => /^(stage|phase) /.test(p.label)).map((p) => `<div class="tl-mark" style="left:${pct(x(p.at))}"><span>${esc(p.label.replace(/^(stage|phase) /, ""))}</span></div>`).join("");
+  const folds = segs.slice(0, -1).map(([, b], i) => `<div class="tl-fold" style="left:${pct(x(b))}" title="${fmt(segs[i + 1][0] - b)} with nothing running, folded"></div>`).join("");
+  const ticks = [];
+  for (const [a, b] of segs) for (let t = Math.ceil(a / 60e3) * 60e3; t <= b; t += 60e3) ticks.push(`<div class="tl-tick" style="left:${pct(x(t))}"><span>${clock(t).slice(0, 5)}</span></div>`);
+  const legend = [["model", "model thinking"], ["kit", "kit tool"], ["file", "reads or edits files"], ["shell", "shell and other tools"], ["look", "looks at a screenshot"], ["dispatch", "starts a subagent"], ["person", "asks the person"], ["poll", "sleeps or polls"]].map(([c, l]) => `<span><i class="tb ${c}"></i>${l}</span>`).join("");
+  return `<details open><summary><b>Timeline</b> <small>(a lane per agent; hover a bar for the step, click to jump to it; gaps over a minute with nothing running are folded)</small></summary>
+<div class="tl"><div class="tl-axis">${ticks.join("")}</div><div class="tl-body">${marks}${folds}${lanes}</div><div class="tl-legend">${legend}</div></div></details>`;
+}
+
 export function transcriptHtml(dir, { trace, summary, flags = [] } = {}) {
   const t = numberTranscript(readTranscript(dir), trace);
   const byTarget = flagsByTarget(flags);
@@ -429,6 +500,7 @@ export function transcriptHtml(dir, { trace, summary, flags = [] } = {}) {
     head.push(`<p><b>${fmt(s.activeMs)} working</b> of ${fmt(s.wallMs)} (${fmt(s.waitingOnPersonMs)} waiting on the person) · ${s.counts.toolCalls} steps, ${s.counts.errors} failed · ${s.counts.subagents} subagents · ${s.counts.personMessages} messages from the person · ${Math.round(s.usage.output / 1000)}k tokens out, peak context ${Math.round(s.usage.peakContext / 1000)}k</p>`);
     const shown = flags.filter((f) => f.kind !== "phase");
     head.push(`<details open><summary><b>Flags</b> <small>(${shown.length})</small></summary>${shown.length ? table(["", "Where", "What", "By"], shown.map((f) => [`<b>${esc(f.kind)}</b>`, f.target === "session" ? "session" : `<a href="#${esc(f.target)}">${esc(f.target)}</a>`, esc(f.note), `<small>${esc(f.by ?? "")} · ${esc(f.id)}</small>`])) : `<p class="m">None yet. Flag a step or message with <code>trace.mjs flag ${esc(ss.id.slice(0, 8))} s12 --kind improve --note "…"</code>.</p>`}</details>`);
+    if (trace) head.push(timelineHtml(trace, summary));
     head.push(`<details open><summary><b>Where the time went</b></summary>${table(["Start", "Phase", "Working", "Wall", "Steps", "Failed"], s.phases.map((p) => [clock(p.at), esc(p.label), fmt(p.workingMs), fmt(p.ms), p.toolCalls, p.errors || ""]), [2, 3, 4, 5])}
 <details><summary>by tool</summary>${table(["Tool", "Calls", "Failed", "Total", "Longest"], s.groups.filter((g) => !g.group.startsWith("waiting")).slice(0, 25).map((g) => [esc(g.group), g.calls, g.errors || "", fmt(g.ms), fmt(g.maxMs)]), [1, 2, 3, 4])}</details>
 <details><summary>slowest steps</summary>${table(["Step", "Took", "Tool", "What"], s.slowest.map((x) => [sid(x.n), fmt(x.ms), esc(x.group), `<code>${esc(x.label.slice(0, 100))}</code>`]), [1])}</details>

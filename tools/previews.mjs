@@ -6,7 +6,10 @@
  * margin on the colour it sits on, and the picture goes to
  * public/previews/<component>-<variant>.png. The manifest gets each
  * variant's `preview` and `previewBackground`, and a set whose every
- * variant has a picture loses its `status: "building"`.
+ * variant has a picture loses its `status: "building"`. Each variant is
+ * also pictured in every preview state after the first, at
+ * public/previews/states/<component>-<variant>@<state>.png (printed as
+ * `states`), for looking at a state without taking screenshots by hand.
  *
  * Usage: node tools/previews.mjs <workspace> [--pad 24] [--brief <id> --codebase <id>] [--no-send]
  *
@@ -62,8 +65,11 @@ const reporter = options.brief && options.codebase && build ? createReporter({ c
 const previews = [];
 const missing = [];
 
-/** One variant pictured: the union of its marked elements, padded, clipped to the viewport. */
-async function picture(view) {
+/** One variant pictured: the union of its marked elements, padded, clipped to the viewport.
+ *  With `state`, the variant in that preview state, kept beside the previews
+ *  (public/previews/states/) for the agent to look at; the manifest keeps
+ *  the default state's picture. */
+async function picture(view, state = null) {
   const opened = await headlessPage(view.url, { ...viewport, display });
   try {
     const marks = await waitForMarkers(opened.page);
@@ -82,23 +88,33 @@ async function picture(view) {
       width: Math.min(viewport.width, Math.ceil(x1 + pad)) - Math.max(0, Math.floor(x0 - pad)),
       height: Math.min(viewport.height, Math.ceil(y1 + pad)) - Math.max(0, Math.floor(y0 - pad)),
     };
-    const file = `${view.component}-${view.variant}.png`;
+    const file = state ? `states/${view.component}-${view.variant}@${state}.png` : `${view.component}-${view.variant}.png`;
     const selector = `[data-proto-id=${JSON.stringify(view.component)}]`;
     const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}, [...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })])`;
     await stableShot(opened.page, probe, join(previewsDir, file), clip);
     const background = await evaluate(opened.page, backdropOf(selector));
     const part = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
-    previews.push({ component: view.component, variant: view.variant, file: `previews/${file}`, background, rect: part });
-    console.error(`… ${view.component}=${view.variant}: ${part.w}×${part.h} at ${part.x},${part.y}`);
+    if (state) statePictures.push({ component: view.component, variant: view.variant, state, file: `public/previews/${file}` });
+    else previews.push({ component: view.component, variant: view.variant, file: `previews/${file}`, background, rect: part });
+    console.error(`… ${view.component}=${view.variant}${state ? ` in ${state}` : ""}: ${part.w}×${part.h} at ${part.x},${part.y}`);
   } finally {
     await opened.close().catch(() => {});
   }
 }
 
-const queue = [...views];
+// Every variant in every preview state other than the first (the default),
+// so a state's look is checked from a picture, not an improvised screenshot.
+const statePictures = [];
+const otherStates = (manifest.states ?? []).slice(1).map((st) => st.id);
+if (otherStates.length) mkdirSync(join(previewsDir, "states"), { recursive: true });
+const jobs = [
+  ...views.map((view) => [view, null]),
+  ...otherStates.flatMap((state) => views.map((view) => [{ ...view, url: `${view.url}${view.url.includes("?") ? "&" : "?"}state=${encodeURIComponent(state)}` }, state])),
+];
 await Promise.all(Array.from({ length: 4 }, async () => {
-  for (let view = queue.shift(); view; view = queue.shift()) {
-    await picture(view).catch((error) => missing.push({ component: view.component, variant: view.variant, why: error.message }));
+  for (let job = jobs.shift(); job; job = jobs.shift()) {
+    const [view, state] = job;
+    await picture(view, state).catch((error) => missing.push({ component: view.component, variant: view.variant, state, why: error.message }));
   }
 }));
 
@@ -133,5 +149,5 @@ if (reporter) {
 }
 
 dev.stop();
-console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, previews, missing }));
+console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, previews, states: statePictures, missing }));
 process.exit(0);

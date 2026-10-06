@@ -83,17 +83,21 @@ async function checkView(view) {
   try {
     await page.send("Runtime.enable");
     await page.send("Log.enable");
+    // The dev server's live-reload socket: served through the tunnel, it
+    // points at the public host and fails from here in every view. It is
+    // the dev server's, not the prototype's (in B5 it read as a broken page).
+    const hmr = (text) => /\[vite\]|WebSocket connection to .*(ws|wss):\/\/|failed to connect to websocket/i.test(text);
     page.on("Runtime.exceptionThrown", (p) => errors.push({ kind: "exception", text: (p.exceptionDetails.exception?.description ?? p.exceptionDetails.text ?? "").split("\n")[0].slice(0, 300) }));
     page.on("Runtime.consoleAPICalled", (p) => {
       if (p.type !== "error") return;
       const text = p.args.map((a) => a.value ?? a.description ?? "").join(" ").split("\n")[0].slice(0, 300);
       // React's nesting warning is the reference page's own markup (a div
       // in a p), copied as the page has it; the browser draws it the same.
-      if (text.startsWith("In HTML,")) return;
+      if (text.startsWith("In HTML,") || hmr(text)) return;
       errors.push({ kind: "console", text });
     });
     page.on("Log.entryAdded", (p) => {
-      if (p.entry.level !== "error") return;
+      if (p.entry.level !== "error" || hmr(`${p.entry.text} ${p.entry.url ?? ""}`)) return;
       errors.push({ kind: p.entry.source, text: `${p.entry.text} ${p.entry.url ?? ""}`.trim().slice(0, 300) });
     });
     // Loaded once more with the listeners on, so an error thrown while the app mounts is heard.

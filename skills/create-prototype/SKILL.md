@@ -264,7 +264,17 @@ checkpoints.
      the pass and matched events for the changed parts.
    - `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>`:
      the variant previews from real renders, into the manifest, and the
-     set's `status` cleared.
+     set's `status` cleared. It also pictures every variant in every
+     other preview state, at `public/previews/states/<component>-<variant>@<state>.png`
+     (its `states` list). Look at the change through these pictures
+     only. Never take screenshots yourself and never start a Chrome or a
+     headless page of your own: Chrome's `--screenshot` mode does not
+     exit (runs lost 2 to 5 minutes to it), and opening the kit's headless
+     Chrome at another scale relaunches it under the checks that use it.
+   - On a frozen copy the untouched page is the page itself: check-states'
+     pixel clusters outside the change are the headless Chrome's colours
+     against the Proto window's (about 0.4%), not a copy problem. Act on a
+     moved or missing marker; leave pixel-only differences alone.
 10. **Serve.** Continue in the serve skill at step 5 (verify through the
     edge, publish, report). Publishing reports its actual upload and availability
     checks, a clean screenshot of the built files, and completion. Registration
