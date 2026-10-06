@@ -32,10 +32,10 @@ Anything the variant shows that the page does not (a badge, a spinner,
 an alert, a loading button, a list row, an icon) comes from the
 product's codebase, whose path the brief gives: find the component that
 renders it, copy its markup and class names, and never draw or style
-your own. An icon the page lacks comes from the codebase's installed
-icon package (for lucide-react, the icon's file under
-`node_modules/lucide-react/dist/esm/icons/`, in the app's or UI
-package's node_modules in a monorepo).
+your own. An icon the page lacks is the codebase's own: find how its
+source imports icons, read that icon's definition (the installed
+package's file or the component's source) and copy its SVG; never draw
+one from memory.
 Import only with relative paths (no `@/` aliases) and never edit
 `tsconfig` or `vite.config`.
 
@@ -47,6 +47,8 @@ the card it replaces; points not on their line; a label the direction
 names that is missing; an element missing or shown twice; clipped or
 overlapping text; rows out of line; a control in the wrong place;
 wording that does not fit the state. The command's `unstyled` lists
-class names no stylesheet defines; fix every one. Fix what you find, two rounds at
+class names no stylesheet defines, and its `layout` the layout
+faults it measured (text over text, text cut off, anything outside the
+variant's box, marks off a line); fix every one. Fix what you find, two rounds at
 most. Never take screenshots any other way and
 never start a browser yourself.

@@ -15,7 +15,9 @@
  * and stops there: no manifest change and nothing sent, so the unit
  * writing a variant can look at its own work while the others write
  * theirs. Its `unstyled` lists the variant's class names no stylesheet
- * defines (they do nothing; a frozen copy compiles no Tailwind).
+ * defines (they do nothing; a frozen copy compiles no Tailwind), and
+ * `layout` the layout faults measured in each state: text over text,
+ * text cut off, anything outside the variant's box, marks off a line.
  *
  * Usage: node tools/previews.mjs <workspace> [--pad 24] [--brief <id> --codebase <id>] [--no-send]
  *
@@ -108,6 +110,7 @@ async function picture(view, state = null) {
     await stableShot(opened.page, probe, join(dir, file), clip);
     const background = await evaluate(opened.page, backdropOf(selector));
     if (only) for (const c of JSON.parse(await evaluate(opened.page, UNSTYLED(selector)))) unstyled.add(c);
+    if (only) for (const issue of JSON.parse(await evaluate(opened.page, LAYOUT(selector)))) layout.push({ state: state ?? firstState, issue });
     const part = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
     if (look) statePictures.push({ component: view.component, variant: view.variant, state: state ?? firstState, file: join(looksDir, file) });
     else previews.push({ component: view.component, variant: view.variant, file: `previews/${file}`, background, rect: part });
@@ -136,6 +139,72 @@ const UNSTYLED = (selector) => `(() => {
   return JSON.stringify([...classes].filter((c) => !all.includes("." + CSS.escape(c))));
 })()`;
 
+// Layout faults inside the variant, measured from the render so the unit
+// does not have to spot them in a picture: text over text, text cut off
+// by its box, anything outside the variant's own box, and small marks
+// (dots, icons, a thin line) that nearly share a line but miss it by a
+// few pixels. Names each by its nearest data-proto-id and its text.
+// Whether the design makes sense stays with the picture.
+const layout = [];
+const LAYOUT = (selector) => `(() => {
+  const roots = [...document.querySelectorAll(${JSON.stringify(selector)})].filter((r) => r.getClientRects().length);
+  const issues = [];
+  const visible = (e) => { const s = getComputedStyle(e); return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0.05; };
+  const label = (e) => { const owner = e.closest("[data-proto-id]"); const text = (e.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 30); return (owner ? owner.getAttribute("data-proto-id") : e.tagName.toLowerCase()) + (text ? ' "' + text + '"' : ""); };
+  const px = (n) => Math.round(n);
+  for (const root of roots) {
+    const box = root.getBoundingClientRect();
+    const all = [root, ...root.querySelectorAll("*")].filter((e) => e.getClientRects().length && visible(e));
+    // Text over text: each text run's boxes against every other run's.
+    const runs = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.textContent.trim() || !visible(n.parentElement)) continue;
+      const range = document.createRange(); range.selectNodeContents(n);
+      runs.push({ el: n.parentElement, rects: [...range.getClientRects()].filter((r) => r.width > 1 && r.height > 1) });
+    }
+    for (let i = 0; i < runs.length; i += 1) for (let j = i + 1; j < runs.length; j += 1) {
+      if (runs[i].el === runs[j].el) continue;
+      let worst = null;
+      for (const a of runs[i].rects) for (const b of runs[j].rects) {
+        const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (w > 2 && h > 3 && (!worst || w * h > worst.w * worst.h)) worst = { w, h };
+      }
+      if (worst) issues.push("text overlaps: " + label(runs[i].el) + " and " + label(runs[j].el) + " by " + px(worst.w) + "x" + px(worst.h) + "px");
+    }
+    for (const e of all) {
+      const s = getComputedStyle(e);
+      const r = e.getBoundingClientRect();
+      // Cut off: content larger than a box that hides overflow.
+      const hides = /hidden|clip/.test(s.overflowX + s.overflowY);
+      if (hides && e.textContent.trim() && (e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 3)) {
+        issues.push("text cut off: " + label(e) + (s.textOverflow === "ellipsis" ? " (truncated with an ellipsis)" : "") + ", content " + e.scrollWidth + "x" + e.scrollHeight + " in a " + e.clientWidth + "x" + e.clientHeight + " box");
+      }
+      // Outside the variant's box.
+      if (e !== root && r.width > 0 && r.height > 0 && s.position !== "fixed") {
+        const out = Math.max(box.left - r.left, r.right - box.right, box.top - r.top, r.bottom - box.bottom);
+        if (out > 1.5) issues.push("outside the variant: " + label(e) + " by " + px(out) + "px");
+      }
+    }
+    // Near misses: small marks and thin lines whose centres sit within 10px
+    // of each other vertically but not within 2px.
+    const marks = all.filter((e) => { const r = e.getBoundingClientRect(); return (r.width <= 32 && r.height <= 32 && r.width >= 3 && r.height >= 3 && !e.querySelector("*:not(path):not(circle):not(rect):not(line):not(polyline):not(polygon)")) || (r.height <= 4 && r.width >= 24); })
+      .filter((e) => !e.closest("svg") || e.tagName.toLowerCase() === "svg")
+      .map((e) => { const r = e.getBoundingClientRect(); return { e, cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; });
+    const reported = new Set();
+    for (let i = 0; i < marks.length; i += 1) for (let j = i + 1; j < marks.length; j += 1) {
+      const a = marks[i], b = marks[j];
+      const dy = Math.abs(a.cy - b.cy);
+      if (dy > 2 && dy <= 10 && Math.abs(a.cx - b.cx) > 24 && a.e.parentElement !== b.e.parentElement) {
+        const key = label(a.e) + "|" + label(b.e);
+        if (!reported.has(key)) { reported.add(key); issues.push("off the line: " + label(a.e) + " and " + label(b.e) + " centres " + px(dy) + "px apart vertically"); }
+      }
+    }
+  }
+  return JSON.stringify([...new Set(issues)].slice(0, 20));
+})()`;
+
 // Every variant in every preview state other than the first (the default),
 // so a state's look is checked from a picture, not an improvised screenshot.
 const statePictures = [];
@@ -156,7 +225,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
 
 if (only) {
   dev.stop();
-  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), unstyled: [...unstyled].filter((c) => !pageClasses.has(c) && !/^lucide(-|$)/.test(c)), missing }));
+  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), unstyled: [...unstyled].filter((c) => !pageClasses.has(c) && !/^lucide(-|$)/.test(c)), layout, missing }));
   process.exit(0);
 }
 

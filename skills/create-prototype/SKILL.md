@@ -406,7 +406,10 @@ A failure is `report_progress failed` with one plain sentence.
 > "paused"); colours the page does not use. Its `unstyled` lists class
 > names on your variant that no stylesheet defines: they do nothing, so
 > fix every one (copy the class the page uses, or move the style into
-> your module CSS). Two rounds at most. Report the files written, the
+> your module CSS). Its `layout` lists faults measured in the render
+> (text over text, text cut off, anything outside the variant's box,
+> marks such as dots or icons a few pixels off a shared line): fix
+> every one. Two rounds at most. Report the files written, the
 > last typecheck's result and what the pictures showed.
 
 On a frozen copy, the brief names the frozen element instead of a part
@@ -434,11 +437,11 @@ directory you run in):
 > markup and class names, and never draw or style your own. The page's
 > CSS is the whole app's build, so the codebase's classes are almost
 > always in it; the class check below names any that are not. An icon
-> the page does not show is the codebase's own icon library's: read its
-> shape from the installed package (in a monorepo it sits in the app's
-> or UI package's `node_modules`: `find <repo> -path
-> "*node_modules/lucide-react/dist/esm/icons/<name>.js"`) and write the
-> SVG with the attributes the page's icons carry. Never emoji.
+> the page does not show is the codebase's own: find how its source
+> imports icons (grep for the icon library or its own icon components),
+> read that icon's definition (the installed package's file, or the
+> component's source) and write its SVG with the attributes the page's
+> icons carry. Never draw one from memory, never emoji.
 
 ## Component markers
 
