@@ -284,11 +284,9 @@ used the wrong display and disturbed the checks running beside them).
      the variant previews from real renders, into the manifest, and the
      set's `status` cleared. It also pictures every variant in every
      other preview state, into the build folder (its `states` list gives
-     each picture's path; they are never published). Look at the change through these pictures
-     only. Never take screenshots yourself and never start a Chrome or a
-     headless page of your own: Chrome's `--screenshot` mode does not
-     exit (runs lost 2 to 5 minutes to it), and opening the kit's headless
-     Chrome at another scale relaunches it under the checks that use it.
+     each picture's path; they are never published). Look at the change
+     through these pictures and `look.mjs` (the table above), never
+     through screenshots of your own.
    - On a frozen copy the untouched page is the page itself: check-states'
      pixel clusters outside the change are the headless Chrome's colours
      against the Proto window's (about 0.4%), not a copy problem. Act on a
