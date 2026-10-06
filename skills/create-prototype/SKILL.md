@@ -74,11 +74,13 @@ checkpoints.
    prototype", no filler like "prototype" or "concept". Kebab-case it
    into the slug (it becomes the subdomain label). Creation is isolated and
    additive: the slug must be unused both at
-   `~/.proto/<codebase>/prototypes/<slug>/` and in the codebase's registered
-   gallery prototypes. Either match is a collision; keep the title and try
-   `<slug>-2`, then `<slug>-3`, checking both places each time. If the gallery
-   cannot be checked read-only, stop with `needs-input` rather than risk an
-   upsert. Never update, reuse, replace, re-register, restart, republish, or
+   `~/.proto/<codebase>/prototypes/<slug>/` and in the codebase's gallery.
+   One call answers the gallery: `list_prototypes { codebase }` returns
+   `taken`, every slug the gallery or a build already holds. Either match
+   is a collision; keep the title and take the first of `<slug>-2`,
+   `<slug>-3`, … that is in neither, without asking. Only when
+   `list_prototypes` itself fails, stop with `needs-input` rather than
+   risk an upsert. Never update, reuse, replace, re-register, restart, republish, or
    otherwise mutate an existing prototype during creation.
 3. **Brief id.** For a website request, call
    `begin_prototype_build { codebase, slug, title, briefId }` with its existing
