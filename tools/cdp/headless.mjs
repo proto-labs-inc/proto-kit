@@ -97,28 +97,32 @@ async function runningDisplay(port) {
 }
 
 /**
- * Find or start the headless Chrome for a display; resolves once its
- * debug port answers. A Chrome already up for another display is
- * stopped and launched again once its port is free. Launched through
- * `open`, like the visible window, so it belongs to launchd and no
- * shell waits on it.
+ * Find or start the headless Chrome for a display; resolves with the
+ * port that answers for it. A Chrome already up for another display is
+ * left alone: another process may have tabs open in it (a check, a
+ * preview), and stopping it under them killed those tabs mid-run. The
+ * display gets its own Chrome on the next port instead (up to
+ * `port + 5`), each with its own profile. Launched through `open`, like
+ * the visible window, so it belongs to launchd and no shell waits on it.
  */
 export async function ensureHeadless(display, port = HEADLESS_PORT) {
-  if (await version(port)) {
-    if (sameDisplay(await runningDisplay(port), display)) return port;
-    await stopHeadless(port);
-    // The port must be free before the launch, or the new Chrome dies on it and nothing comes up.
-    for (let i = 0; i < 150 && (await version(port)); i++) await new Promise((r) => setTimeout(r, 100));
+  let free = null;
+  for (let p = port; p <= port + 5; p++) {
+    if (await version(p)) {
+      if (sameDisplay(await runningDisplay(p), display)) return p;
+    } else if (free === null) free = p;
   }
-  mkdirSync(PROFILE, { recursive: true });
+  if (free === null) throw new Error(`no free port for a headless Chrome at ${display.dpr}x ${display.colorProfile} (${port} to ${port + 5} are all in use)`);
+  const profile = free === HEADLESS_PORT ? PROFILE : `${PROFILE}-${free}`;
+  mkdirSync(profile, { recursive: true });
   execFileSync("open", [
     "-g",
     "-n",
     "-a", "Google Chrome",
     "--args",
     "--headless=new",
-    `--remote-debugging-port=${port}`,
-    `--user-data-dir=${PROFILE}`,
+    `--remote-debugging-port=${free}`,
+    `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-default-browser-check",
     "--hide-scrollbars",
@@ -128,9 +132,9 @@ export async function ensureHeadless(display, port = HEADLESS_PORT) {
   ]);
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 250));
-    if (await version(port)) {
-      writeFileSync(LAUNCHED, JSON.stringify(display) + "\n");
-      return port;
+    if (await version(free)) {
+      if (free === HEADLESS_PORT) writeFileSync(LAUNCHED, JSON.stringify(display) + "\n");
+      return free;
     }
   }
   throw new Error("headless Chrome did not come up in 15s");
@@ -154,8 +158,8 @@ export async function stopHeadless(port = HEADLESS_PORT) {
  * load event and for document.fonts, the two things a rect probe must
  * not race.
  */
-export async function headlessPage(url, { width, height, display }, port = HEADLESS_PORT) {
-  await ensureHeadless(display, port);
+export async function headlessPage(url, { width, height, display }, preferred = HEADLESS_PORT) {
+  const port = await ensureHeadless(display, preferred);
   const info = await version(port);
   const browser = await connect(info.webSocketDebuggerUrl);
   const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });

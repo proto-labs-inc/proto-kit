@@ -24,4 +24,12 @@ it (grep public/frozen/styles for it first and copy the expression);
 never wrap one in a colour function of your own, and never use emoji.
 Import only with relative paths (no @/ aliases) and never edit
 tsconfig or vite.config.
+
+Before you finish, look at your variant as it renders: the brief gives
+the command (node <kit>/tools/previews.mjs <workspace> --only
+<component>=<id>), which pictures it in every preview state in about a
+second. Read each picture and fix what looks broken (overlapping or
+clipped text, points off a line, misaligned rows, a control in the wrong
+place), two rounds at most. Never take screenshots any other way and
+never start a browser yourself.
 """

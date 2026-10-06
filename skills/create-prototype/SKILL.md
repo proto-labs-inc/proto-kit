@@ -360,8 +360,13 @@ A failure is `report_progress failed` with one plain sentence.
 > coherent piece inside carries its own kebab-case `data-proto-id`. The
 > component takes `{ className?: string }` and puts it on the root. No
 > new dependencies; touch no other file. Run `pnpm typecheck` in the
-> workspace before finishing. Report the files written and the last
-> typecheck's result.
+> workspace, then look at your variant as it renders:
+> `node <kit>/tools/previews.mjs <workspace> --only <marker>=<id>` pictures
+> it in every preview state in about a second; read each picture it
+> lists and fix what looks broken (overlapping or clipped text, points
+> off a line, misaligned rows, a control in the wrong place, colours the
+> page does not use). Two rounds at most. Report the files written, the
+> last typecheck's result and what the pictures showed.
 
 On a frozen copy, the brief names the frozen element instead of a part
 file, and adds how to style:

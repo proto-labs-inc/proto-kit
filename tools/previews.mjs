@@ -10,6 +10,10 @@
  * also pictured in every preview state after the first, at
  * public/previews/states/<component>-<variant>@<state>.png (printed as
  * `states`), for looking at a state without taking screenshots by hand.
+ * --only <component>=<variant> pictures that one variant in every state
+ * and stops there: no manifest change and nothing sent, so the unit
+ * writing a variant can look at its own work while the others write
+ * theirs.
  *
  * Usage: node tools/previews.mjs <workspace> [--pad 24] [--brief <id> --codebase <id>] [--no-send]
  *
@@ -28,7 +32,7 @@ import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
 import { backdropOf, launchedDisplayOr, viewsOf, waitForMarkers } from "./views.mjs";
 
-const USAGE = "usage: node tools/previews.mjs <workspace> [--pad 24] [--brief <id> --codebase <id>] [--no-send]";
+const USAGE = "usage: node tools/previews.mjs <workspace> [--pad 24] [--only <component>=<variant>] [--brief <id> --codebase <id>] [--no-send]";
 const options = { pad: "24" };
 const positional = [];
 const args = process.argv.slice(2);
@@ -59,9 +63,13 @@ mkdirSync(previewsDir, { recursive: true });
 const logDir = build ? build.dir : join(workspace, ".proto-checks");
 mkdirSync(logDir, { recursive: true });
 const dev = await ensureDevServer({ workspace, logPath: join(logDir, "dev.log") });
-const views = viewsOf(manifest, dev.url).filter((view) => view.component);
+// --only pictures one variant in every state for the unit writing it, to
+// check its own work: the manifest and the site are left to the full run.
+const only = options.only ? options.only.split("=") : null;
+const views = viewsOf(manifest, dev.url).filter((view) => view.component && (!only || (view.component === only[0] && view.variant === only[1])));
+if (only && views.length === 0) fail(`no variant ${options.only} in the manifest`);
 
-const reporter = options.brief && options.codebase && build ? createReporter({ codebase: options.codebase, briefId: options.brief, runDir: build.dir, sink: options.noSend ? "file" : "site" }) : null;
+const reporter = !only && options.brief && options.codebase && build ? createReporter({ codebase: options.codebase, briefId: options.brief, runDir: build.dir, sink: options.noSend ? "file" : "site" }) : null;
 const previews = [];
 const missing = [];
 
@@ -117,6 +125,12 @@ await Promise.all(Array.from({ length: 4 }, async () => {
     await picture(view, state).catch((error) => missing.push({ component: view.component, variant: view.variant, state, why: error.message }));
   }
 }));
+
+if (only) {
+  dev.stop();
+  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: [...previews.map((p) => ({ state: (manifest.states ?? [])[0]?.id ?? "default", file: `public/${p.file}` })), ...statePictures.map((p) => ({ state: p.state, file: p.file }))], missing }));
+  process.exit(0);
+}
 
 // ---- the manifest ----
 const fresh = JSON.parse(readFileSync(manifestPath, "utf8"));
