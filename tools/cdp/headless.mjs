@@ -96,33 +96,47 @@ async function runningDisplay(port) {
   }
 }
 
+/** Pages open in the headless Chrome on `port`: someone is using it. */
+async function openPages(port) {
+  try {
+    const tabs = await (await fetch(`http://localhost:${port}/json/list`, { signal: AbortSignal.timeout(500) })).json();
+    return tabs.filter((t) => t.type === "page" && t.url !== "about:blank").length;
+  } catch {
+    return 0;
+  }
+}
+
 /**
- * Find or start the headless Chrome for a display; resolves with the
- * port that answers for it. A Chrome already up for another display is
- * left alone: another process may have tabs open in it (a check, a
- * preview), and stopping it under them killed those tabs mid-run. The
- * display gets its own Chrome on the next port instead (up to
- * `port + 5`), each with its own profile. Launched through `open`, like
- * the visible window, so it belongs to launchd and no shell waits on it.
+ * Find or start the one headless Chrome; resolves with { port, exact }.
+ * Every kit tool asks for the Proto window's display, so a Chrome up for
+ * another display is relaunched only while nobody has a page open in it:
+ * stopping it under a check or a preview killed their tabs mid-run (B5,
+ * B6). While it is in use it stays as it is, and `exact` is false: the
+ * caller's tab emulates its scale instead (headlessPage does), drawing
+ * fractional edges up to a device pixel off (docs/cdp-traps.md), which
+ * only that caller's own picture sees. Launched through `open`, like the
+ * visible window, so it belongs to launchd and no shell waits on it.
  */
 export async function ensureHeadless(display, port = HEADLESS_PORT) {
-  let free = null;
-  for (let p = port; p <= port + 5; p++) {
-    if (await version(p)) {
-      if (sameDisplay(await runningDisplay(p), display)) return p;
-    } else if (free === null) free = p;
+  if (await version(port)) {
+    if (sameDisplay(await runningDisplay(port), display)) return { port, exact: true };
+    if ((await openPages(port)) > 0) {
+      console.error(`headless Chrome on ${port} is in use at another display; this page emulates ${display.dpr}x instead of relaunching it`);
+      return { port, exact: false };
+    }
+    await stopHeadless(port);
+    // The port must be free before the launch, or the new Chrome dies on it and nothing comes up.
+    for (let i = 0; i < 150 && (await version(port)); i++) await new Promise((r) => setTimeout(r, 100));
   }
-  if (free === null) throw new Error(`no free port for a headless Chrome at ${display.dpr}x ${display.colorProfile} (${port} to ${port + 5} are all in use)`);
-  const profile = free === HEADLESS_PORT ? PROFILE : `${PROFILE}-${free}`;
-  mkdirSync(profile, { recursive: true });
+  mkdirSync(PROFILE, { recursive: true });
   execFileSync("open", [
     "-g",
     "-n",
     "-a", "Google Chrome",
     "--args",
     "--headless=new",
-    `--remote-debugging-port=${free}`,
-    `--user-data-dir=${profile}`,
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${PROFILE}`,
     "--no-first-run",
     "--no-default-browser-check",
     "--hide-scrollbars",
@@ -132,9 +146,9 @@ export async function ensureHeadless(display, port = HEADLESS_PORT) {
   ]);
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 250));
-    if (await version(free)) {
-      if (free === HEADLESS_PORT) writeFileSync(LAUNCHED, JSON.stringify(display) + "\n");
-      return free;
+    if (await version(port)) {
+      writeFileSync(LAUNCHED, JSON.stringify(display) + "\n");
+      return { port, exact: true };
     }
   }
   throw new Error("headless Chrome did not come up in 15s");
@@ -158,8 +172,8 @@ export async function stopHeadless(port = HEADLESS_PORT) {
  * load event and for document.fonts, the two things a rect probe must
  * not race.
  */
-export async function headlessPage(url, { width, height, display }, preferred = HEADLESS_PORT) {
-  const port = await ensureHeadless(display, preferred);
+export async function headlessPage(url, { width, height, display }, port = HEADLESS_PORT) {
+  await ensureHeadless(display, port);
   const info = await version(port);
   const browser = await connect(info.webSocketDebuggerUrl);
   const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
