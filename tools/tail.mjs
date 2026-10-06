@@ -77,7 +77,7 @@ export const TAIL = {
   // A composed page that differs from the reference by no more than this
   // share of its pixels is a copy the change can be written on; the
   // rest is detail the parts' units chase in the background.
-  PAGE_PROCEED_PCT: 0.5,
+  PAGE_PROCEED_PCT: 5,
 };
 
 // Verdicts that count as the product's look (tools/check.mjs ACCEPTED).

@@ -1,3 +1,4 @@
+import { observeRender, waitForGenerated } from './generated-ready.mjs';
 // The headless Chrome the kit renders replicas and diffs in (MAA-163).
 // Nothing rendered here ever appears on screen: the visible Proto
 // window (tools/cdp/chrome.mjs, port 9333) is only for the product
@@ -154,7 +155,7 @@ export async function stopHeadless(port = HEADLESS_PORT) {
  * load event and for document.fonts, the two things a rect probe must
  * not race.
  */
-export async function headlessPage(url, { width, height, display }, port = HEADLESS_PORT) {
+export async function headlessPage(url, { width, height, display, generated = false, markers = [], uniqueMarkers = false }, port = HEADLESS_PORT) {
   await ensureHeadless(display, port);
   const info = await version(port);
   const browser = await connect(info.webSocketDebuggerUrl);
@@ -173,12 +174,15 @@ export async function headlessPage(url, { width, height, display }, port = HEADL
   });
   // Bounded: a navigation whose load event never comes (several lanes
   // opening tabs at once) fails plainly instead of holding a lane forever.
+  const renderStarted = Date.now();
+  const renderErrors = generated ? await observeRender(page) : [];
   const loaded = page.once("Page.loadEventFired");
   await page.send("Page.navigate", { url });
   const late = (ms, what) => new Promise((_, reject) => setTimeout(() => reject(new Error(`the headless page ${what} within ${ms / 1000} s`)), ms).unref());
   try {
     await Promise.race([loaded, late(20_000, "did not load")]);
-    await Promise.race([evaluate(page, "document.fonts.ready.then(() => document.fonts.status)"), late(8_000, "did not finish loading its fonts")]);
+    if (generated) await waitForGenerated(page, { markers, uniqueMarkers, errors: renderErrors, startedAt: renderStarted });
+    else await Promise.race([evaluate(page, "document.fonts.ready.then(() => document.fonts.status)"), late(8_000, "did not finish loading its fonts")]);
   } catch (error) {
     page.close();
     const b = await connect(info.webSocketDebuggerUrl);

@@ -1,5 +1,10 @@
 # Report prototype progress
 
+For scripted create-prototype builds, the runner owns the mechanical reports
+below. Invoke its stages instead of duplicating connection checks or progress
+payloads in the agent. Continue reporting agent context review and focused edits.
+
+
 Use the same saved briefId for every operation. Enter Connect immediately when
 starting connection verification, before whoami and get_brief finish. Using the
 existing credential for the requested app and codebase, send a connect report
@@ -67,3 +72,21 @@ uploads it, and verifies availability through finish_publish before reporting do
 Do not send a phase ready event or use a heartbeat as completion. If publishing
 fails, keep the request unfinished and report the failure. The gallery continues
 to show the current request when its modal is closed.
+
+## Screenshot-based creation
+
+New creation requests carry both a source URL and a full-page screenshot. Review
+and Copy use the uploaded image, not a live-page capture. The URL is a local
+source-route hint and is never visited. Report real source-component lookup,
+implementation, and local prototype comparisons. components.json records source
+files and screenshot regions, not a captured DOM tree. Keep the original image
+and its dimensions unchanged through retries and resumes. Missing references or
+assets are questions in the active conversation; there is no live-site fallback.
+
+## Scripted creation
+
+For create-prototype, the runner owns workflow/activity reports, durable delivery,
+question history and completion. Use prepare, check-baseline and finish instead
+of hand-writing their progress payloads. Continue focus reports when selecting
+parts for agent edits. Checkpoints and timings live beside the build artifacts;
+reporting failures never require another baseline capture or successful upload.

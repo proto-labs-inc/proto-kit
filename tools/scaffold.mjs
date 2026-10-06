@@ -65,8 +65,9 @@ const homeDir = process.env.HOME ?? "";
 const home = join(homeDir, ".proto", options.codebase);
 const buildDir = join(home, "run", "builds", options.brief);
 const readPath = join(buildDir, "read.json");
-if (!existsSync(readPath)) fail(`${readPath} does not exist: run build-stream.mjs read first`);
-const read = JSON.parse(readFileSync(readPath, "utf8"));
+const screenshotBuild = existsSync(join(buildDir, "reference.json"));
+if (!screenshotBuild && !existsSync(readPath)) fail(`${readPath} does not exist: prepare the screenshot reference first`);
+const read = screenshotBuild ? null : JSON.parse(readFileSync(readPath, "utf8"));
 const codebaseRecord = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8"));
 
 // ---- which template, and whether the source uses Tailwind ----
@@ -91,6 +92,12 @@ const recordPath = join(buildDir, "workspace.json");
 const ours = existsSync(recordPath) && JSON.parse(readFileSync(recordPath, "utf8")).path === workspace;
 if (!fresh && !ours) fail(`a prototype named ${slug} already exists in ${workspaces}: choose another slug`);
 mkdirSync(workspaces, { recursive: true });
+// Record ownership and the reserved port before copying or installing. A crash
+// during either operation can then resume without treating our partial folder
+// as an unrelated prototype.
+if (!ours) {
+  writeFileSync(recordPath, JSON.stringify({ slug, path: workspace, port: await pickPort(), framework, tailwind, title: options.title ?? slug, status: "scaffolding" }) + "\n");
+}
 if (fresh) {
   cpSync(template, workspace, { recursive: true, filter: (source) => !/[\\/](node_modules|dist)([\\/]|$)/.test(source) });
 } else {
@@ -100,7 +107,7 @@ if (fresh) {
 
 // ---- names and port ----
 const title = options.title ?? slug;
-const port = fresh ? await pickPort() : JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8")).port;
+const port = JSON.parse(readFileSync(recordPath, "utf8")).port ?? JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8")).port;
 editJson(join(workspace, "package.json"), (pkg) => ({ ...pkg, name: slug }));
 // The workspace's own token, served from its public/ folder: what the
 // dev server on its port must answer with before any check renders in it.
@@ -113,6 +120,7 @@ edit(join(workspace, "vite.config.ts"), (source) => source.replace(/port: \d+,/,
 
 // ---- the page's tokens, fonts and face ----
 const src = join(workspace, "src");
+if (read) {
 const tokens = read.page.tokens;
 const tokenLines = (vars) => Object.entries(vars).map(([name, value]) => `  ${name}: ${value};`).join("\n");
 writeFileSync(
@@ -172,6 +180,8 @@ body {
   );
 }
 
+} // Screenshot builds retain the template base until the agent imports source styles.
+
 // ---- Tailwind, when the source uses it ----
 if (tailwind) {
   edit(join(workspace, "vite.config.ts"), (source) => {
@@ -188,13 +198,13 @@ if (tailwind) {
 let install = 0;
 const lock = join(workspace, "pnpm-lock.yaml");
 const stamp = join(workspace, "node_modules", ".proto-lock");
-const lockText = existsSync(lock) ? readFileSync(lock, "utf8") : "";
+const lockText = JSON.stringify({ lock: existsSync(lock) ? readFileSync(lock, "utf8") : "", package: readFileSync(join(workspace, "package.json"), "utf8"), node: process.versions.node.split(".")[0] });
 const installed = existsSync(join(workspace, "node_modules")) && existsSync(stamp) && readFileSync(stamp, "utf8") === lockText;
 if (!installed) {
   const began = Date.now();
   const result = spawnSync("pnpm", ["install", "--prefer-offline", "--no-frozen-lockfile"], { cwd: workspace, encoding: "utf8" });
   if (result.status !== 0) fail(`pnpm install failed in ${workspace}:\n${result.stderr}`);
-  writeFileSync(stamp, readFileSync(lock, "utf8"));
+  writeFileSync(stamp, JSON.stringify({ lock: readFileSync(lock, "utf8"), package: readFileSync(join(workspace, "package.json"), "utf8"), node: process.versions.node.split(".")[0] }));
   install = Math.round((Date.now() - began) / 100) / 10;
 }
 

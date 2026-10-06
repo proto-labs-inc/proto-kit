@@ -101,7 +101,7 @@ embedded setup document is JSON:
   },
   "source": { "folderPath": "..." },           // or { "fingerprint": { "name", "tree": [...] } }, or absent
   "productUrl": "https://...",                 // the product page to parse, or absent
-  "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" },  // New prototype prompts only
+  "brief": { "title", "description", "documentUrl", "referenceUrl", "referenceImage", "useRealData" },  // New prototype prompts only
   "prototype": { "slug": "...", "title": "..." }  // Edit prompts only
 }
 ```
@@ -420,6 +420,14 @@ for every later stop, until the import's completion gate or a successful
 starter-library attachment completes the design system.
 Never invent a prototype brief to report a setup blocker.
 
+### Screenshot-backed prototype setup
+
+When the document carries a prototype `brief`, require its `referenceUrl` and
+`referenceImage`. Skip the reference-page/browser section below entirely. The
+URL is only a source-route hint. Never open it or use it for a design-system
+import. Reuse the local source components and existing library. Continue to the
+handoff after linking and recording the source folder.
+
 ### The reference page (the Proto window)
 
 Prototypes and imports read the user's live product through their own
@@ -540,20 +548,25 @@ Setup ends by continuing, not by stopping (an Edit prompt ends at
      continue.
    - `existing-library`: the codebase already has a published library; preserve
      it and continue.
-   - `not-configured`: run **import-design-system** now and continue only after
+   - `not-configured` with a prototype brief: continue directly to creation using
+     local source components. Do not import from the reference URL or claim that
+     a library was published.
+   - `not-configured` without a prototype brief: run **import-design-system** now and continue only after
      its completion gate. That skill owns scaffolding, hosting and publishing
      the local library.
    A tool error is not `not-configured`: retry once if the call was interrupted
    or reports a transient failure. If it still fails, remain in setup, tell the
    user in one plain sentence that Proto could not finish the design system,
    and offer to retry. Never continue to success or create a prototype until
-   one of the successful outcomes above or the normal import's completion gate.
+   one of the successful outcomes above, the normal import's completion gate,
+   or the explicit screenshot-brief source-components path described above.
 2. If the document carried a `brief`, hand it to **create-prototype**
    verbatim: title, description, the brief document URL, the
-   reference page (`productUrl`), the reference HTML (structure
-   hints only: the live page wins) and whether to use real data.
+   source URL (`brief.referenceUrl`), the full-page screenshot
+   (`brief.referenceImage`) and whether to use real data. The screenshot is the
+   visual target; the URL is never visited.
    Registration there uses the laptop token's member as creator.
-3. Tell the user the library is published and stays viewable after this laptop
+3. When a library was actually attached or published, tell the user it stays viewable after this laptop
    closes. Finish when their requested work is complete. Website build and edit
    actions provide prompts to paste into a coding-agent conversation; no open
    listening session is needed.

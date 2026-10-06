@@ -143,20 +143,14 @@ test("--again clears the read, the curation and the copy, and keeps the title an
   assert.deepEqual(readdirSync(dir).sort(), ["events.jsonl", "passes.json", "steps.json", "workspace.json"]);
 });
 
-test("proto-build --again starts over from a fresh read instead of keeping the old one", () => {
+test("creation refuses live recapture flags without deleting old checkpoints", () => {
   const home = mkdtempSync(join(tmpdir(), "home-"));
   const build = join(home, ".proto", "cb1", "run", "builds", "b1");
   mkdirSync(build, { recursive: true });
-  writeFileSync(join(build, "tree.json"), JSON.stringify({ url: "http://localhost:8083/book/2", nodes: [], curation: [] }));
+  writeFileSync(join(build, "tree.json"), JSON.stringify({ url: "http://localhost:8083/book/2", nodes: [] }));
   for (const name of ["read.json", "curation.json", "parts.json", "copy-gate.json"]) writeFileSync(join(build, name), "{}");
-  writeFileSync(join(build, "steps.json"), JSON.stringify({ title: "t", gate: { outcome: "build" } }));
-  // Port 1 has no browser: the fresh read is attempted and fails, after the old one is gone.
-  const run = spawnSync(process.execPath, [join(tools, "proto-build.mjs"), "b1", "--codebase", "cb1", "--slug", "s", "--again", "--no-send", "--port", "1"], { encoding: "utf8", env: { ...process.env, HOME: home } });
+  const run = spawnSync(process.execPath, [join(tools, "proto-build.mjs"), "prepare", "b1", "--codebase", "cb1", "--again", "--no-send"], { encoding: "utf8", env: { ...process.env, HOME: home } });
   assert.notEqual(run.status, 0);
-  assert.match(run.stderr, /--again: starting the copy over/);
-  assert.match(run.stderr, /reading the page/);
-  assert.doesNotMatch(run.stderr, /tree\.json exists, kept|parts\.json exists, kept/);
-  assert.match(run.stderr, /matches "localhost:8083\/book\/2"/, "the old read's tab is read again when --page is not given");
-  for (const name of ["tree.json", "read.json", "curation.json", "parts.json", "copy-gate.json"]) assert.equal(existsSync(join(build, name)), false, name);
-  assert.deepEqual(JSON.parse(readFileSync(join(build, "steps.json"), "utf8")), { title: "t" });
+  assert.match(JSON.parse(run.stdout).diagnostics.join(" "), /Unknown or valueless option --again/);
+  for (const name of ["tree.json", "read.json", "curation.json", "parts.json", "copy-gate.json"]) assert.equal(existsSync(join(build, name)), true, name);
 });

@@ -79,17 +79,17 @@ test("a hanging site cannot block chat questions or persisted answers", async (t
   const began = Date.now();
   const id = await ask(live, fields);
   assert.ok(Date.now() - began < CHAT_PROGRESS_TIMEOUT_MS + 1000);
-  assert.equal(signals.length, 2);
+  assert.equal(signals.length, 1);
   assert.equal(signals[0].aborted, true);
   assert.equal((await waitForAnswer(live, id)).status, "needs-input");
   const answer = await answeredInTerminal(live, id, { option: "compact" });
   assert.ok(Date.now() - began < 2 * CHAT_PROGRESS_TIMEOUT_MS + 1000);
-  assert.equal(signals.length, 4);
+  assert.equal(signals.length, 2);
   assert.equal(signals.every((signal) => signal.aborted), true);
   assert.deepEqual(await waitForAnswer(live, id), answer);
   assert.deepEqual(await answeredInTerminal(live, id, { option: "compact" }), answer);
-  assert.equal(signals.length, 5, "replaying an answer retries only history, without resetting a later question's status");
-  assert.deepEqual(readdirSync(build.runDir).sort(), ["events.jsonl", "questions"], "progress failure leaves local history and interaction intact");
+  assert.equal(signals.length, 3, "replaying an answer retries only history, without resetting a later question's status");
+  assert.deepEqual(readdirSync(build.runDir).sort(), ["events.jsonl", "outbox", "questions"], "progress failure leaves local history and interaction intact");
 });
 
 test("structured question and answer history is sent once after successful delivery", async (t) => {

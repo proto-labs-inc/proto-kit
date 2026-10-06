@@ -25,6 +25,13 @@ permanent snapshot. Do not ask for a second permission for those expected
 steps. A host- or tool-enforced confirmation still applies and must be
 presented when the action reaches that boundary.
 
+## Scripted creation
+
+A create-prototype build uses proto-build.mjs check-baseline to start its
+supervised preview and proto-build.mjs finish to verify, publish and complete.
+Do not repeat the manual steps below for those builds. They remain the workflow
+for standalone serving and existing variant/section work.
+
 ## Start
 
 1. **Register the prototype** first: `register_prototype { codebase,

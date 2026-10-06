@@ -27,6 +27,8 @@
  * ~/.proto/config.json identifies the member and team. --dry-run prints the upload plan without
  * touching the cloud.
  */
+import { fingerprint, readJson, writeJson } from "./runner-state.mjs";
+import { flushQuestionHistory } from "./ask.mjs";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve, relative, extname, sep } from "node:path";
@@ -34,8 +36,10 @@ import { workflowEvent, activityEvent } from "./workflow-report.mjs";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { createReporter } from "./build-report.mjs";
 import { capturePublishedPreview } from "./publish-preview.mjs";
-import { callTool, readConfig } from "./mcp-call.mjs";
+import { callTool as callMcp, readConfig, targetFor } from "./mcp-call.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
+
+const callTool = (name, args) => callMcp(name, args, targetFor(readConfig(), { codebase }), { signal: AbortSignal.timeout(30000) });
 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
@@ -51,7 +55,8 @@ const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
-  if (arg === "--dry-run") {
+  if (arg === "--defer-completion") { options.deferCompletion = true;
+  } else if (arg === "--dry-run") {
     options.dryRun = true;
   } else if (arg.startsWith("--")) {
     const name = arg.slice(2);
@@ -255,9 +260,32 @@ if (progressBuild) {
   // Re-publishing an existing prototype never reopens its completed request.
   if (brief.status === "done") progressBuild = null;
 }
-const progress = progressBuild ? createReporter({ codebase, briefId: progressBuild.briefId, runDir: progressBuild.dir }) : null;
+const receiptPath = progressBuild ? join(progressBuild.dir, "publication.json") : null;
+const outputHash = fingerprint(dist, { output: true });
+let receipt = receiptPath ? readJson(receiptPath) : null;
+if (receipt?.outputHash !== outputHash) receipt = null;
+const saveReceipt = value => { receipt = { ...value, outputHash }; if (receiptPath) writeJson(receiptPath, receipt); };
+async function verifyPublished(url) {
+  for (const file of ["index.html", "prototype.json"]) {
+    const response = await fetch(new URL(file, url), { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`Published ${file} is unavailable: ${response.status}`);
+    if (file === "prototype.json" && (await response.json()).name !== slug) throw new Error("Published manifest belongs to a different prototype");
+  }
+}
+const progress = progressBuild ? createReporter({ codebase, briefId: progressBuild.briefId, runDir: progressBuild.dir, transport: callTool }) : null;
 const publishing = progressBuild ? workflowEvent(progressBuild.dir, "publish", "Publishing the prototype") : null;
 try {
+if (receipt?.status === "verified") {
+  await verifyPublished(receipt.publishedUrl);
+  if (progress) await progress.flush();
+  if (progressBuild && !options.deferCompletion) {
+    await flushQuestionHistory({ ...progressBuild, runDir: progressBuild.dir, transport: callTool });
+    const result = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" });
+    if (result.isError) throw new Error(result.content?.[0]?.text ?? "Completion refused");
+  }
+  console.log(JSON.stringify({ publishedUrl: receipt.publishedUrl, reused: true }));
+  process.exit(0);
+}
 if (progress) {
   progress.send([publishing, activityEvent(publishing, "publish-capture", "active", "Capturing the final prototype", "Capturing the built page before upload")]);
   await progress.flush();
@@ -265,7 +293,8 @@ if (progress) {
   progress.send([activityEvent(publishing, "publish-capture", "completed", "Captured the final prototype", "Saved the clean final preview"), activityEvent(publishing, "publish-upload", "active", "Uploading the prototype", `Uploading ${manifest.length} files`)]);
   await progress.flush();
 }
-const opened = unwrap(
+const reusable = receipt && (receipt.status === "uploaded" || Date.parse(receipt.expiresAt) > Date.now() + 30000);
+const opened = reusable ? receipt.opened : unwrap(
   await callTool("begin_publish", { ...target, files: manifest }).catch((e) => ({
     content: [{ text: e.message }],
   })),
@@ -274,6 +303,7 @@ if (!opened.buildId || !Array.isArray(opened.uploads)) {
   throw new Error(`Could not prepare publishing: ${opened.error ?? "the app did not return upload targets"}`);
 }
 const { buildId, pathnamePrefix, uploads } = opened;
+if (!reusable) saveReceipt({ status: "opened", opened, expiresAt: opened.expiresAt });
 console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload URLs)`);
 
 // One presigned PUT URL per file, each bound to its exact object,
@@ -282,7 +312,7 @@ console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload UR
 // Buffers, never streams: Content-Length is one of the signed
 // headers, and a chunked body has no length, so streaming always
 // fails the signature (403 SignatureDoesNotMatch).
-const results = await Promise.all(
+const results = receipt?.status === "uploaded" ? [] : await Promise.all(
   uploads.map(async (upload) => {
     const res = await fetch(upload.url, {
       method: "PUT",
@@ -300,6 +330,7 @@ if (failed.length > 0) {
   throw new Error("Publishing failed; the build remains unfinished");
 }
 
+saveReceipt({ ...receipt, status: "uploaded" });
 const finishInput = { ...target, buildId };
 if (kind === "prototype") finishInput.rigVersion = rigVersion;
 const finished = unwrap(
@@ -310,6 +341,8 @@ const finished = unwrap(
 if (!finished.publishedUrl) {
   throw new Error(`Could not verify publishing: ${finished.error ?? "the app did not confirm availability"}`);
 }
+if (kind === "prototype") await verifyPublished(finished.publishedUrl);
+saveReceipt({ status: "verified", buildId, publishedUrl: finished.publishedUrl });
 console.log(`published: ${finished.publishedUrl}`);
 if (kind === "library") console.log(`the app loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}manifest.json`);
 else console.log(`the Frame loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}prototype.json`);
@@ -320,14 +353,17 @@ if (progress) {
     workflowEvent(progressBuild.dir, "publish", "Published the prototype", "completed"),
   ]);
   await progress.flush();
+  if (!options.deferCompletion) {
+  await flushQuestionHistory({ ...progressBuild, runDir: progressBuild.dir, transport: callTool });
   const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" });
   if (completed?.isError) throw new Error(completed.content?.[0]?.text ?? "Completion report failed");
+  }
 }
 } catch (error) {
   if (progress) {
     progress.send([workflowEvent(progressBuild.dir, "publish", error.message.slice(0, 200), "failed"), activityEvent(publishing, "publish-result", "failed", "Publishing failed", error.message.slice(0, 1000))]);
     await progress.flush().catch(() => {});
-    await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }).catch(() => {});
+    if (!options.deferCompletion) await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }).catch(() => {});
   }
   throw error;
 }

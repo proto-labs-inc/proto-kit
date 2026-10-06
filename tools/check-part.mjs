@@ -60,6 +60,21 @@ const need = (name) => {
   return JSON.parse(readFileSync(path, "utf8"));
 };
 const workspace = need("workspace.json");
+if (existsSync(join(buildDir, "reference.json"))) {
+  const { checkScreenshot } = await import("./screenshot-check.mjs");
+  const reference = need("reference.json");
+  const parts = need("components.json").parts;
+  if (!parts.some(part => part.marker === slug)) fail(`No screenshot region for ${slug}`);
+  const result = await checkScreenshot({ runDir: buildDir, reference, workspace: workspace.path, parts });
+  const part = result.parts.find(part => part.marker === slug);
+  const reporter = createReporter({ codebase: options.codebase, briefId, runDir: buildDir, sink: options.noSend ? "file" : "site" });
+  const image = part.image ? await reporter.upload(readFileSync(part.image)) : undefined;
+  reporter.send([{ kind: "pass", id: slug, pass: nextPassFor(buildDir, slug), mismatch: part.mismatch, ...(image ? { image } : {}) }]);
+  if (part.status === "matched") reporter.send([{ kind: "matched", id: slug, image, rect: part.rect }]);
+  await reporter.flush();
+  console.log(JSON.stringify({ slug, matched: part.status === "matched", part, page: result.page }));
+  process.exit(0);
+}
 const tree = need("tree.json");
 const parts = need("parts.json");
 const part = parts.parts.find((p) => p.slug === slug);

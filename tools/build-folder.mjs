@@ -48,6 +48,8 @@ export function buildOfWorkspace(workspace) {
       briefId,
       dir,
       tree,
+      reference: existsSync(join(dir, "reference.json")) ? JSON.parse(readFileSync(join(dir, "reference.json"), "utf8")) : null,
+      regions: existsSync(join(dir, "components.json")) ? JSON.parse(readFileSync(join(dir, "components.json"), "utf8")).parts : null,
       curation: tree?.curation ?? null,
       read: () => JSON.parse(readFileSync(join(dir, "read.json"), "utf8")),
     };
@@ -59,6 +61,10 @@ export function buildOfWorkspace(workspace) {
 export function markerRects(build) {
   const rects = new Map();
   const nodeIds = new Map();
+  if (build?.regions) {
+    for (const part of build.regions) { rects.set(part.marker, part.rect); nodeIds.set(part.marker, part.marker); }
+    return { rects, nodeIds };
+  }
   if (!build?.tree || !build.curation) return { rects, nodeIds };
   const nodes = new Map(build.tree.nodes.map((node) => [node.id, node]));
   for (const entry of build.curation) {

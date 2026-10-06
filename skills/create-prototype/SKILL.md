@@ -33,12 +33,10 @@ root the host exposes (`PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`,
 ## Website handoffs and resumes
 
 When the user pastes a website work prompt with a `briefId`, read
-`docs/work-handoff.md` first. Fetch the brief with `get_brief`, use its persisted
-`action` and target, and preserve its ID. Read request content exclusively from
-`brief.inputs` using `tools/brief-inputs.mjs`; identity, action and target stay
-top-level. A variations action belongs to
-`add-variants`, not new-prototype creation. An old courier-delivery envelope
-is not a current work request: ask the user for a current copied prompt.
+`docs/work-handoff.md` first. For create-prototype, prepare fetches get_brief and
+validates inputs/action/target/status. Do not repeat those checks manually.
+Other actions still fetch their brief and route to their matching skill. Keep
+identity, action and target top-level and request content in brief.inputs.
 
 For an explicit resume of this same brief, verify the codebase, creator,
 prototype slug, and saved build checkpoint agree before reusing its workspace.
@@ -48,125 +46,72 @@ verified same-brief resume. Missing or contradictory state requires input.
 
 ## Progress reporting
 
-Follow `docs/build-progress.md` as soon as a saved request arrives. Report Connect
-as active on that exact briefId when connection verification starts, before
-`whoami` and `get_brief` finish. Complete that activity only after verification,
-then report Review before accessing external context. If authentication prevents
-the initial report, reconnect and deliver it as soon as possible. Do not wait for
-a title, slug, or workspace. Preserve completed requests and verified resume
-checkpoints.
+Follow `docs/build-progress.md`. The runner owns stage progress and completion;
+report context review and focused edits while doing agent work. Preserve the
+brief ID, required questions, completed requests and verified checkpoints.
 
 ## The runbook
 
 1. **Brief.** The site or a copied prompt hands you fields: `codebase`,
    `description` (may be empty when `contextUrl` carries the brief),
    `contextUrl` (a document, issue or notes link, resolved below),
-   `referenceUrl` (the live screen to copy), `referenceHtml` (structure hints; the live
-   page wins), `useRealData` (false means mock realistic data). A brief
+   `referenceUrl` (source-route context only), `referenceImage` (required full-page
+   screenshot; the visual source of truth), `useRealData` (false means mock realistic data). A brief
    whose run is `rebuild-section` goes to "Rebuilding one section". Resolve
    `contextUrl` before scaffolding: use a callable connected connector when
    available. When a matching connector plugin is available but not installed
    or connected, ask whether the user wants to install or connect it; if they
    decline, read the link in a browser. Only go straight to the browser when
    neither a callable connector nor a matching installable plugin exists.
-2. **Title and slug.** From the brief's content: 2 to 5 words naming the
-   screen or flow, never from a URL, path or issue key, never "New
-   prototype", no filler like "prototype" or "concept". Kebab-case it
-   into the slug (it becomes the subdomain label). Creation is isolated and
-   additive: the slug must be unused both at
-   `~/.proto/<codebase>/prototypes/<slug>/` and in the codebase's registered
-   gallery prototypes. Either match is a collision; keep the title and try
-   `<slug>-2`, then `<slug>-3`, checking both places each time. If the gallery
-   cannot be checked read-only, stop with `needs-input` rather than risk an
-   upsert. Never update, reuse, replace, re-register, restart, republish, or
-   otherwise mutate an existing prototype during creation.
-3. **Brief id.** For a website request, call
-   `begin_prototype_build { codebase, slug, title, briefId }` with its existing
-   ID, preserving the website card and action. Otherwise
-   `begin_prototype_build { codebase, slug, title, description, useRealData }`
-   returns a new/reused active ID; pass the brief's text you are building
-   from (a setup document's brief, the user's request) as `description`
-   and its `useRealData`, so the website shows what was asked. Early reports
-   already mark a saved request started; do not reset its status.
-   Copying a prompt never starts work.
-4. **Copy the page**, one command. This is the Copy workflow step, separate
-   from Build. Capture, curation, replication, and the copy-quality gate all
-   report `copy`; report `build` only after the gate allows the requested
-   change. The live URL is the visual source of truth.
-   Before opening a browser or tab, inspect readable existing tabs in the
-   in-app browser, the user's Chrome, and Proto Chrome on port 9333. Prefer an
-   exact `referenceUrl` match, then the same path, then the same origin, and
-   reuse a signed-in tab that provides the DOM and capture access needed. Only
-   start Proto Chrome or open a duplicate after those checks; ask the user to
-   sign in only when no readable context has a usable session. If the URL still
-   cannot be read, stop rather than inventing the page from source or memory.
-   `node tools/proto-build.mjs <briefId> --codebase <id> --page
-   <referenceUrl substring> --slug <slug> --title "<title>"`.
-   It reads the page (styles, variables, fonts, images: everything the
-   change needs, in the build folder), sends the title, drafts the
-   curation and **stops once**, printing the leaves and sections with
-   their draft names. Fix names that read as "Group", "Block", "Text" or
-   "part-nN" in the printed `curation.json` (the `raw` and `text` fields
-   say what the part is; the marker follows the name, kebab-case) and
-   leave the rest. Names become `data-proto-id` markers, which are
-   comment anchors for the prototype's life, so this is the one review
-   worth an agent turn. Then run **the same command again**: it names
-   the tree, scaffolds the workspace, replicates every leaf in parallel
-   lanes, composes `src/App.tsx`, checks the page, and prints the parts
-   list (also at `<build>/parts.json`): each part's node id, name,
-   marker, files under `src/parts/<slug>/`, whether it came from the
-   library, its check's status, its rect and its section. Every event
-   the site needs for copying (workflow, queued, pass, matched) is sent by
-   the tools. Report agent-authored changes and context through docs/build-progress.md. `--accept-curation` skips
-   the stop when the draft names are already right.
-   Pictures (logos, icons, illustrations, charts: `<img>`, inline
-   `<svg>`, `<canvas>` and stylesheet images) are copied as the page's
-   own files and set in as they are, never redrawn; nobody edits one to
-   make a check pass.
-   If the command returns `status: "needs-input"`, present its question in this
-   conversation and stop at that checkpoint. Record the answer as described
-   under Blocked, then rerun the same command. Do not advance to serving or
-   composition while the choice is unanswered.
-5. **Serve early.** The dev server the copy used has stopped; start the
-   serve skill's steps 1 to 4 now (register, provision the tunnel, write
-   the run spec, `supervise.mjs start`), in that order, and do not verify
-   through the edge yet: the tunnel connects while you write the change.
-   Registering and the heartbeat do not finish the build: its card stays
-   up and every stage is still reported. `report_progress serving` comes
-   later, at step 10, and `done` at the very end.
-6. **The gate, then the parts left to fix.** The composed page is the
-   copy's gate: the change is written on it when the page differs by at
-   most `TAIL.PAGE_PROCEED_PCT` (0.5% of its pixels) and mounted.
-   `proto-build.mjs` takes a copy over the gate through it itself: it
-   copies once more after the page settles and, still over, returns a
-   structured `needs-input` question. Present the options, recommendation,
-   copy-quality details, and impact in this conversation. No choice is made
-   by a timer. The checkpoint preserves completed capture and replication.
-   After the recorded answer, its output's `gate` says what came of it:
-   - `outcome: "proceed"`: the copy passed; `gate.line` says so in one
-     line; relay it to the user as it stands.
-   - `outcome: "build"`: the person said start on this
-     copy; carry on.
-   - `outcome: "reply"`: the person wrote what to do instead;
-     `gate.instruction` is their words. Follow it as given, as the next
-     thing you do (finish one part, skip one, use a placeholder image),
-     then carry on.
-
-   Every part in `toFix` is
-   the long tail from here, each with its reason (`toFix[].reason`: a
-   small share of the page, or simply not matched at the gate); you
-   never fix a part yourself, not even a three-pixel one. For each,
-   one `proto:part-fixer` subagent, all in parallel, in the background,
-   with the part brief below. Do not pass a model, and never pass a
-   `name`: a named agent becomes a teammate in its own session (under
-   agent teams), which does not keep this session's permission mode,
-   so every command of theirs asks the user; a plain subagent runs
-   here with this session's mode. Carry on with step 7 while they run;
-   when a fixer reports a part matched, say one short line ("The
-   resizer now matches the page") and nothing more.
+2. **Prepare.** Choose a meaningful 2 to 5 word title when the request is already
+   available. Otherwise omit --title and follow the runner result. For a
+   saved website request, run:
+   `node tools/proto-build.mjs prepare <briefId> --codebase <id> --title "<title>"`.
+   The runner verifies identity, team, capabilities, saved source path and brief;
+   atomically claims a slug; preserves the uploaded screenshot; and scaffolds the
+   workspace. Do not inspect the gallery, choose numbered slugs, update a
+   compatible plugin, or repeat its mechanical steps yourself. For a direct-chat
+   request without a brief, call begin_prototype_build once with codebase, slug,
+   title, description, useRealData, referenceUrl and referenceImage. Keep its ID
+   and use the same runner thereafter. A slug-conflict requires a numbered slug;
+   never reuse another request. Both references are required before copying.
+3. **Follow the result.** `needs-agent` describes the implementation work;
+   `needs-input` needs a real answer in this conversation; `retryable-error`
+   preserves completed work for another invocation; `done` means this request
+   already completed. Missing source/credentials go to setup for this existing
+   codebase. Never create a replacement request or codebase.
+4. **Inspect the reference.** Use only the saved screenshot for appearance and
+   the URL path to search local source. Never visit the source URL, inspect its
+   browser tab, or run live-page replication. The runner returns artifact paths
+   and the component-map contract. Keep the screenshot bytes unchanged.
+5. **Copy source components.** Inspect the saved screenshot. Use the URL path
+   as a search hint in the local codebase, then locate the route and its
+   components, styles, fonts, tokens and assets. Reuse those files in the naked
+   workspace with realistic mock data; do not start the source app. Copy needed
+   dependencies into the workspace so the published build stands alone. Preserve
+   original assets, including every face pixel; do not redraw images. If essential
+   assets are unavailable, report the blocker instead of opening the website.
+   Implement the screenshot baseline before applying the brief's change. Write
+   `<build>/components.json` as `{ "parts": [{ "marker": "header", "name":
+   "Header", "role": "section", "sourceFiles": ["src/components/Header.tsx"], "rect":
+   { "x": 0, "y": 0, "w": 1200, "h": 80 } }] }`. Use real source paths and
+   screenshot pixel regions. Mark actual prototype elements with those stable
+   data-proto-id values. These are agent-authored mappings, never a captured DOM.
+6. **Check the copy.** Run
+   `node tools/proto-build.mjs check-baseline <briefId> --codebase <id>`.
+   The runner waits for rendering and compares the generated preview with the
+   screenshot. A broken render returns diagnostics, never an acceptance gate.
+   Fix visual differences and run the same command again. There are two agent
+   repair rounds before remaining differences produce the existing acceptance
+   question. Unchanged checks reuse their evidence. Present a required question
+   in this conversation and record the actual answer with build-stream answered.
+   Acceptance belongs to that baseline only. Free-text replies are instructions,
+   not automatic permission to advance. A passed or accepted baseline starts its
+   supervised preview automatically. Do not repeat serve steps manually.
+   The capture remains one screenshot pixel per CSS pixel. If capture dimensions
+   are needed, ask rather than claiming exact fidelity without evidence.
 7. **Write the change.** Edit only the parts the brief is about, from the
-   parts list and the copied files: never re-read the live page with
-   ad-hoc scripts, the read has everything. A part from the library is a
+   parts list and the copied files: use the saved screenshot and local source code; never open the reference URL. A part from the library is a
    library component copied into `src/parts/`; edit the copy. Send
    `build-stream.mjs focus <briefId> --codebase <id> <nodeId>` when you
    start on a part, so the site shows which one.
@@ -175,13 +120,8 @@ checkpoints.
      is a state in `public/prototype.json` (id, title, one-line
      description, `parent` for branches) and a branch in the code via
      `usePreviewState` from `@proto-labs-inc/rig`; the ids in both must match.
-     When the read said a dialog covers the page (`tree.json` carries
-     `overlay` with the backdrop's and the dialog's node ids, and the
-     read printed one line about it), the dialog is a state of its
-     own: the copy shows it as the page does, the page under it is
-     the default state, and the dialog's own close control moves
-     between them. The checks already compare parts under the
-     backdrop with its shading accounted for. The
+     When the screenshot shows a dialog, represent it as a preview state. Use
+     source code for its behavior; do not invent evidence for hidden states. The
      rig owns the URL (`?state=<id>`); wire the product's own controls to
      move between states. Hover and focus are CSS, not states.
    - **Variants**: step 8.
@@ -210,28 +150,17 @@ checkpoints.
    parallel, in the background, with the variant brief below; do not
    pass a model, and never a `name` (step 6 says why). Mobbin
    references are not gathered in a build: the baseline is the reference.
-9. **Check, as tools.** When the variant units are back (the part
-   fixers are the tail: `node tools/tail.mjs decide <codebase> --build
-   <briefId>` prints where they stand, at once; relay its one line and
-   never wait for them, they stop on their own budget):
-   - `pnpm typecheck` in the workspace and `node tools/verify-markers.mjs <workspace>`.
-   - `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>`:
-     every state and every variant loaded headless; blank renders,
-     console errors, a set's marker missing from its view, parts drawn
-     outside their parents or over siblings, and the untouched parts
-     against the read (moved, resized, pixel clusters outside the
-     change). Add `--changed <marker,marker>` for parts you edited
-     outside a variant set (the sets' components are known). Fix what it
-     names, run it again; two rounds, then report what remains. It sends
-     the pass and matched events for the changed parts.
-   - `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>`:
-     the variant previews from real renders, into the manifest, and the
-     set's `status` cleared.
-10. **Serve.** Continue in the serve skill at step 5 (verify through the
-    edge, publish, report). Publishing reports its actual upload and availability
-    checks, a clean screenshot of the built files, and completion. Registration
-    and heartbeats do not complete the brief. Tell the user it is reachable only
-    after verification. Never commit anything into the user's repos.
+9. **Exercise interactions.** Test the behavior specific to the request,
+   including meaningful keyboard, empty/error and data consistency cases. The
+   runner's generic checks do not replace these assertions.
+10. **Finish.** Run
+    `node tools/proto-build.mjs finish <briefId> --codebase <id> --changed <marker,marker>`.
+    It verifies types, markers, states and variants, generates previews, builds,
+    verifies hosting, publishes and flushes required history before completion.
+    Fix `needs-agent` diagnostics and rerun; delivery retries reuse verified
+    output. Return only verified URLs. A blocked tunnel still permits static
+    publication and retains the existing failed-live-view reporting policy.
+    See `docs/create-runner.md` for checkpoints, timing and recovery.
 
 ## Blocked
 
@@ -267,37 +196,14 @@ A failure is `report_progress failed` with one plain sentence.
 
 ## The part brief
 
-> Fix the part `<slug>` (`<name>`, node `<nodeId>`) of build `<briefId>`
-> in codebase `<codebase>` so it matches the reference page. Its folder
-> is `<workspace>/src/parts/<slug>/` (`<Name>.tsx`, `<Name>.module.css`,
-> `component.json`); the build folder is
-> `~/.proto/<codebase>/run/builds/<briefId>/`. What differs: `<the
-> part's differs entry>`. Pass pictures are in `<build>/checks/<slug>/`
-> (`<n>-live.png` the product, `<n>.png` ours, `<n>-diff.png` the
-> difference). First run `node <kit>/tools/explain-diff.mjs <codebase>
-> <slug> --build <briefId>`: it reads the page's element and our part
-> at the differing spots and names each difference (a computed value,
-> a box, a text, a reference that points at nothing, an image or a
-> face that did not load, the colour behind the part). Apply the fix
-> it names in the module or stylesheet, never in a picture file
-> (`picture*`, `image*`, `background*`: the page's own, set in as it
-> is; a difference inside one is its size or what is around it). Then
-> run `node
-> <kit>/tools/check-part.mjs <briefId> --codebase <codebase> <slug>`.
-> Budget: three checks or two minutes from your start, whichever comes
-> first; then stop and report. Done is `matched: true` from the check
-> and no type error of yours in its `typecheck`; `stop: true` on a
-> state that still differs or failed is not done, whatever the number.
-> Never remove an element, a list item or a text the page has to quiet
-> a diff: a difference is fixed by a value. A check that stops you
-> without a match restores the part to how replicate wrote it (from
-> the copy explain-diff kept); report `restored`. `<build>/read.json`
-> holds the page's computed styles (`tree.json` names the element
-> index) when you need a value explain-diff did not print. Never write a script against the
-> Proto window or the headless Chrome (no attach.mjs, cdp.mjs, ws, port
-> 9333 or 9444 from your own code). Write only in the part's folder.
-> Report what explain-diff named, what you changed, and the last
-> check's verdict and mismatch per state.
+When delegating a screenshot copy correction, give the agent its marker,
+workspace, source files, screenshot region and the latest check result. It owns
+only that component's files, is not alone in the workspace, and must preserve
+others' edits. It reads the saved screenshot and source components, changes code
+and styles, then runs `check-part.mjs <briefId> --codebase <id> <marker>` and the
+workspace typecheck. Never change screenshot pixels or visit the source URL.
+Report what changed, pixel mismatch, and typecheck results. Missing assets or
+unseen behavior require a question; a screenshot is not evidence of a DOM tree.
 
 ## The variant brief
 
@@ -358,6 +264,13 @@ lazy-imports it for comment capture).
 
 ## Rebuilding one section
 
+For a screenshot-backed build (`reference.json` in its build folder), use the
+saved image and `components.json` to locate the section. Edit its source-derived
+component and check with `check-part.mjs`; never invoke `replicate.mjs` or fetch
+the reference URL. Keep the other components intact, then run state checks and
+publish. The live-read instructions below apply only to older builds.
+
+
 A brief whose run is `rebuild-section` is a change asked from the
 Frame's element picker: `get_brief` gives the prototype
 (`prototype_slug`), the component (`section`, its `data-proto-id`) and
@@ -372,13 +285,8 @@ shows the change: the node is the one whose `marker` is the section.
 
 ### Copy retry scope
 
-Copy-gate retries retain matched components whose captured inputs are unchanged
-and whose generated files still exist. Only failing, changed, or missing
-components are replicated again; the complete page is still composed and
-checked. `proto-build.mjs` uses this behavior by default. Use
-`--retry-mode full` for an explicit full retry, or `--again` to restart the
-initial copy: it reads the page afresh, stops at the curation review again
-(unless `--accept-curation`) and copies anew, for a read that was itself wrong
-(the page mid-load, signed out, or showing a flash message). Run every later
-step without `--again`. Missing or incompatible retry checkpoints fall back to
-copying all components.
+Retries keep the original screenshot and source mapping. Fix only the components
+that still differ, then rerun the same command with `--check`. The tool renders
+the whole local page and compares it with the same saved image. A pending gate
+resumes its existing question and answer instead of asking again. The old
+`--again`, `--page` and live recapture workflow are not used for creation.

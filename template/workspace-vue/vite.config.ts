@@ -16,7 +16,6 @@ export default defineConfig({
     // through the gateway. Off by default so local dev stays untouched.
     ...(tunnel && {
       allowedHosts: true,
-      hmr: { protocol: "wss", clientPort: 443 },
     }),
   },
 });

@@ -36,7 +36,7 @@ const PICTURE = /(^|[\s>])(img|svg|picture|canvas)\b/;
 
 /** The matched parts' share of the page's parts by area, 0 to 1. */
 export function matchedShare(replicated, tree) {
-  const nodes = new Map(tree.nodes.map((node) => [node.id, node]));
+  const nodes = new Map((tree.regions ?? tree.nodes).map((node) => [node.marker ?? node.id, node]));
   let matched = 0;
   let total = 0;
   for (const part of replicated.parts ?? []) {
@@ -49,8 +49,8 @@ export function matchedShare(replicated, tree) {
 
 /** The parts that never matched, largest first: { id, name, picture }. */
 export function missingParts(replicated, tree) {
-  const nodes = new Map(tree.nodes.map((node) => [node.id, node]));
-  const names = new Map((tree.curation ?? []).map((entry) => [entry.id, entry.name]));
+  const nodes = new Map((tree.regions ?? tree.nodes).map((node) => [node.marker ?? node.id, node]));
+  const names = new Map((tree.regions ?? tree.curation ?? []).map((entry) => [entry.marker ?? entry.id, entry.name]));
   return (replicated.parts ?? [])
     .filter((part) => part.status !== "matched")
     .map((part) => {

@@ -1,10 +1,11 @@
 /** Durable chat questions with bounded best-effort outbound history and progress. */
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createReporter } from "./build-report.mjs";
 import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 import { answerChatQuestion, chatAnswer, keepChatQuestion, needsChatInput, readChatQuestion } from "./chat-questions.mjs";
 
-export const CHAT_PROGRESS_TIMEOUT_MS = 1_000;
+export const CHAT_PROGRESS_TIMEOUT_MS = 15_000;
 
 function history(build, questionId, answer = null) {
   const question = readChatQuestion(build, questionId).question;
@@ -19,37 +20,47 @@ function history(build, questionId, answer = null) {
   }).filter(({ marker }) => !existsSync(marker));
 }
 
-/** Both outbound requests share a single deadline; neither is an input channel. */
+async function boundedCall(name, args, target) {
+  const controller = new AbortController(); let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => {
+    const error = new Error("Outbound update timed out"); error.name = "TimeoutError";
+    controller.abort(error); reject(error);
+  }, CHAT_PROGRESS_TIMEOUT_MS); });
+  try { return await Promise.race([callTool(name, args, target, { signal: controller.signal }), timeout]); }
+  finally { clearTimeout(timer); }
+}
+/** Question history shares the regular durable outbox; answers follow questions. */
+async function deliverHistory(build, pending) {
+  if (build.sink === "file") return;
+  const target = build.progressTarget ?? targetFor(readConfig(), { codebase: build.codebase });
+  const reporter = createReporter({ ...build, transport: (name, args) =>
+    boundedCall(name, args, target) });
+  for (const { event, marker } of pending) {
+    // A durable key makes a restart between queueing and acknowledgment harmless.
+    reporter.send([event], { key: `${event.kind}-${event.id ?? event.questionId}` });
+    await reporter.flush();
+    writeFileSync(marker, "reported\n");
+  }
+  await reporter.flush();
+}
+export async function flushQuestionHistory(build) {
+  const dir = join(build.runDir, "questions");
+  if (!existsSync(dir)) return;
+  for (const file of readdirSync(dir).filter(name => /^q-[a-z0-9-]+\.json$/.test(name)).sort()) {
+    const id = file.slice(0, -5);
+    await deliverHistory(build, history(build, id, chatAnswer(build, id)));
+  }
+}
 async function reportState(build, { status, message, pending }) {
-  if (build.sink === "file" || (!status && pending.length === 0)) return;
-  const controller = new AbortController();
-  let timer;
-  const deadline = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      const error = new Error("outbound update timed out");
-      controller.abort(error);
-      reject(error);
-    }, CHAT_PROGRESS_TIMEOUT_MS);
-  });
+  if (build.sink === "file") return;
   try {
-    const target = build.progressTarget ?? targetFor(readConfig(), { codebase: build.codebase });
-    const requests = [];
-    if (status) requests.push(callTool("report_progress", { briefId: build.briefId, status, ...(message ? { message } : {}) }, target, { signal: controller.signal }));
-    if (pending.length) requests.push((async () => {
-      // Cloud accepts each answer on its own, after its question exists.
-      // Offline retries must deliver the question first, not a mixed batch.
-      for (const { event, marker } of pending) {
-        if (controller.signal.aborted) return;
-        const result = await callTool("report_build_events", { codebase: build.codebase, briefId: build.briefId, events: [event] }, target, { signal: controller.signal });
-        if (result?.isError) return result;
-        writeFileSync(marker, "reported\n");
-      }
-    })());
-    const results = await Promise.race([deadline, Promise.allSettled(requests)]);
-    if (results.some((result) => result.status === "rejected" || result.value?.isError)) console.error("… the site did not accept every update; local question history is preserved");
-  } catch (error) {
-    console.error(`… outbound update did not reach the site (${error.message.split("\n")[0]}); local question history is preserved`);
-  } finally { clearTimeout(timer); }
+    await deliverHistory(build, pending);
+    if (status) {
+      const target = build.progressTarget ?? targetFor(readConfig(), { codebase: build.codebase });
+      const result = await boundedCall("report_progress", { briefId: build.briefId, status, ...(message ? { message } : {}) }, target);
+      if (result.isError) throw new Error(result.content?.[0]?.text ?? "Progress refused");
+    }
+  } catch (error) { console.error(`Outbound update pending: ${error.message.split("\n")[0]}`); }
 }
 
 export async function ask(build, fields) {

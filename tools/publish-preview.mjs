@@ -22,8 +22,8 @@ export async function capturePublishedPreview(dist, build, reporter, revision) {
   await new Promise((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
   let opened;
   try {
-    const viewport = build.tree?.viewport ?? { width: 1280, height: 800 };
-    opened = await headlessPage(`http://127.0.0.1:${server.address().port}/`, { ...viewport, display: launchedDisplayOr(viewport) });
+    const viewport = build.reference ?? build.tree?.viewport ?? { width: 1280, height: 800 };
+    opened = await headlessPage(`http://127.0.0.1:${server.address().port}/`, { ...viewport, display: build.reference ? { dpr: 1, colorProfile: "srgb" } : launchedDisplayOr(viewport), generated: true });
     const path = join(build.dir, "publish-preview.png");
     await stableShot(opened.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, path);
     reporter.send([{ kind: "preview", reportId: randomUUID(), revision, image: await reporter.upload(readFileSync(path)), ...viewport }]);

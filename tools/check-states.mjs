@@ -60,8 +60,8 @@ const step = (line) => console.error(`… ${line}`);
 const manifest = JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8"));
 const build = buildOfWorkspace(workspace);
 const { rects: readRects, nodeIds } = markerRects(build);
-const viewport = build?.tree?.viewport ?? { width: 1280, height: 800 };
-const display = launchedDisplayOr(viewport);
+const viewport = build?.reference ?? build?.tree?.viewport ?? { width: 1280, height: 800 };
+const display = build?.reference ? { dpr: 1, colorProfile: "srgb" } : launchedDisplayOr(viewport);
 const changed = new Set([...(options.changed ? options.changed.split(",") : []), ...(manifest.variantSets ?? []).map((set) => set.component)].map((m) => m.trim()).filter(Boolean));
 const outDir = build ? join(build.dir, "checks", "after") : join(workspace, ".proto-checks");
 mkdirSync(outDir, { recursive: true });
@@ -77,7 +77,7 @@ const copyView = views.some((view) => view.name === "copy") ? "copy" : "default"
 
 /** One view opened, listened to and measured. */
 async function checkView(view) {
-  const opened = await headlessPage(view.url, { ...viewport, display });
+  const opened = await headlessPage(view.url, { ...viewport, display, generated: true, markers: view.component ? [view.component] : [] });
   const { page } = opened;
   const errors = [];
   try {
@@ -194,7 +194,7 @@ async function copyCheck(marks, opened) {
     else if (Math.abs(w - read.w) > 1 || Math.abs(h - read.h) > 1) resized.push(entry);
   }
   let pixels = null;
-  const frame = framePaths(build.codebase);
+  const frame = build.reference ? { png: join(build.dir, "reference.png") } : framePaths(build.codebase);
   if (existsSync(frame.png)) {
     const mine = join(outDir, "default.png");
     const diff = join(outDir, "default-diff.png");

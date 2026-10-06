@@ -7,13 +7,12 @@ the user for a current work prompt instead.
 
 For a prompt with a brief ID:
 
-1. For create-prototype, follow `docs/build-progress.md` immediately: enter
-   Connect with an active verification activity before whoami and get_brief
-   finish, using the existing credential. Do not report a verified connection
-   until those checks succeed. If authentication fails, reconnect through setup.
-   Use the configured app and authenticated `get_brief { briefId }`. Match the
-   returned codebase and scoped target to the prompt. Do not switch teams to
-   get around a refusal or treat the ID as a bearer credential.
+1. For create-prototype, run `proto-build.mjs prepare <briefId> --codebase <id>`.
+   The runner owns whoami, get_brief, target verification, progress and atomic
+   claims. Do not repeat those operations manually. Return its needs-agent work
+   to the active agent, and present needs-input in this conversation. Other
+   actions still verify the configured app, team and get_brief before edits.
+   Do not switch teams around a refusal or treat an ID as a bearer credential.
 2. Read request content exclusively from `brief.inputs`: `description`,
    `documentUrl`, `referenceUrl`, `referenceImage`, `referenceHtml`, and
    `useRealData`. The retired top-level input columns may remain in responses
@@ -21,6 +20,8 @@ For a prompt with a brief ID:
    section rebuilds, and resume. Identity, action, status, and target remain
    top-level. If `inputs` is absent or malformed, report a contract blocker in
    the active conversation instead of reconstructing it from retired columns.
+   Null references on a historical request are valid saved data; creation asks
+   for missing references before copying. A completed request remains complete.
    Read the persisted `action`: `create-prototype`, `add-variants`, or
    `rebuild-section`. Route to the matching skill (section changes use the
    create-prototype skill's section-only procedure). Do not infer action from
@@ -28,7 +29,7 @@ For a prompt with a brief ID:
 3. If a historical brief has no action, ask the user to choose its action in
    the website's resume flow. Never guess or create a replacement brief.
 4. Preserve `briefId`, `prototype_slug`, `section`, and `parent_brief_id`.
-   For a new prototype, pass the existing ID to `begin_prototype_build`; for
+   For a new prototype, pass the existing ID to `proto-build.mjs prepare`; it calls `begin_prototype_build` with that ID. For
    edits use the existing target workspace. Report `started` when work begins,
    then phase progress, `needs-input`, failure, or completion as appropriate.
 5. An explicit resume keeps the same workspace and saved checkpoint after

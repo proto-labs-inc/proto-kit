@@ -57,10 +57,10 @@ The library and the import:
 
 A prototype build (`docs/build-read.md`):
 
-- `proto-build.mjs`: the whole copy of the reference page in one command, then the parts list.
+- `proto-build.mjs`: resumable `prepare`, `check-baseline`, and `finish` stages for screenshot-based creation; the source URL is never visited. See [the runner contract](docs/create-runner.md).
 - `build-stream.mjs`: outbound build events and resumable questions answered in the active conversation.
 - `copy-gate.mjs`: one automatic copy retry, then a saved chat decision checkpoint; required choices never time out.
-- `scaffold.mjs`, `replicate.mjs`: the workspace from the read; every leaf copied, checked and composed.
+- `scaffold.mjs`: the standalone workspace. `screenshot-reference.mjs` and `screenshot-check.mjs` preserve the uploaded image and verify the generated page. `replicate.mjs` remains for older live-read workspaces.
 - `variant-set.mjs`: a variant set's skeleton, one stub per variant for the units.
 - `check-states.mjs`: every state and variant loaded headless; errors, rect sanity, the untouched parts against the read.
 - `previews.mjs`: the variant previews from real renders, into the manifest.

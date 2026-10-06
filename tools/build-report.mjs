@@ -16,9 +16,10 @@
  * after acknowledgement. A subsequent flush or invocation retries them.
  * Upload failures preserve the local capture and stop dependent reporting.
  */
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, renameSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { validateReport } from "./report-contract.mjs";
 import { callTool } from "./mcp-call.mjs";
 
 const BATCH = 150;
@@ -37,6 +38,7 @@ export function createReporter({ codebase, briefId, runDir, sink = "site", trans
     writeFileSync(join(runDir, "events.jsonl"), lines + "\n", { flag: "a" });
   };
   const outbox = join(runDir, "outbox");
+  const receipts = join(runDir, "outbox-receipts");
   const deliver = async (events) => {
     if (sink === "file") return toFolder(events);
     mkdirSync(outbox, { recursive: true });
@@ -46,10 +48,21 @@ export function createReporter({ codebase, briefId, runDir, sink = "site", trans
       try {
         const pending = JSON.parse(readFileSync(path, "utf8"));
         for (let i = 0; i < pending.length; i += BATCH) {
-          const result = await transport("report_build_events", { codebase, briefId, events: pending.slice(i, i + BATCH) });
-          if (result?.isError) throw new Error(result.content?.[0]?.text ?? "report rejected");
+          let delivered = false;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const result = await transport("report_build_events", { codebase, briefId, events: pending.slice(i, i + BATCH) });
+              if (result?.isError) throw new Error(result.content?.[0]?.text ?? "report rejected");
+              delivered = true; break;
+            } catch (error) {
+              if (attempt === 2 || error.name === "TimeoutError" || error.name === "AbortError") throw error;
+              await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+            }
+          }
+          if (!delivered) throw new Error("Progress delivery failed");
         }
         toFolder(pending);
+        if (file.startsWith("key-")) { mkdirSync(receipts, { recursive: true }); writeFileSync(join(receipts, file), JSON.stringify(pending)); }
         unlinkSync(path);
       } catch (error) {
         if (error.code === "ENOENT") continue;
@@ -72,15 +85,23 @@ export function createReporter({ codebase, briefId, runDir, sink = "site", trans
   };
 
   let sequence = 0;
-  const send = (events) => {
+  const send = (events, { key } = {}) => {
+    if (key && !/^[a-z0-9-]+$/.test(key)) throw new Error("Invalid outbox key");
     const reports = events.map(event => {
       if (["question", "answered"].includes(event.kind)) return event;
       return { ...event, reportId: event.reportId ?? randomUUID() };
     });
+    for (const report of reports) validateReport(report);
     if (sink === "file") waiting.push(...reports);
     else {
       mkdirSync(outbox, { recursive: true });
-      const path = join(outbox, `${Date.now()}-${process.pid}-${String(sequence++).padStart(8, "0")}-${randomUUID()}`);
+      const name = key ? `key-${key}` : `${Date.now()}-${process.pid}-${String(sequence++).padStart(8, "0")}-${randomUUID()}`;
+      const path = join(outbox, name);
+      for (const saved of [path + ".json", join(receipts, name + ".json")]) {
+        if (!existsSync(saved)) continue;
+        if (readFileSync(saved, "utf8") !== JSON.stringify(reports)) throw new Error("Outbox key already names different events");
+        return;
+      }
       writeFileSync(path + ".pending", JSON.stringify(reports));
       renameSync(path + ".pending", path + ".json");
     }

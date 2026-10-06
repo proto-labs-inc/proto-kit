@@ -1,3 +1,7 @@
+> Screenshot-based create-prototype builds use [the staged runner](create-runner.md).
+> The live-page artifacts described below apply to the workflows that still
+> explicitly use them. Never use them to recapture a creation reference URL.
+
 # The build's read, curation and copy
 
 What a prototype build keeps on the laptop and what each tool reads and

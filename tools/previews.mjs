@@ -49,8 +49,8 @@ const manifestPath = join(workspace, "public", "prototype.json");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const build = buildOfWorkspace(workspace);
 const { nodeIds } = markerRects(build);
-const viewport = build?.tree?.viewport ?? { width: 1280, height: 800 };
-const display = launchedDisplayOr(viewport);
+const viewport = build?.reference ?? build?.tree?.viewport ?? { width: 1280, height: 800 };
+const display = build?.reference ? { dpr: 1, colorProfile: "srgb" } : launchedDisplayOr(viewport);
 const previewsDir = join(workspace, "public", "previews");
 mkdirSync(previewsDir, { recursive: true });
 const logDir = build ? build.dir : join(workspace, ".proto-checks");
@@ -64,7 +64,7 @@ const missing = [];
 
 /** One variant pictured: the union of its marked elements, padded, clipped to the viewport. */
 async function picture(view) {
-  const opened = await headlessPage(view.url, { ...viewport, display });
+  const opened = await headlessPage(view.url, { ...viewport, display, generated: true, markers: view.component ? [view.component] : [] });
   try {
     const marks = await waitForMarkers(opened.page);
     const mine = marks?.marks.filter((m) => m.id === view.component && !m.hidden && m.rect[2] > 0 && m.rect[3] > 0) ?? [];
