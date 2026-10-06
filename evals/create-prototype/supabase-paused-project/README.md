@@ -78,3 +78,30 @@ Run 1 notes:
 - The agent checked the kit version and tools, read the skill, and ran `proto-build.mjs prepare`, which stopped with "Run setup to restore this existing codebase source record". The codebase existed on the server, but this laptop had no `~/.proto/iizza72u/codebase.json`.
 - Restoring the record means calling `set_codebase_source` with the folder path and git remote. Claude Code's permission check blocked that as possible data exfiltration, so the agent stopped and asked the person to confirm.
 - At 01:13 UTC (deployed about 01:30) Maayan force-pushed `main`. proto `84dfb37` and kit `2bbfde1` keep the JSON brief inputs but drop the screenshot flow, so the run was left there.
+
+## The rebuild copy against the freeze copy (2026-10-06)
+
+Every run went through the website as a user would: the new-prototype form, Copy build prompt, paste into Claude Code (Opus 5.5, permissions bypassed after run 2's stops), `/clear` between runs, every multiple-choice question answered with its recommended option. Times are the agent's working time from its trace (`tools/trace.mjs`, stage split), without the person's answers. "Copy vs live" renders the prototype's Current option and the live page in Proto Chrome at the same viewport and diffs them with the kit's diff.
+
+| Run | Kit | Brief | Prototype | Working | Copy | Build | Variants | Checks + publish | Tool calls | Subagents (gave up) | Copy vs live |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---:|
+| A1 | rebuild (published kit 2bbfde1) | `1d18842c99` | [paused-project-notice-2](https://prototypes.fun/p/paused-project-notice-2) | 11m42s | 1m04s | 2m19s | 3m39s | 3m21s | 323 | 12 (4) | 0.06% (926 px) |
+| A2 | rebuild (published kit 2bbfde1) | `fca5b20276` | [paused-project-notice-3](https://prototypes.fun/p/paused-project-notice-3) | 13m51s | 47.3s | 1m60s | 2m34s | 7m24s | 318 | 12 (5) | 0.06% (926 px) |
+| A3 | rebuild (published kit 2bbfde1) | `a5a366438b` | [paused-project-resume-notice](https://prototypes.fun/p/paused-project-resume-notice) | 14m03s | 45.8s | 1m55s | 2m55s | 7m29s | 352 | 12 (4) | 0.06% (926 px) |
+| B1 | freeze (kit cca9c8e) | `dc8091bf6f` | [paused-project-notice-4](https://prototypes.fun/p/paused-project-notice-4) | 13m32s | 11.4s | 1m15s | 3m47s | 6m13s | 209 | 3 (0) | 0.01% (97 px) |
+| B2 | freeze (kit c88070e) | `51e71a7622` | [paused-project-resume-deadline](https://prototypes.fun/p/paused-project-resume-deadline) | 12m07s | 12.2s | 52.1s | 3m24s | 7m00s | 175 | 3 (0) | 0.01% (97 px) |
+| B3 | freeze (kit c88070e) | `a7e0e02bdb` | [paused-project-at-a-glance](https://prototypes.fun/p/paused-project-at-a-glance) | 7m55s | 11.5s | 53.1s | 3m37s | 2m23s | 184 | 3 (0) | 0.01% (97 px) |
+| B4 | freeze + Sonnet variant builders (kit cd41adc) | `6476483028` | [paused-project-status-card](https://prototypes.fun/p/paused-project-status-card) | 12m02s | 12.2s | 45.1s | 6m04s | 4m11s | 140 | 3 (0) | 0.01% (97 px) |
+
+Averages over three runs each (B4 aside): rebuild 13m12s, freeze 11m11s. Copy 52 s and a gate question against 12 s and none; build 2m05s against 1m00s; 331 tool calls against 189; 12 subagents (4 to 5 gave up) against 3.
+
+Findings:
+
+- The freeze makes the copy cheap and exact (0.01% off, no gate, no fixers). The rebuild's copy failed its gate every run (1.94%, 2 of 11 parts), its 9 part-fixers matched nothing, and every run repaired a container the rebuild had collapsed to 80 px.
+- Most of every run is now variants and checks: the main agent reviews the previews and rewrites the variant builders' work. Sonnet builders (B4) cost as much time as they saved.
+- Interactivity is the same in both: the copied page is static (Download backups does nothing); the agent's Resume flow works in every run.
+- Every run spent 40 s to 2 min on the gallery slug check and asked the person, because no tool lists a codebase's prototypes.
+
+Kit fixes made between runs: relative frozen asset paths and file types from bytes (after B1's refused publishes, `c88070e`); frozen-aware variant builders on Sonnet (`cd41adc`).
+
+Runs' recordings (terminal every 15 s, website screenshots, judge renders) and the canvas: `~/Proto/experiments/supabase-runs/` on the Mac mini; canvas at https://claude.ai/artifact/HMWzFCWy8GEuSCDzLT6Yvd.
