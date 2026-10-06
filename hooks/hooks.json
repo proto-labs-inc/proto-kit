@@ -45,6 +45,10 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/tools/hooks/trace-hook.mjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/tools/hooks/telemetry-turn.mjs\""
           }
         ]
       }

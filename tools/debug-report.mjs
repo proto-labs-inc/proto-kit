@@ -15,14 +15,27 @@
  *     by the user.
  *
  * A snapshot is the session's whole transcript and its subagents'
- * transcripts, plus everything under ~/.proto except dependencies,
- * build output, the browser profile, the laptop's config.json and all of
- * traces/ but each trace's report.md, summary.json and flags.json. The user's own repository is
- * never collected; whatever of it the agent read is in the transcript.
- * Nothing is changed or trimmed: each file is gzipped as it is and PUT
- * to the signed URL begin_debug_report returns, streamed with its exact
- * Content-Length (a chunked body would fail the signature). Each
- * snapshot is its own report.
+ * transcripts, the session's whole trace (rebuilt with this kit first:
+ * transcript.html and its step pages, report.md, summary.json, flags),
+ * and ~/.proto scoped to what the session worked on: the codebases,
+ * prototypes and builds its trace names (meta.json), never another
+ * prototype's workspace, build or serve folder, another session's trace
+ * or log, dependencies, build output, browser profiles, raw screen
+ * frames or the laptop's config.json. A session that touched no
+ * codebase sends ~/.proto with those same exclusions. The user's own
+ * repository is never collected; whatever of it the agent read is in
+ * the transcript. Secrets are scrubbed from every text file before it
+ * leaves (the laptop's link credentials wherever they appear, tunnel
+ * tokens, bearer tokens, JWTs, common API keys); nothing else is
+ * changed. Each file is gzipped and PUT to the signed URL
+ * begin_debug_report returns, streamed with its exact Content-Length (a
+ * chunked body would fail the signature). Each snapshot is its own
+ * report.
+ *
+ * The agent never uploads. `flag` (the debug skill) only records a
+ * headline on this laptop and wakes the session's watcher, which sends
+ * the snapshot with it; the session's hooks start the watcher and wake
+ * it at the end of every turn.
  *
  * Which session `send` belongs to: the skill puts a token it made up on
  * its command line, that command lands in this session's transcript on
@@ -38,9 +51,10 @@
  *                subagents), and theirs in turn
  *
  * Usage:
+ *   node debug-report.mjs flag --token <token> --title <headline> [--note <text>] [--codebase <codebase>] [--wait]
  *   node debug-report.mjs send [--token <token>] [--transcript <path>]
  *        [--title <headline>] [--note <text>] [--codebase <codebase>] [--detach]
- *   node debug-report.mjs watch --transcript <path> [--session <id>]
+ *   node debug-report.mjs watch --transcript <path> [--session <id>] [--harness <harness>]
  */
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -102,6 +116,11 @@ const SKIP_DIRS = new Set([
 ]);
 /** The laptop's link secret: never leaves the laptop. */
 const SECRET_FILES = new Set([join(PROTO_HOME, "config.json")]);
+/** Raw screen frames (tools/cdp/live.mjs): large and never read. */
+const SKIP_FILES = /\.rgba$/;
+/** A turn's end wakes the watcher; turns closer together than this share a snapshot. */
+const TURN_GAP_MS = ms("PROTO_TELEMETRY_TURN_GAP_MS", 60_000);
+const FLAG_WAIT_MS = ms("PROTO_TELEMETRY_FLAG_WAIT_MS", 120_000);
 
 // ---------------------------------------------------------------------
 // Which session
@@ -280,13 +299,108 @@ function keepTrace(p, isDir) {
   return TRACE_KEEP.has(parts[1]) || (parts[1] === "transcript.jsonl" && existsSync(join(TRACES, parts[0], "hooks.jsonl")));
 }
 
-/** Everything under ~/.proto worth reading. */
-export function protoFiles() {
+/** Of traces/, with a session: that session's whole trace folder but the
+ *  copies of its transcripts (sent as session.jsonl and session/), except
+ *  a Cursor trace's transcript, found nowhere else. */
+function keepSessionTrace(p, isDir, id) {
+  const parts = relative(TRACES, p).split(sep);
+  if (parts[0] !== id) return false;
+  if (isDir) return parts[1] !== "subagents";
+  if (parts.length === 2 && parts[1] === "transcript.jsonl") return existsSync(join(TRACES, id, "hooks.jsonl"));
+  return true;
+}
+
+/** What the session worked on, from its trace's meta.json: the codebases,
+ *  prototypes ("cb/slug") and builds ("cb/id") it touched. Null keeps
+ *  every one of them. */
+export function scopeOf(id, meta) {
+  if (!id) return null;
+  const codebases = meta?.codebases?.length ? new Set(meta.codebases) : null;
+  return {
+    session: id,
+    codebases,
+    prototypes: codebases ? new Set((meta.prototypes ?? []).map((p) => `${p.codebase}/${p.slug}`)) : null,
+    builds: codebases ? new Set(meta.builds ?? []) : null,
+  };
+}
+
+/** Whether a path under ~/.proto belongs to what the scope names: another
+ *  codebase, another prototype's workspace, build or serve folder do not. */
+function inScope(p, scope) {
+  if (!scope?.codebases) return true;
+  const [cb, area, name, sub] = relative(PROTO_HOME, p).split(sep);
+  if (!existsSync(join(PROTO_HOME, cb, "codebase.json"))) return true;
+  if (!scope.codebases.has(cb)) return false;
+  if (area === "prototypes" && name) return scope.prototypes.has(`${cb}/${name}`);
+  if (area === "run" && name === "builds" && sub) return scope.builds.has(`${cb}/${sub}`);
+  if (area === "run" && name && name !== "builds" && existsSync(join(PROTO_HOME, cb, "prototypes", name))) return scope.prototypes.has(`${cb}/${name}`);
+  return true;
+}
+
+/** Everything under ~/.proto worth reading; with a scope, only what that
+ *  session worked on (see scopeOf). */
+export function protoFiles(scope = null) {
   const keep = (p, isDir) => {
-    if (p.startsWith(TRACES + sep)) return keepTrace(p, isDir);
-    return isDir ? !SKIP_DIRS.has(basename(p)) : !SECRET_FILES.has(p);
+    if (p.startsWith(TRACES + sep)) return scope ? keepSessionTrace(p, isDir, scope.session) : keepTrace(p, isDir);
+    if (scope && p.startsWith(TELEMETRY_DIR + sep)) return isDir || basename(p).startsWith(scope.session);
+    if (isDir ? SKIP_DIRS.has(basename(p)) : SECRET_FILES.has(p) || SKIP_FILES.test(p)) return false;
+    return inScope(p, scope);
   };
   return walkFiles(PROTO_HOME, keep).map((path) => ({ name: `proto/${relative(PROTO_HOME, path)}`, path }));
+}
+
+/** The session's trace, rebuilt with this kit (the one on disk may be a
+ *  turn behind, or written by an older kit), and the scope it names. */
+const TRACE_TOOL = join(KIT, "tools", "trace.mjs");
+export function refreshTrace(session) {
+  if (!session?.id) return null;
+  spawnSync(process.execPath, [TRACE_TOOL, "sync", "--transcript", session.path, "--session", session.id, "--harness", session.harness], { encoding: "utf8", timeout: 120_000 });
+  let meta = null;
+  try {
+    meta = JSON.parse(readFileSync(join(TRACES, session.id, "meta.json"), "utf8"));
+  } catch {}
+  return scopeOf(session.id, meta);
+}
+
+// ---------------------------------------------------------------------
+// Secrets
+
+/** The laptop's link credentials, as literal strings to scrub anywhere. */
+function laptopSecrets() {
+  const out = [];
+  const walk = (v) => {
+    if (typeof v === "string" && v.length >= 12 && !/^https?:/.test(v)) out.push(v);
+    else if (v && typeof v === "object") for (const x of Object.values(v)) walk(x);
+  };
+  try {
+    walk(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).credentials);
+  } catch {}
+  return out;
+}
+
+/** A text with its secrets replaced: the given literals, then tunnel
+ *  tokens, JWT-like base64 JSON, bearer tokens and common API keys. */
+export function scrub(text, secrets = []) {
+  let out = text;
+  for (const secret of secrets) if (secret.length >= 12 && out.includes(secret)) out = out.split(secret).join("[redacted]");
+  return out
+    .replace(/(--token[ =]+["']?)[A-Za-z0-9+/=_.-]{20,}/g, "$1[redacted]")
+    .replace(/eyJ[A-Za-z0-9+/=_-]{40,}(?:\.[A-Za-z0-9+/=_-]+){0,2}/g, "[redacted-token]")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]{16,}/gi, "$1[redacted]")
+    .replace(/\b(?:sk-(?:ant-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b/g, "[redacted-key]");
+}
+
+/** A file's text when it is text (no NUL in its head, not huge), else null. */
+function textOf(path) {
+  try {
+    const { size } = statSync(path);
+    if (size > 64 << 20) return null;
+    const buf = readFileSync(path);
+    if (buf.subarray(0, 8192).includes(0)) return null;
+    return buf.toString("utf8");
+  } catch {
+    return null;
+  }
 }
 
 function healthText() {
@@ -329,6 +443,7 @@ function harnessVersion(path) {
 
 /** The files of one snapshot; `session` may be null (no transcript found). */
 function collect(session) {
+  const scope = refreshTrace(session);
   const health = healthText();
   const transcripts = !session ? [] : session.harness === "codex" ? codexFiles(session) : claudeFiles(session);
   const environment = {
@@ -344,7 +459,7 @@ function collect(session) {
   };
   const files = [
     ...transcripts,
-    ...protoFiles(),
+    ...protoFiles(scope),
     { name: "health.txt", text: health },
     { name: "environment.json", text: `${JSON.stringify(environment, null, 2)}\n` },
   ];
@@ -383,11 +498,13 @@ export function usesProto(text) {
 // ---------------------------------------------------------------------
 // Upload
 
-/** Gzip one file as it is; null when it vanished before it was read. */
-export async function gzipTo(file, dir) {
+/** Gzip one file, its text scrubbed of secrets (binary files go as they
+ *  are); null when it vanished before it was read. */
+export async function gzipTo(file, dir, secrets = []) {
   const out = join(dir, file.name.replaceAll("/", "__"));
   try {
-    const source = file.text === undefined ? createReadStream(file.path) : [Buffer.from(file.text)];
+    const text = file.text ?? textOf(file.path);
+    const source = text === null ? createReadStream(file.path) : [Buffer.from(scrub(text, secrets))];
     await pipeline(source, createGzip(), createWriteStream(out));
     return { ...file, gz: out, size: statSync(out).size };
   } catch {
@@ -452,8 +569,9 @@ export async function sendSnapshot({ session, kind, title, note, codebase, log =
   const dir = mkdtempSync(join(tmpdir(), "proto-debug-"));
   try {
     const packed = [];
+    const secrets = laptopSecrets();
     for (const file of files) {
-      const gz = await gzipTo(file, dir);
+      const gz = await gzipTo(file, dir, secrets);
       if (gz && gz.size > 0) packed.push(gz);
     }
     const totalBytes = packed.reduce((sum, f) => sum + f.size, 0);
@@ -540,9 +658,21 @@ async function sendDetached(options) {
   return logFile;
 }
 
+/** Flags the debug skill recorded for a session, and the reports that
+ *  carried them, beside the watcher's log. */
+const flagsFile = (id) => join(TELEMETRY_DIR, `${id}.flags.jsonl`);
+const sentFile = (id) => join(TELEMETRY_DIR, `${id}.sent.jsonl`);
+function readLines(path) {
+  try {
+    return readFileSync(path, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
 /** The background loop for one session; see the header. */
-async function watch({ transcript, session: id }) {
-  const session = sessionAt(transcript, id);
+async function watch({ transcript, session: id, harness }) {
+  const session = { ...sessionAt(transcript, id), ...(harness ? { harness } : {}) };
   mkdirSync(TELEMETRY_DIR, { recursive: true });
   const pidFile = join(TELEMETRY_DIR, `${session.id}.pid`);
   const logFile = join(TELEMETRY_DIR, `${session.id}.log`);
@@ -560,21 +690,54 @@ async function watch({ transcript, session: id }) {
   let sentUpTo = 0;
   let proto = false;
   let sending = Promise.resolve();
-  const snapshot = (kind) =>
+  // `label` is what woke it (interval, turn, flag, session-end); the site
+  // knows three kinds, so a turn goes as an interval and a flag as skill.
+  const snapshot = (label) =>
     (sending = sending.then(async () => {
       try {
         if (!proto) proto = existsSync(session.path) && usesProto(readFileSync(session.path, "utf8"));
-        if (!proto) return log(`${kind} skip: no proto use`);
+        const done = new Set(readLines(sentFile(session.id)).flatMap((r) => r.flags ?? []));
+        const flags = readLines(flagsFile(session.id)).filter((f) => !done.has(f.id));
+        if (!proto && flags.length === 0) return log(`${label} skip: no proto use`);
         const changed = lastChange(session);
-        if (changed <= sentUpTo) return log(`${kind} skip: unchanged`);
-        log(`${kind} sending`);
-        const sent = await sendSnapshot({ session, kind, log: (line) => log(`  ${line}`) });
+        if (flags.length === 0 && changed <= sentUpTo) return log(`${label} skip: unchanged`);
+        const kind = flags.length ? "skill" : label === "session-end" ? "session-end" : "interval";
+        const title = flags.map((f) => f.title).filter(Boolean).join(" · ") || undefined;
+        const note = flags.map((f) => f.note).filter(Boolean).join("\n\n") || undefined;
+        const codebase = flags.map((f) => f.codebase).find(Boolean);
+        log(`${label} sending${flags.length ? ` with ${flags.length} flag${flags.length === 1 ? "" : "s"}` : ""}`);
+        const sent = await sendSnapshot({ session, kind, title, note, codebase, log: (line) => log(`  ${line}`) });
         sentUpTo = changed;
-        log(`${kind} ${sent.id}: sent ${sent.files} files ${sent.totalBytes} bytes`);
+        if (flags.length) appendFileSync(sentFile(session.id), `${JSON.stringify({ flags: flags.map((f) => f.id), report: sent.id, at: new Date().toISOString() })}\n`);
+        log(`${label} ${sent.id}: sent ${sent.files} files ${sent.totalBytes} bytes`);
       } catch (error) {
-        log(`${kind} failed: ${error.message}`);
+        log(`${label} failed: ${error.message}`);
       }
     }));
+
+  // SIGUSR2: a turn ended or a flag was recorded. Flags go at once; turns
+  // closer together than TURN_GAP_MS share one snapshot.
+  let lastTurn = 0;
+  let turnTimer = null;
+  const poke = () => {
+    if (stopping) return;
+    const done = new Set(readLines(sentFile(session.id)).flatMap((r) => r.flags ?? []));
+    if (readLines(flagsFile(session.id)).some((f) => !done.has(f.id))) return void snapshot("flag");
+    const wait = lastTurn + TURN_GAP_MS - Date.now();
+    if (wait <= 0) {
+      lastTurn = Date.now();
+      return void snapshot("turn");
+    }
+    if (!turnTimer) {
+      turnTimer = setTimeout(() => {
+        turnTimer = null;
+        lastTurn = Date.now();
+        snapshot("turn");
+      }, wait);
+      turnTimer.unref?.();
+    }
+  };
+  process.on("SIGUSR2", poke);
 
   let stopping = false;
   const stop = async (reason) => {
@@ -615,12 +778,45 @@ async function watch({ transcript, session: id }) {
   }, INTERVAL_MS);
 }
 
-/** --flag value pairs; --detach takes none. */
+/** `flag`: record a headline for this session on this laptop and wake
+ *  its watcher (starting one if none runs), which sends the snapshot with
+ *  it. Nothing leaves the laptop from this command. With --wait, waits for
+ *  the watcher to say which report carried it. */
+async function flag({ token, title, note, codebase, wait }) {
+  const session = token ? await sessionByToken(token) : null;
+  if (!session) throw new Error("could not tell which session this is (no single transcript holds the token)");
+  mkdirSync(TELEMETRY_DIR, { recursive: true });
+  const id = `flag-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  appendFileSync(flagsFile(session.id), `${JSON.stringify({ id, title, note, codebase, at: new Date().toISOString() })}\n`);
+  // The end-of-turn hook starts the watcher if none runs and wakes it
+  // (importing telemetry.mjs here would loop back into this module).
+  const hook = join(KIT, "tools", "hooks", "telemetry-turn.mjs");
+  const signal = () => spawnSync(process.execPath, [hook], { input: JSON.stringify({ session_id: session.id, transcript_path: session.path, hook_event_name: "flag" }), timeout: 20_000 });
+  signal();
+  // A watcher just spawned may not listen yet: wake it once more.
+  await new Promise((r) => setTimeout(r, 1500));
+  signal();
+  if (!wait) return { flagged: id, session: session.id };
+  const deadline = Date.now() + FLAG_WAIT_MS;
+  let resignalled = Date.now();
+  while (Date.now() < deadline) {
+    const sent = readLines(sentFile(session.id)).find((r) => r.flags?.includes(id));
+    if (sent) return { id: sent.report, session: session.id };
+    if (Date.now() - resignalled > 15_000) {
+      signal();
+      resignalled = Date.now();
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return { flagged: id, session: session.id, pending: "the report is still uploading; it will be sent" };
+}
+
+/** --flag value pairs; --detach and --wait take none. */
 function flags(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const m = /^--(\w+)$/.exec(argv[i]);
-    if (m) out[m[1]] = m[1] === "detach" ? true : argv[++i];
+    if (m) out[m[1]] = m[1] === "detach" || m[1] === "wait" ? true : argv[++i];
   }
   return out;
 }
@@ -640,10 +836,21 @@ if (isMain()) {
   const options = flags(rest);
   if (command === "watch") {
     if (!options.transcript) {
-      console.error("usage: debug-report.mjs watch --transcript <path> [--session <id>]");
+      console.error("usage: debug-report.mjs watch --transcript <path> [--session <id>] [--harness <harness>]");
       process.exit(2);
     }
     await watch(options);
+  } else if (command === "flag") {
+    if (!existsSync(CONFIG_PATH)) {
+      console.error("Proto is not set up on this laptop yet: run the Proto setup skill, then try again.");
+      process.exit(1);
+    }
+    try {
+      console.log(JSON.stringify(await flag(options), null, 2));
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
   } else if (command === "send") {
     if (!existsSync(CONFIG_PATH)) {
       console.error("Proto is not set up on this laptop yet: run the Proto setup skill, then try again.");
@@ -657,7 +864,7 @@ if (isMain()) {
       process.exit(1);
     }
   } else {
-    console.error("usage: debug-report.mjs send|watch …");
+    console.error("usage: debug-report.mjs flag|send|watch …");
     process.exit(2);
   }
 }

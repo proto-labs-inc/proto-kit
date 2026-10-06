@@ -27,11 +27,19 @@
       {
         "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/trace-hook.mjs\"",
         "timeout": 10
+      },
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/telemetry-turn.mjs\"",
+        "timeout": 10
       }
     ],
     "sessionEnd": [
       {
         "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/trace-hook.mjs\"",
+        "timeout": 10
+      },
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/telemetry-stop.mjs\"",
         "timeout": 10
       }
     ]
