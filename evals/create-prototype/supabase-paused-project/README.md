@@ -93,6 +93,8 @@ Every run went through the website as a user would: the new-prototype form, Copy
 | B3 | freeze (kit c88070e) | `a7e0e02bdb` | [paused-project-at-a-glance](https://prototypes.fun/p/paused-project-at-a-glance) | 7m55s | 11.5s | 53.1s | 3m37s | 2m23s | 184 | 3 (0) | 0.01% (97 px) |
 | B4 | freeze + Sonnet variant builders (kit cd41adc) | `6476483028` | [paused-project-status-card](https://prototypes.fun/p/paused-project-status-card) | 12m02s | 12.2s | 45.1s | 6m04s | 4m11s | 140 | 3 (0) | 0.01% (97 px) |
 
+| B5 | freeze + Sonnet variant builders (kit cd41adc) | `5ef32b63f1` | [paused-project-notice-5](https://prototypes.fun/p/paused-project-notice-5) | 15m54s | 12.9s | 48.7s | 7m49s | 6m07s | 167 | 3 (0) | 0.01% (103 px) |
+| B6 | freeze + frozen-aware Haiku builders (kit 4097321) | `a170e371da` | [paused-project-notice-6](https://prototypes.fun/p/paused-project-notice-6) | 13m03s | 12.7s | 1m04s | 3m58s | 7m11s | 185 | 3 (0) | 0.01% (103 px) |
 Averages over three runs each (B4 aside): rebuild 13m12s, freeze 11m11s. Copy 52 s and a gate question against 12 s and none; build 2m05s against 1m00s; 331 tool calls against 189; 12 subagents (4 to 5 gave up) against 3.
 
 Findings:
@@ -105,3 +107,18 @@ Findings:
 Kit fixes made between runs: relative frozen asset paths and file types from bytes (after B1's refused publishes, `c88070e`); frozen-aware variant builders on Sonnet (`cd41adc`).
 
 Runs' recordings (terminal every 15 s, website screenshots, judge renders) and the canvas: `~/Proto/experiments/supabase-runs/` on the Mac mini; canvas at https://claude.ai/artifact/HMWzFCWy8GEuSCDzLT6Yvd.
+
+### B5 and B6, and the interaction check (2026-10-06, morning)
+
+B5 and B6 ran with the screen unlocked and the whole desktop recorded every 10 s (Terminal left, Chrome right). With them, freeze with Haiku builders (B1 to B3, B6) averages 11m39s against 13m12s for the rebuild; Sonnet builders (B4, B5) average 13m58s, so the kit is back on Haiku with the frozen-copy instructions (`4097321`). B5's checks were slowed by headless Chrome dropping tabs after a night of runs; it was restarted before B6.
+
+The same clicks on every run's published snapshot:
+
+| | Rebuild A1 to A3 | Freeze B1 to B6 |
+|---|---|---|
+| Resume project opens the Resuming state | yes | yes |
+| Download backups opens its menu | no | no |
+| Sidebar hover style | lost | kept (the page's CSS) |
+| Links | inside the prototype | 9 to supabase.com: a sidebar click left the prototype. Fixed in `3c8dfdd` (frozen links and forms no longer navigate). |
+
+Keeping the page's scripts was tried outside the kit: frozen with its scripts, the Supabase page redirected to its sign-in page within 3 s (no session on the copy's origin). The freeze keeps scripts out.
