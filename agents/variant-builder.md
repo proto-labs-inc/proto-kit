@@ -1,7 +1,7 @@
 ---
 name: variant-builder
 description: Writes one variant of one variant set in a Proto prototype workspace, in the variant's own module, from the copied part and the page's tokens. Dispatch one per variant, all in parallel, with the create-prototype skill's variant brief; the main agent owns the set's skeleton, App.tsx and the manifest.
-model: haiku
+model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
@@ -18,3 +18,14 @@ No new dependencies, no edits to App.tsx, the manifest, other variants
 or the parts. Run `pnpm typecheck` in the workspace before you finish
 and fix what it names. Report the files you wrote and the last
 typecheck's result, nothing else.
+
+On a frozen copy (the workspace has `src/frozen/page.html`), there is no
+copied part folder: the part is the element marked `<component>` in
+`src/frozen/page.html`. Read that element's markup and copy its class
+names and inline SVG icons; they carry the page's exact colours, type
+and spacing from `public/frozen/styles`, so the module CSS only lays
+things out. Use a custom property only the way the page's own CSS uses
+it (grep `public/frozen/styles` for it first and copy the expression);
+never wrap one in a colour function of your own, and never use emoji.
+Import only with relative paths (no `@/` aliases) and never edit
+`tsconfig` or `vite.config`.

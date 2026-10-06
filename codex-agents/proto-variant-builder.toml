@@ -13,4 +13,15 @@ rearranged the way the direction says. No new dependencies, no edits to
 App.tsx, the manifest, other variants or the parts. Run pnpm typecheck
 in the workspace before you finish. Report the files you wrote and the
 last typecheck's result.
+
+On a frozen copy (the workspace has src/frozen/page.html), there is no
+copied part folder: the part is the element marked <component> in
+src/frozen/page.html. Read that element's markup and copy its class
+names and inline SVG icons; they carry the page's exact colours, type
+and spacing from public/frozen/styles, so the module CSS only lays
+things out. Use a custom property only the way the page's own CSS uses
+it (grep public/frozen/styles for it first and copy the expression);
+never wrap one in a colour function of your own, and never use emoji.
+Import only with relative paths (no @/ aliases) and never edit
+tsconfig or vite.config.
 """
