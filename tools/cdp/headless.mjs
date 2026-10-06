@@ -107,23 +107,20 @@ async function openPages(port) {
 }
 
 /**
- * Find or start the one headless Chrome; resolves with { port, exact }.
- * Every kit tool asks for the Proto window's display, so a Chrome up for
- * another display is relaunched only while nobody has a page open in it:
- * stopping it under a check or a preview killed their tabs mid-run (B5,
- * B6). While it is in use it stays as it is, and `exact` is false: the
- * caller's tab emulates its scale instead (headlessPage does), drawing
- * fractional edges up to a device pixel off (docs/cdp-traps.md), which
- * only that caller's own picture sees. Launched through `open`, like the
- * visible window, so it belongs to launchd and no shell waits on it.
+ * Find or start the one headless Chrome; resolves with { port, display }.
+ * Its display is the Proto window's (theDisplay), whatever the caller
+ * asks: every render compared with the live page needs that display, and
+ * a caller's guess must not change it for the others. It is relaunched
+ * only when the Proto window's display itself changed (another screen)
+ * and nobody has a page open in it; while in use it carries on as it is.
+ * Launched through `open`, like the visible window, so it belongs to
+ * launchd and no shell waits on it.
  */
-export async function ensureHeadless(display, port = HEADLESS_PORT) {
+export async function ensureHeadless(_callerDisplay, port = HEADLESS_PORT) {
+  const display = await theDisplay();
   if (await version(port)) {
-    if (sameDisplay(await runningDisplay(port), display)) return { port, exact: true };
-    if ((await openPages(port)) > 0) {
-      console.error(`headless Chrome on ${port} is in use at another display; this page emulates ${display.dpr}x instead of relaunching it`);
-      return { port, exact: false };
-    }
+    const running = await runningDisplay(port);
+    if (sameDisplay(running, display) || (await openPages(port)) > 0) return { port, display: running ?? display };
     await stopHeadless(port);
     // The port must be free before the launch, or the new Chrome dies on it and nothing comes up.
     for (let i = 0; i < 150 && (await version(port)); i++) await new Promise((r) => setTimeout(r, 100));
@@ -148,7 +145,7 @@ export async function ensureHeadless(display, port = HEADLESS_PORT) {
     await new Promise((r) => setTimeout(r, 250));
     if (await version(port)) {
       writeFileSync(LAUNCHED, JSON.stringify(display) + "\n");
-      return { port, exact: true };
+      return { port, display };
     }
   }
   throw new Error("headless Chrome did not come up in 15s");
@@ -172,8 +169,8 @@ export async function stopHeadless(port = HEADLESS_PORT) {
  * load event and for document.fonts, the two things a rect probe must
  * not race.
  */
-export async function headlessPage(url, { width, height, display }, port = HEADLESS_PORT) {
-  await ensureHeadless(display, port);
+export async function headlessPage(url, { width, height, display: _asked }, port = HEADLESS_PORT) {
+  const { display } = await ensureHeadless(_asked, port);
   const info = await version(port);
   const browser = await connect(info.webSocketDebuggerUrl);
   const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
@@ -225,16 +222,24 @@ async function protoWindowDisplay() {
     page.close();
     return display;
   } catch {
-    return { dpr: 2, colorProfile: "display-p3-d65" };
+    return null;
   }
+}
+
+/** The display every headless render uses: the Proto window's, else the
+ *  last one recorded from it, else the common Retina display. Never a
+ *  caller's: a caller that passed { dpr: 1 } without its colour profile
+ *  once relaunched the Chrome under a running check and wrote that
+ *  half display for every later check to read. */
+async function theDisplay() {
+  return (await protoWindowDisplay()) ?? launchedDisplay() ?? { dpr: 2, colorProfile: "display-p3-d65" };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const [command = "start", portArg] = process.argv.slice(2);
   const port = Number(portArg || HEADLESS_PORT);
   if (command === "start") {
-    const display = await protoWindowDisplay();
-    await ensureHeadless(display, port);
+    const { display } = await ensureHeadless(null, port);
     console.log(`headless chrome on ${port} at ${display.dpr}x ${display.colorProfile}, profile ${PROFILE}`);
   } else if (command === "stop") {
     const stopped = await stopHeadless(port);

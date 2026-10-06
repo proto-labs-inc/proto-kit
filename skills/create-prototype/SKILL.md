@@ -56,6 +56,22 @@ the initial report, reconnect and deliver it as soon as possible. Do not wait fo
 a title, slug, or workspace. Preserve completed requests and verified resume
 checkpoints.
 
+## A tool for each goal
+
+Every way of seeing or checking the prototype is a kit tool that knows
+the right browser, display and paths. Use these and nothing else: no
+browser, screenshot, `headlessPage` script or `headless.mjs` call of your
+own (Chrome's `--screenshot` mode never exits, and hand-made renders
+used the wrong display and disturbed the checks running beside them).
+
+| To… | Run |
+|---|---|
+| see a state, a variant, a part or the whole page | `node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>] [--part <marker> \| --page]`, then read the picture it prints |
+| see one variant in every state (a variant builder, checking its own work) | `node tools/previews.mjs <workspace> --only <set>=<id>` |
+| know what is broken (blank views, errors, parts out of place) | `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>` |
+| make the variant previews the site shows | `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>` |
+| pick a free slug | `list_prototypes { codebase }` |
+
 ## The runbook
 
 1. **Brief.** The site or a copied prompt hands you fields: `codebase`,
