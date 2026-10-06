@@ -30,7 +30,7 @@
  * what scripts did on click is rebuilt in React where the change needs it.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildFolder } from "./build-folder.mjs";
 import { createReporter } from "./build-report.mjs";
@@ -308,7 +308,25 @@ for (const sheet of frozen.sheets) {
 }
 frozen.sheets = frozen.sheets.filter((sheet) => sheet.text !== null);
 if (unreadable) say(`${unreadable} stylesheet(s) could not be read from the cache or fetched`);
+const sniff = (b) => {
+  const head = b.subarray(0, 16);
+  const ascii = head.toString("latin1");
+  if (head[0] === 0x89 && ascii.startsWith("\x89PNG")) return "png";
+  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return "jpg";
+  if (ascii.startsWith("GIF8")) return "gif";
+  if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "webp";
+  if (ascii.slice(4, 12) === "ftypavif") return "avif";
+  if (ascii.startsWith("wOF2")) return "woff2";
+  if (ascii.startsWith("wOFF")) return "woff";
+  if (ascii.startsWith("OTTO")) return "otf";
+  if (head[0] === 0x00 && head[1] === 0x01 && head[2] === 0x00 && head[3] === 0x00) return "ttf";
+  if (head[0] === 0x00 && head[1] === 0x00 && head[2] === 0x01 && head[3] === 0x00) return "ico";
+  if (/^\s*(<\?xml|<svg)/i.test(b.subarray(0, 256).toString("utf8"))) return "svg";
+  return null;
+};
 const EXT = { "font/woff2": "woff2", "font/woff": "woff", "font/ttf": "ttf", "font/otf": "otf", "application/font-woff2": "woff2", "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/avif": "avif", "image/svg+xml": "svg", "image/x-icon": "ico", "image/vnd.microsoft.icon": "ico" };
+// A fresh freeze replaces the last one whole: nothing of an older copy stays to be published.
+rmSync(join(workspace, "public", "frozen"), { recursive: true, force: true });
 const assetDir = join(workspace, "public", "frozen", "assets");
 mkdirSync(assetDir, { recursive: true });
 const local = new Map();
@@ -346,10 +364,12 @@ for (const url of frozen.assets) {
     continue;
   }
   const fromPath = (new URL(url).pathname.match(/\.([a-z0-9]{2,5})$/i) ?? [])[1];
-  const ext = EXT[(mime ?? "").split(";")[0]] ?? fromPath ?? "bin";
+  // The bytes decide the extension: a CDN's content-type or a URL's suffix
+  // can disagree with the file, and publishing checks the file against it.
+  const ext = sniff(bytes) ?? EXT[(mime ?? "").split(";")[0]] ?? fromPath ?? "bin";
   const name = `${createHash("sha1").update(url).digest("hex").slice(0, 12)}.${ext}`;
   writeFileSync(join(assetDir, name), bytes);
-  local.set(url, `/frozen/assets/${name}`);
+  local.set(url, name);
 }
 stage("assets", assetsBegan);
 live.close();
@@ -357,21 +377,24 @@ say(`saved ${local.size} assets${missing ? `, ${missing} could not be read (they
 
 // ---- the workspace ----
 const writeBegan = Date.now();
-const localize = (text) => {
+// Paths are relative, so the copy works wherever it is served: the dev
+// server's root and a published snapshot's sub-path alike. The markup
+// resolves against the page, a stylesheet against its own folder.
+const localize = (text, prefix) => {
   let out = text;
-  for (const [url, path] of local) out = out.split(url).join(path);
+  for (const [url, name] of local) out = out.split(url).join(prefix + name);
   return out;
 };
 const styleDir = join(workspace, "public", "frozen", "styles");
 mkdirSync(styleDir, { recursive: true });
 const styles = frozen.sheets.map((sheet, i) => {
   const file = `${String(i).padStart(2, "0")}.css`;
-  writeFileSync(join(styleDir, file), localize(sheet.text));
-  return { href: `/frozen/styles/${file}`, media: sheet.media || null };
+  writeFileSync(join(styleDir, file), localize(sheet.text, "../assets/"));
+  return { href: `frozen/styles/${file}`, media: sheet.media || null };
 });
 const frozenDir = join(workspace, "src", "frozen");
 mkdirSync(frozenDir, { recursive: true });
-writeFileSync(join(frozenDir, "page.html"), localize(frozen.html));
+writeFileSync(join(frozenDir, "page.html"), localize(frozen.html, "frozen/assets/"));
 writeFileSync(
   join(frozenDir, "frozen.json"),
   JSON.stringify({ url: frozen.url, title: frozen.title, viewport: frozen.viewport, htmlAttrs: frozen.htmlAttrs, bodyAttrs: frozen.bodyAttrs, styles, frozenAt: new Date().toISOString() }, null, 2) + "\n",

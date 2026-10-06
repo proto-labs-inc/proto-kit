@@ -194,6 +194,9 @@ checkpoints.
      preview state when a reviewer should reach it).
    - The frozen page is in the theme it was captured in (`frozen.json`
      `htmlAttrs`); keep the change in that theme.
+   - Styling the change: the same rules as the frozen variant brief
+     below. Use the page's own class names from the frozen markup, and
+     custom properties exactly as `public/frozen/styles` writes them.
    On the rebuild copy, edit only the parts the brief is about, from the
    parts list and the copied files: never re-read the live page with
    ad-hoc scripts, the read has everything. A part from the library is a
@@ -349,6 +352,21 @@ A failure is `report_progress failed` with one plain sentence.
 > new dependencies; touch no other file. Run `pnpm typecheck` in the
 > workspace before finishing. Report the files written and the last
 > typecheck's result.
+
+On a frozen copy, the brief names the frozen element instead of a part
+file, and adds how to style:
+
+> The part it varies is the frozen element marked `<marker>` in
+> `src/frozen/page.html` (and the change's component, if one is written).
+> Style with the page's own class names, copied from that markup: they
+> carry the page's exact colours, type and spacing from
+> `public/frozen/styles`, and the module CSS only lays them out. Where a
+> custom property is needed, use it exactly as the page's CSS does: find
+> it first (`grep -o "var(--<name>)[^;]*" public/frozen/styles/*.css`)
+> and copy the expression. Never wrap a property in a colour function of
+> your own (`hsl(var(--x))` when the page writes `var(--x)` breaks the
+> colour) and never invent a value the page does not use. Icons are the
+> page's own inline SVGs, copied from the markup, not emoji.
 
 ## Component markers
 
