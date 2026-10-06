@@ -193,7 +193,13 @@ used the wrong display and disturbed the checks running beside them).
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
-7. **Write the change.** On a frozen copy, find the elements the brief is
+7. **Write the change.** When the brief asks for variants (step 8),
+   start them first: mark the element (add `data-proto-id` in
+   `page.html` if it has none), run `variant-set.mjs` and dispatch the
+   variant builders, then write the rest of the change (shared data,
+   preview states, wiring) while they work. The builders take minutes;
+   waiting for your own setup before starting them only adds to it.
+   On a frozen copy, find the elements the brief is
    about in `src/frozen/page.html` (by marker, or by text and `data-pf`;
    the parts list's rects say where each sits) and change only those:
    - A redesigned region: write it as a React component under
@@ -381,8 +387,9 @@ A failure is `report_progress failed` with one plain sentence.
 > it in every preview state in about a second; read each picture it
 > lists and fix what looks broken (overlapping or clipped text, points
 > off a line, misaligned rows, a control in the wrong place, colours the
-> page does not use). Two rounds at most. Report the files written, the
-> last typecheck's result and what the pictures showed.
+> page does not use). One round of fixes, then one more look to confirm.
+> Report the files written, the last typecheck's result and what the
+> pictures showed.
 
 On a frozen copy, the brief names the frozen element instead of a part
 file, and adds how to style:
