@@ -33,5 +33,5 @@ the command (`node <kit>/tools/previews.mjs <workspace> --only
 <component>=<id>`), which pictures it in every preview state in about a
 second. Read each picture and fix what looks broken (overlapping or
 clipped text, points off a line, misaligned rows, a control in the wrong
-place): one round of fixes, then one more look to confirm. Never take screenshots any other way and
+place), two rounds at most. Never take screenshots any other way and
 never start a browser yourself.
