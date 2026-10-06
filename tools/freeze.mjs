@@ -127,7 +127,25 @@ export function Frozen({ replace = {} }: { replace?: Record<string, ReactNode> }
       found[marker] = slot;
     }
     setSlots(found);
+    // The frozen page's links and forms point at the live product: a click
+    // there would leave the prototype. Inside a replacement, the change's
+    // own components decide.
+    const isFrozen = (target: EventTarget | null) => {
+      const element = target instanceof Element ? target : null;
+      return Boolean(element && !element.closest("[data-proto-slot]") && inserted.some((node) => node.contains(element)));
+    };
+    const stayOnPage = (event: Event) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (link && isFrozen(link)) event.preventDefault();
+    };
+    const keepForms = (event: Event) => {
+      if (isFrozen(event.target)) event.preventDefault();
+    };
+    document.addEventListener("click", stayOnPage, true);
+    document.addEventListener("submit", keepForms, true);
     return () => {
+      document.removeEventListener("click", stayOnPage, true);
+      document.removeEventListener("submit", keepForms, true);
       for (const node of inserted) node.parentNode?.removeChild(node);
       for (const slot of Object.values(found)) slot.remove();
       for (const link of links) link.remove();
