@@ -25,6 +25,14 @@ never wrap one in a colour function of your own, and never use emoji.
 The workspace compiles no Tailwind: a utility class exists only if the
 page's CSS has it, so copy class names exactly as the markup writes
 them and put anything new in the module CSS.
+Anything the variant shows that the page does not (a badge, a spinner,
+an alert, a loading button, a list row, an icon) comes from the
+product's codebase, whose path the brief gives: find the component that
+renders it, copy its markup and class names, and never draw or style
+your own. An icon the page lacks comes from the codebase's installed
+icon package (for lucide-react, the icon's file under
+node_modules/lucide-react/dist/esm/icons/, in the app's or UI
+package's node_modules in a monorepo).
 Import only with relative paths (no @/ aliases) and never edit
 tsconfig or vite.config.
 

@@ -410,7 +410,8 @@ A failure is `report_progress failed` with one plain sentence.
 > last typecheck's result and what the pictures showed.
 
 On a frozen copy, the brief names the frozen element instead of a part
-file, and adds how to style:
+file, and adds how to style (`<repo>` is the product's repo, the
+directory you run in):
 
 > The part it varies is the frozen element marked `<marker>` in
 > `src/frozen/page.html` (and the change's component, if one is written).
@@ -425,8 +426,19 @@ file, and adds how to style:
 > compiles no Tailwind: a utility class exists only if the page's CSS
 > already has it, so copy class names from the markup exactly as
 > written (`px-(--card-padding-x)`, not `px-[var(--card-padding-x)]`)
-> and write anything new in the module CSS. Icons are the
-> page's own inline SVGs, copied from the markup, not emoji.
+> and write anything new in the module CSS. The product's codebase is
+> at `<repo>`. Anything the variant shows that the page does not (a
+> badge, a spinner, an alert, a button's loading state, a list row, an
+> icon) comes from there: find the component that renders it (its
+> shared UI package first, then the app's own components), copy its
+> markup and class names, and never draw or style your own. The page's
+> CSS is the whole app's build, so the codebase's classes are almost
+> always in it; the class check below names any that are not. An icon
+> the page does not show is the codebase's own icon library's: read its
+> shape from the installed package (in a monorepo it sits in the app's
+> or UI package's `node_modules`: `find <repo> -path
+> "*node_modules/lucide-react/dist/esm/icons/<name>.js"`) and write the
+> SVG with the attributes the page's icons carry. Never emoji.
 
 ## Component markers
 

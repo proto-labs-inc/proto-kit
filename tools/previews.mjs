@@ -121,7 +121,8 @@ async function picture(view, state = null) {
 // frozen copy compiles no Tailwind: only the classes the page's own CSS
 // has exist, so a utility written fresh (px-[var(--x)] where the page
 // has px-(--x)) silently does nothing. Reported under --only so the unit
-// fixes it in its own module CSS.
+// fixes it in its own module CSS. Lucide's icon labels (lucide,
+// lucide-<name>) are never styles and are left out.
 const unstyled = new Set();
 const frozenPage = join(workspace, "src", "frozen", "page.html");
 const pageClasses = new Set(existsSync(frozenPage) ? [...readFileSync(frozenPage, "utf8").matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/)) : []);
@@ -155,7 +156,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
 
 if (only) {
   dev.stop();
-  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), unstyled: [...unstyled].filter((c) => !pageClasses.has(c)), missing }));
+  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), unstyled: [...unstyled].filter((c) => !pageClasses.has(c) && !/^lucide(-|$)/.test(c)), missing }));
   process.exit(0);
 }
 
