@@ -385,9 +385,13 @@ A failure is `report_progress failed` with one plain sentence.
 > workspace, then look at your variant as it renders:
 > `node <kit>/tools/previews.mjs <workspace> --only <marker>=<id>` pictures
 > it in every preview state in about a second; read each picture it
-> lists and fix what looks broken (overlapping or clipped text, points
-> off a line, misaligned rows, a control in the wrong place, colours the
-> page does not use). Two rounds at most. Report the files written, the
+> lists and fix what looks broken. Check each picture for: the variant
+> wider or taller than the card it replaces; points, dots or markers not
+> sitting on their line; a label the direction names that is missing
+> (such as "Today"); an element missing or shown twice; text clipped or
+> overlapping; rows out of line; a control in the wrong place; wording
+> that does not fit the state (a resuming view that still says
+> "paused"); colours the page does not use. Two rounds at most. Report the files written, the
 > last typecheck's result and what the pictures showed.
 
 On a frozen copy, the brief names the frozen element instead of a part

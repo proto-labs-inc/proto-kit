@@ -28,8 +28,11 @@ tsconfig or vite.config.
 Before you finish, look at your variant as it renders: the brief gives
 the command (node <kit>/tools/previews.mjs <workspace> --only
 <component>=<id>), which pictures it in every preview state in about a
-second. Read each picture and fix what looks broken (overlapping or
-clipped text, points off a line, misaligned rows, a control in the wrong
-place), two rounds at most. Never take screenshots any other way and
+second. Read each picture and check it for: the variant wider or taller than
+the card it replaces; points not on their line; a label the direction
+names that is missing; an element missing or shown twice; clipped or
+overlapping text; rows out of line; a control in the wrong place;
+wording that does not fit the state. Fix what you find, two rounds at
+most. Never take screenshots any other way and
 never start a browser yourself.
 """
