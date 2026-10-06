@@ -5,7 +5,9 @@
  * own file. Writes the set into public/prototype.json (status building
  * until previews.mjs has rendered every variant), the switch component
  * that reads useVariant, and one stub module per variant for a unit to
- * replace. Prints the files each unit owns and the line App.tsx needs.
+ * replace, and each unit's brief (<build>/briefs/<component>--<id>.md,
+ * from variant-brief.mjs). Prints the files and brief each unit owns
+ * and the line App.tsx needs.
  *
  * Usage:
  *   node tools/variant-set.mjs <workspace> <component> --title "<set title>"
@@ -32,6 +34,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildOfWorkspace } from "./build-folder.mjs";
+import { variantBrief } from "./variant-brief.mjs";
 import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 
@@ -169,8 +172,17 @@ if (options.overview) entry.overview = { title: options.title, description: opti
 manifest.variantSets = [...(manifest.variantSets ?? []).filter((set) => set.component !== component), entry];
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 
-// The site hears the set is being written from the tool itself, so it never sits on the copy's last line.
+// Each builder's brief (tools/variant-brief.mjs), in the build folder:
+// the main agent dispatches with the file and what that variant is.
 const build = buildOfWorkspace(workspace);
+const briefsDir = join(build ? build.dir : join(workspace, ".proto-checks"), "briefs");
+mkdirSync(briefsDir, { recursive: true });
+for (const v of written) {
+  v.brief = join(briefsDir, `${component}--${v.id}.md`);
+  writeFileSync(v.brief, variantBrief({ workspace, component, setTitle: options.title, variant: v }));
+}
+
+// The site hears the set is being written from the tool itself, so it never sits on the copy's last line.
 if (build) {
   const reporter = createReporter({ codebase: build.codebase, briefId: build.briefId, runDir: build.dir, sink: options.noSend ? "file" : "site" });
   reporter.send([workflowEvent(build.dir, "build", `Writing the "${options.title}" variant set (${variants.length} variant${variants.length === 1 ? "" : "s"})`)]);

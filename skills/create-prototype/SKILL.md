@@ -230,9 +230,12 @@ used the wrong display and disturbed the checks running beside them).
      preview state when a reviewer should reach it).
    - The frozen page is in the theme it was captured in (`frozen.json`
      `htmlAttrs`); keep the change in that theme.
-   - Styling the change: the same rules as the frozen variant brief
-     below. Use the page's own class names from the frozen markup, and
-     custom properties exactly as `public/frozen/styles` writes them.
+   - Styling the change: the same rules as the variant briefs
+     (`tools/variant-brief.mjs`). Use the page's own class names from
+     the frozen markup, exactly as written (the workspace compiles no
+     Tailwind); custom properties exactly as `public/frozen/styles`
+     writes them; anything the page does not show from the codebase's
+     own components.
    On the rebuild copy, edit only the parts the brief is about, from the
    parts list and the copied files: never re-read the live page with
    ad-hoc scripts, the read has everything. A part from the library is a
@@ -276,7 +279,8 @@ used the wrong display and disturbed the checks running beside them).
    App.tsx with the switch, the part itself as its baseline:
    `<MarkerVariants className={styles["partNN"]} baseline={<Part className={styles["partNN"]} />} />`.
    Then one `proto:variant-builder` subagent per variant, all in
-   parallel, in the background, with the variant brief below; do not
+   parallel, in the background, each with its brief file and direction
+   (the variant brief below); do not
    pass a model, and never a `name` (step 6 says why). Mobbin
    references are not gathered in a build: the baseline is the reference.
    On a frozen copy the baseline is the frozen element itself:
@@ -383,65 +387,17 @@ A failure is `report_progress failed` with one plain sentence.
 
 ## The variant brief
 
-> Write the `<id>` variant ("<Title>": <note>) of the "<set title>" set
-> in the Proto prototype at `<workspace>`. Its files are
-> `src/variants/<marker>/<id>.tsx` and `<id>.module.css` (stubs exist;
-> replace them). The part it varies is the copy at
-> `src/parts/<slug>/<Name>.tsx` and `.module.css`: keep its data (names,
-> numbers, copy) and the product's values (its colours, type and spacing;
-> `src/tokens.css` holds the page's custom properties), rearranged as the
-> direction says. The root keeps `data-proto-id="<marker>"`; every
-> coherent piece inside carries its own kebab-case `data-proto-id`. The
-> component takes `{ className?: string }` and puts it on the root. No
-> new dependencies; touch no other file. Run `pnpm typecheck` in the
-> workspace, then look at your variant as it renders:
-> `node <kit>/tools/previews.mjs <workspace> --only <marker>=<id>` pictures
-> it in every preview state in about a second; read each picture it
-> lists and fix what looks broken. Check each picture for: the variant
-> wider or taller than the card it replaces; points, dots or markers not
-> sitting on their line; a label the direction names that is missing
-> (such as "Today"); an element missing or shown twice; text clipped or
-> overlapping; rows out of line; a control in the wrong place; wording
-> that does not fit the state (a resuming view that still says
-> "paused"); colours the page does not use. Its `unstyled` lists class
-> names on your variant that no stylesheet defines: they do nothing, so
-> fix every one (copy the class the page uses, or move the style into
-> your module CSS). Its `layout` lists faults measured in the render
-> (text over text, text cut off, anything outside the variant's box,
-> marks such as dots or icons a few pixels off a shared line): fix
-> every one. Two rounds at most. Report the files written, the
-> last typecheck's result and what the pictures showed.
+`variant-set.mjs` writes each builder's brief to a file (its output's
+`variants[].brief`, `<build>/briefs/<marker>--<id>.md`): the structure,
+styling and codebase rules, the self-check and the report, filled in for
+that workspace. Never retype or paraphrase those rules in the prompt;
+the file is their one copy. The prompt is the file and the direction:
 
-On a frozen copy, the brief names the frozen element instead of a part
-file, and adds how to style (`<repo>` is the product's repo, the
-directory you run in):
-
-> The part it varies is the frozen element marked `<marker>` in
-> `src/frozen/page.html` (and the change's component, if one is written).
-> Style with the page's own class names, copied from that markup: they
-> carry the page's exact colours, type and spacing from
-> `public/frozen/styles`, and the module CSS only lays them out. Where a
-> custom property is needed, use it exactly as the page's CSS does: find
-> it first (`grep -o "var(--<name>)[^;]*" public/frozen/styles/*.css`)
-> and copy the expression. Never wrap a property in a colour function of
-> your own (`hsl(var(--x))` when the page writes `var(--x)` breaks the
-> colour) and never invent a value the page does not use. The workspace
-> compiles no Tailwind: a utility class exists only if the page's CSS
-> already has it, so copy class names from the markup exactly as
-> written (`px-(--card-padding-x)`, not `px-[var(--card-padding-x)]`)
-> and write anything new in the module CSS. The product's codebase is
-> at `<repo>`. Anything the variant shows that the page does not (a
-> badge, a spinner, an alert, a button's loading state, a list row, an
-> icon) comes from there: find the component that renders it (its
-> shared UI package first, then the app's own components), copy its
-> markup and class names, and never draw or style your own. The page's
-> CSS is the whole app's build, so the codebase's classes are almost
-> always in it; the class check below names any that are not. An icon
-> the page does not show is the codebase's own: find how its source
-> imports icons (grep for the icon library or its own icon components),
-> read that icon's definition (the installed package's file, or the
-> component's source) and write its SVG with the attributes the page's
-> icons carry. Never draw one from memory, never emoji.
+> Your brief is `<brief path>`: read it first and follow it.
+> This variant: <what it shows and how, in a few sentences: the
+> hierarchy, the data and wording to keep, anything the page does not
+> say that must not be invented>. Preview states: <the ids, and what
+> each looks like in this variant; which control moves between them>.
 
 ## Component markers
 
