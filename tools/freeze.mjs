@@ -417,6 +417,17 @@ writeFileSync(
   join(frozenDir, "frozen.json"),
   JSON.stringify({ url: frozen.url, title: frozen.title, viewport: frozen.viewport, htmlAttrs: frozen.htmlAttrs, bodyAttrs: frozen.bodyAttrs, styles, frozenAt: new Date().toISOString() }, null, 2) + "\n",
 );
+// The width the page was frozen at: it lays out right only there, so the
+// Frame draws it at this width and scales it down when the review panel
+// leaves less room (a top bar would otherwise overflow and scroll).
+{
+  const manifestPath = join(workspace, "public", "prototype.json");
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.viewport = { width: Math.round(frozen.viewport.width), height: Math.round(frozen.viewport.height) };
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  }
+}
 writeFileSync(join(frozenDir, "Frozen.tsx"), FROZEN_TSX);
 writeFileSync(join(workspace, "src", "App.tsx"), APP_TSX);
 // The template's baseline would restyle the frozen page; the page brings its own.
