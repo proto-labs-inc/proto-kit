@@ -31,6 +31,7 @@ import { buildOfWorkspace, markerRects } from "./build-folder.mjs";
 import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
+import { decodePng, encodePng } from "./cdp/png.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
@@ -85,39 +86,83 @@ async function picture(view, state = null) {
   const opened = await headlessPage(view.url, { ...viewport, display });
   try {
     const marks = await waitForMarkers(opened.page);
-    const mine = marks?.marks.filter((m) => m.id === view.component && !m.hidden && m.rect[2] > 0 && m.rect[3] > 0) ?? [];
-    if (mine.length === 0) {
-      missing.push({ component: view.component, variant: view.variant, why: marks === null ? "the app did not mount" : `nothing marked ${view.component} in this view` });
+    // A set may span several regions (manifest `regions`): each is pictured
+    // on its own, and the manifest's preview stacks them, so the card shows
+    // the whole variant.
+    const regions = view.regions ?? [view.component];
+    const multi = regions.length > 1;
+    const look = state || only;
+    const shots = [];
+    for (const [i, region] of regions.entries()) {
+      const mine = marks?.marks.filter((m) => m.id === region && !m.hidden && m.rect[2] > 0 && m.rect[3] > 0) ?? [];
+      if (mine.length === 0) {
+        missing.push({ component: view.component, variant: view.variant, ...(multi ? { region } : {}), ...(state ? { state } : {}), why: marks === null ? "the app did not mount" : `nothing marked ${region} in this view` });
+        continue;
+      }
+      const x0 = Math.min(...mine.map((m) => m.rect[0]));
+      const y0 = Math.min(...mine.map((m) => m.rect[1]));
+      const x1 = Math.max(...mine.map((m) => m.rect[0] + m.rect[2]));
+      const y1 = Math.max(...mine.map((m) => m.rect[1] + m.rect[3]));
+      const clip = {
+        x: Math.max(0, Math.floor(x0 - pad)),
+        y: Math.max(0, Math.floor(y0 - pad)),
+        width: Math.min(viewport.width, Math.ceil(x1 + pad)) - Math.max(0, Math.floor(x0 - pad)),
+        height: Math.min(viewport.height, Math.ceil(y1 + pad)) - Math.max(0, Math.floor(y0 - pad)),
+      };
+      // Pictures for looking (a state, --only, or one region of several) go
+      // to the build folder, never into public/: they are not the
+      // prototype's, and publishing refuses odd names.
+      const suffix = i === 0 ? "" : `--${region}`;
+      const inLooks = look || multi;
+      const file = look ? `${view.component}-${view.variant}${suffix}--${state ?? firstState}.png` : `${view.component}-${view.variant}${suffix}.png`;
+      const path = join(inLooks ? looksDir : previewsDir, file);
+      const selector = `[data-proto-id=${JSON.stringify(region)}]`;
+      const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}, [...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })])`;
+      await stableShot(opened.page, probe, path, clip);
+      const background = await evaluate(opened.page, backdropOf(selector));
+      if (only) {
+        const found = unstyledBy.get(region) ?? new Set();
+        for (const c of JSON.parse(await evaluate(opened.page, UNSTYLED(selector)))) found.add(c);
+        unstyledBy.set(region, found);
+        for (const issue of JSON.parse(await evaluate(opened.page, LAYOUT(selector)))) layout.push({ state: state ?? firstState, ...(multi ? { region } : {}), issue });
+      }
+      const rect = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
+      shots.push({ region, path, background, rect });
+      if (look) statePictures.push({ component: view.component, variant: view.variant, ...(multi ? { region } : {}), state: state ?? firstState, file: path });
+      console.error(`… ${view.component}=${view.variant}${multi ? ` ${region}` : ""}${state ? ` in ${state}` : ""}: ${rect.w}×${rect.h} at ${rect.x},${rect.y}`);
+    }
+    if (look || shots.length === 0) return;
+    if (!multi) {
+      const [shot] = shots;
+      previews.push({ component: view.component, variant: view.variant, file: `previews/${view.component}-${view.variant}.png`, background: shot.background, rect: shot.rect });
       return;
     }
-    const x0 = Math.min(...mine.map((m) => m.rect[0]));
-    const y0 = Math.min(...mine.map((m) => m.rect[1]));
-    const x1 = Math.max(...mine.map((m) => m.rect[0] + m.rect[2]));
-    const y1 = Math.max(...mine.map((m) => m.rect[1] + m.rect[3]));
-    const clip = {
-      x: Math.max(0, Math.floor(x0 - pad)),
-      y: Math.max(0, Math.floor(y0 - pad)),
-      width: Math.min(viewport.width, Math.ceil(x1 + pad)) - Math.max(0, Math.floor(x0 - pad)),
-      height: Math.min(viewport.height, Math.ceil(y1 + pad)) - Math.max(0, Math.floor(y0 - pad)),
-    };
-    // Pictures for looking (a state, or --only) go to the build folder, never
-    // into public/: they are not the prototype's, and publishing refuses odd names.
-    const look = state || only;
-    const file = look ? `${view.component}-${view.variant}--${state ?? firstState}.png` : `${view.component}-${view.variant}.png`;
-    const dir = look ? looksDir : previewsDir;
-    const selector = `[data-proto-id=${JSON.stringify(view.component)}]`;
-    const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}, [...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })])`;
-    await stableShot(opened.page, probe, join(dir, file), clip);
-    const background = await evaluate(opened.page, backdropOf(selector));
-    if (only) for (const c of JSON.parse(await evaluate(opened.page, UNSTYLED(selector)))) unstyled.add(c);
-    if (only) for (const issue of JSON.parse(await evaluate(opened.page, LAYOUT(selector)))) layout.push({ state: state ?? firstState, issue });
-    const part = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
-    if (look) statePictures.push({ component: view.component, variant: view.variant, state: state ?? firstState, file: join(looksDir, file) });
-    else previews.push({ component: view.component, variant: view.variant, file: `previews/${file}`, background, rect: part });
-    console.error(`… ${view.component}=${view.variant}${state ? ` in ${state}` : ""}: ${part.w}×${part.h} at ${part.x},${part.y}`);
+    const file = `${view.component}-${view.variant}.png`;
+    // In page order, top first: the top bar's region above the notice's.
+    writeFileSync(join(previewsDir, file), stackPictures([...shots].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x).map((shot) => shot.path)));
+    previews.push({ component: view.component, variant: view.variant, file: `previews/${file}`, background: shots[0].background, rect: shots[0].rect, regions: shots.map((shot) => ({ region: shot.region, file: shot.path, rect: shot.rect })) });
   } finally {
     await opened.close().catch(() => {});
   }
+}
+
+/** Several region pictures as one: stacked top to bottom, a gap between,
+ *  on the colour of the first picture's corner (the page behind it). */
+function stackPictures(paths) {
+  const images = paths.map((path) => decodePng(readFileSync(path)));
+  const gap = Math.round(16 * display.dpr);
+  const width = Math.max(...images.map((image) => image.width));
+  const height = images.reduce((sum, image) => sum + image.height, 0) + gap * (images.length - 1);
+  const data = new Uint8Array(width * height * 4);
+  const fill = images[0].data.subarray(0, 4);
+  for (let i = 0; i < width * height; i += 1) data.set(fill, i * 4);
+  let top = 0;
+  for (const image of images) {
+    const left = Math.floor((width - image.width) / 2);
+    for (let y = 0; y < image.height; y += 1) data.set(image.data.subarray(y * image.width * 4, (y + 1) * image.width * 4), ((top + y) * width + left) * 4);
+    top += image.height + gap;
+  }
+  return encodePng({ width, height, data });
 }
 
 // Class names on the variant that no stylesheet on the page defines. A
@@ -126,7 +171,7 @@ async function picture(view, state = null) {
 // has px-(--x)) silently does nothing. Reported under --only so the unit
 // fixes it in its own module CSS. Lucide's icon labels (lucide,
 // lucide-<name>) are never styles and are left out.
-const unstyled = new Set();
+const unstyledBy = new Map();
 const frozenPage = join(workspace, "src", "frozen", "page.html");
 const pageClasses = new Set(existsSync(frozenPage) ? [...readFileSync(frozenPage, "utf8").matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/)) : []);
 const UNSTYLED = (selector) => `(() => {
@@ -223,9 +268,16 @@ await Promise.all(Array.from({ length: 4 }, async () => {
   }
 }));
 
+/** A set of one region lists its classes; one of several, per region. */
+function unstyledReport() {
+  const keep = (found) => [...found].filter((c) => !pageClasses.has(c) && !/^lucide(-|$)/.test(c));
+  if (unstyledBy.size <= 1) return keep(unstyledBy.values().next().value ?? []);
+  return Object.fromEntries([...unstyledBy].map(([region, found]) => [region, keep(found)]));
+}
+
 if (only) {
   dev.stop();
-  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), unstyled: [...unstyled].filter((c) => !pageClasses.has(c) && !/^lucide(-|$)/.test(c)), layout, missing }));
+  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, ...(p.region ? { region: p.region } : {}), file: p.file })), unstyled: unstyledReport(), layout, missing }));
   process.exit(0);
 }
 

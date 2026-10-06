@@ -156,7 +156,8 @@ used the wrong display and disturbed the checks running beside them).
    for variants and the copy is frozen, the next thing you do once the
    copy returns is step 8's start: pick the decision, find the element
    in `src/frozen/page.html` by its marker (or by text and `data-pf`,
-   adding a `data-proto-id` if it has none), run `variant-set.mjs`,
+   adding a `data-proto-id` if it has none; every region, when the
+   decision spans several), run `variant-set.mjs`,
    wire the switch into `App.tsx` and dispatch the builders. Do not
    start the server, read the codebase's source, write shared data or
    add preview states first: the builders need only the frozen markup
@@ -273,6 +274,16 @@ used the wrong display and disturbed the checks running beside them).
    --baseline current=Current --overview "<the question>" --slot <class>`
    where `<marker>` is the `data-proto-id` of the part the set varies
    and `<class>` its slot in App.tsx (`className={styles["partNN"]}`).
+   A decision that changes several parts of the page together (the top
+   bar's project switcher and the page's notice) is **one set** with
+   `--regions <marker>,<marker>` (the first is the set's key, the same as
+   `<marker>`), never two sets and never a second region wired by hand.
+   Mark any region that has no marker first (`data-proto-id="<kebab-name>"`
+   on that element in `page.html`); regions may not sit inside each other.
+   Each builder then writes all of its variant's regions in one file, with
+   the state they share (`useShared`, `src/variants/store.ts`), and the
+   output prints the exact `replace={{ … }}` for App.tsx, one switch per
+   region, each with its region's `FrozenHtml` as the baseline.
    It writes the manifest entry (`status: "building"`), the switch
    `src/variants/<marker>/index.tsx` on `useVariant`, one stub per
    variant, and frees the slot's pinned height. You replace the part in

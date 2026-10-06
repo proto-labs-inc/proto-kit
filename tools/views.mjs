@@ -12,6 +12,13 @@ import { evaluate } from "./cdp/cdp.mjs";
  * preview state, one per variant of each set (at the set's showcase
  * state when it names one).
  */
+/** The markers a check treats as changed: those named on the command
+ *  line, and every region of every variant set (a set that spans the top
+ *  bar and a notice changes both). */
+export function changedMarkers(manifest, named = []) {
+  return new Set([...named, ...(manifest.variantSets ?? []).flatMap((set) => set.regions ?? [set.component])].map((m) => m.trim()).filter(Boolean));
+}
+
 export function viewsOf(manifest, appUrl) {
   const views = [{ name: "default", url: `${appUrl}/`, state: null, component: null, variant: null }];
   // The copy: the default state with every set at its baseline, the page
@@ -32,7 +39,7 @@ export function viewsOf(manifest, appUrl) {
       const params = new URLSearchParams();
       params.set(`v.${set.component}`, variant.id);
       if (set.state) params.set("state", set.state);
-      views.push({ name: `variant:${set.component}=${variant.id}`, url: `${appUrl}/?${params}`, state: set.state ?? null, component: set.component, variant: variant.id });
+      views.push({ name: `variant:${set.component}=${variant.id}`, url: `${appUrl}/?${params}`, state: set.state ?? null, component: set.component, variant: variant.id, regions: set.regions ?? [set.component] });
     }
   }
   return views;

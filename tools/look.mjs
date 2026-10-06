@@ -8,12 +8,13 @@
  *
  * Usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> | --page] [--pad 24]
  *
- * Without --part or --page it pictures the variant sets' parts when a
- * --variant is given, else the whole page. Pictures go to the build
+ * Without --part or --page it pictures the variant set's parts when a
+ * --variant is given (every region of a set that spans several), else
+ * the whole page. Pictures go to the build
  * folder (<build>/looks/), never into public/. Prints one JSON line:
  * { seconds, pictures: [{ file, url, rect }], missing }.
  */
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
@@ -55,16 +56,21 @@ for (const v of options.variants) {
   query.set(`v.${set}`, id);
 }
 const url = `${dev.url}/${query.size ? `?${query}` : ""}`;
-const part = options.part ?? (options.page ? null : options.variants[0]?.split("=")[0] ?? null);
+// A --variant pictures every region of its set (manifest `regions`).
+const manifest = JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8"));
+const setOf = (key) => manifest.variantSets?.find((set) => set.component === key);
+const firstSet = options.variants[0]?.split("=")[0];
+const parts = options.part ? [options.part] : options.page || !firstSet ? [null] : (setOf(firstSet)?.regions ?? [firstSet]);
 const pad = Number(options.pad);
-const name = [part ?? "page", ...options.variants.map((v) => v.replace("=", "-")), options.state ?? "default"].join("--").replace(/[^a-z0-9.-]+/gi, "-");
-const file = join(looksDir, `${name}.png`);
 
 const missing = [];
 const pictures = [];
 const opened = await headlessPage(url, { ...viewport, display });
 try {
   const marks = await waitForMarkers(opened.page);
+  for (const part of parts) {
+  const name = [part ?? "page", ...options.variants.map((v) => v.replace("=", "-")), options.state ?? "default"].join("--").replace(/[^a-z0-9.-]+/gi, "-");
+  const file = join(looksDir, `${name}.png`);
   let clip;
   let rect = null;
   if (part) {
@@ -83,7 +89,8 @@ try {
   }
   if (!part || clip) {
     await stableShot(opened.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, file, clip);
-    pictures.push({ file, url, rect });
+    pictures.push({ file, url, rect, ...(part ? { part } : {}) });
+  }
   }
 } finally {
   await opened.close().catch(() => {});

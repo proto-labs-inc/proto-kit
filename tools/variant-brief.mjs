@@ -19,12 +19,28 @@ export function repoOfWorkspace(workspace) {
   return JSON.parse(readFileSync(record, "utf8")).source?.path ?? null;
 }
 
-export function variantBrief({ workspace, component, setTitle, variant }) {
+/** `regions`: [{ marker, Name, markup }], the set's regions in order (one
+ *  for a set that varies one part); `markup` is that region's frozen
+ *  markup laid out for reading, or null on a rebuilt copy. */
+export function variantBrief({ workspace, component, setTitle, variant, regions = [{ marker: component, Name: null, markup: null }] }) {
   const frozen = existsSync(join(workspace, "src", "frozen", "page.html"));
   const repo = repoOfWorkspace(workspace);
-  const part = frozen
-    ? `The part it varies is the frozen element marked \`${component}\` in \`src/frozen/page.html\` (and the change's component under \`src/change/\`, if the main agent wrote one). Read that element's markup first.`
-    : `The part it varies is the copied part under \`src/parts/\` whose root carries \`data-proto-id="${component}"\`: its \`.tsx\` and \`.module.css\`.`;
+  const multi = regions.length > 1;
+  const where = (r) =>
+    frozen
+      ? `the frozen element marked \`${r.marker}\`${r.markup ? `; its markup, a tag per line, is \`${r.markup}\`` : " in `src/frozen/page.html`"}`
+      : `the copied part under \`src/parts/\` whose root carries \`data-proto-id="${r.marker}"\``;
+  const readFirst = frozen
+    ? " Read the markup file(s) first: `src/frozen/page.html` is one line, so never grep or read it whole, and never read `src/tokens.css` whole (grep it for the property you need)."
+    : "";
+  const part = multi
+    ? `This decision changes ${regions.length} regions of the page, and your variant changes all of them:\n\n${regions.map((r) => `- \`${r.Name}\` replaces ${where(r)}.`).join("\n")}\n\n(and the change's component under \`src/change/\`, if the main agent wrote one).${readFirst}`
+    : `The part it varies is ${where(regions[0])} (and the change's component under \`src/change/\`, if the main agent wrote one).${readFirst}`;
+  const structure = multi
+    ? `- The file exports one component per region, by the names above, each \`({ className }: { className?: string })\` with the className on its root, and each root keeps its region's \`data-proto-id\`; every coherent piece inside carries its own kebab-case \`data-proto-id\`.
+- What the regions share while this variant is shown (a menu open, a choice made, a restore started from either region) lives in the file's \`useShared\` store: set its initial values in \`createVariantStore({ ... })\`, and in each region \`const [shared, setShared] = useShared()\`. Anything a reviewer should be able to link to is a preview state instead (\`usePreviewState\`, in the URL, shared by every region already).`
+    : `- The root keeps \`data-proto-id="${component}"\`; every coherent piece inside carries its own kebab-case \`data-proto-id\`.
+- The component takes \`{ className?: string }\` and puts it on the root.`;
   const styling = frozen
     ? `- Style with the page's own class names, copied from the frozen markup: they carry the page's exact colours, type and spacing from \`public/frozen/styles\`. The module CSS only lays them out.
 - The workspace compiles no Tailwind: a class exists only if the page's CSS has it. Copy class names exactly as written (\`px-(--card-padding-x)\`, not \`px-[var(--card-padding-x)]\`) and write anything new in the module CSS.
@@ -44,8 +60,7 @@ ${part} Keep its data (names, numbers, wording) and the product's look, rearrang
 
 ## Structure
 
-- The root keeps \`data-proto-id="${component}"\`; every coherent piece inside carries its own kebab-case \`data-proto-id\`.
-- The component takes \`{ className?: string }\` and puts it on the root.
+${structure}
 - Preview states are read with \`usePreviewState\` from \`@proto-labs-inc/rig\`, with the ids the prompt gives.
 - No new dependencies. Import only with relative paths (no \`@/\` aliases). Touch no other file; never edit \`tsconfig\` or \`vite.config\`.
 
@@ -60,7 +75,7 @@ ${lacking}
 ## Check your work
 
 1. \`pnpm typecheck\` in the workspace; fix what it names.
-2. \`node ${join(KIT_TOOLS, "previews.mjs")} ${workspace} --only ${component}=${variant.id}\` pictures your variant in every preview state in about a second. Its output also lists:
+2. \`node ${join(KIT_TOOLS, "previews.mjs")} ${workspace} --only ${component}=${variant.id}\` pictures your variant in every preview state in about a second${multi ? ", every region separately" : ""}. Its output also lists${multi ? ", per region" : ""}:
    - \`unstyled\`: class names no stylesheet defines. They do nothing; fix every one (copy the class the page uses, or move the style into your module CSS).
    - \`layout\`: faults measured in the render (text over text, text cut off, anything outside the variant's box, dots or icons a few pixels off a shared line). Fix every one.
 3. Read each picture and check for: the variant wider or taller than the card it replaces; a label the direction names that is missing; an element missing or shown twice; rows out of line; a control in the wrong place; wording that does not fit the state (a resuming view that still says "paused"); colours the page does not use.

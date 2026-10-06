@@ -35,7 +35,7 @@ import { cropPng, decodePng, encodePng } from "./cdp/png.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 import { framePaths } from "./cdp/live.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
-import { launchedDisplayOr, viewsOf, waitForMarkers } from "./views.mjs";
+import { changedMarkers, launchedDisplayOr, viewsOf, waitForMarkers } from "./views.mjs";
 
 const USAGE = "usage: node tools/check-states.mjs <workspace> [--changed <marker,marker>] [--brief <id> --codebase <id>] [--no-send]";
 const options = {};
@@ -62,7 +62,7 @@ const build = buildOfWorkspace(workspace);
 const { rects: readRects, nodeIds } = markerRects(build);
 const viewport = build?.tree?.viewport ?? { width: 1280, height: 800 };
 const display = launchedDisplayOr(viewport);
-const changed = new Set([...(options.changed ? options.changed.split(",") : []), ...(manifest.variantSets ?? []).map((set) => set.component)].map((m) => m.trim()).filter(Boolean));
+const changed = changedMarkers(manifest, options.changed ? options.changed.split(",") : []);
 const outDir = build ? join(build.dir, "checks", "after") : join(workspace, ".proto-checks");
 mkdirSync(outDir, { recursive: true });
 
@@ -107,7 +107,7 @@ async function checkView(view) {
     const marks = await waitForMarkers(page);
     const result = { view: view.name, url: view.url, blank: marks === null || marks.text === 0, errors, markers: marks?.marks.length ?? 0, missing: [], outside: [], overlap: [] };
     if (marks === null) return { result, marks: null, page: opened };
-    if (view.component && !marks.marks.some((m) => m.id === view.component)) result.missing.push(view.component);
+    for (const region of view.regions ?? (view.component ? [view.component] : [])) if (!marks.marks.some((m) => m.id === region)) result.missing.push(region);
     Object.assign(result, rectSanity(marks.marks));
     return { result, marks, page: opened };
   } catch (error) {
@@ -251,7 +251,7 @@ if (reporter && build) {
   for (const marker of changed) {
     const nodeId = nodeIds.get(marker);
     if (!nodeId) continue;
-    const mine = results.filter((r) => r.view === "default" || views.find((v) => v.name === r.view)?.component === marker);
+    const mine = results.filter((r) => r.view === "default" || (views.find((v) => v.name === r.view)?.regions ?? []).includes(marker));
     const problems = mine.reduce((n, r) => n + (r.blank ? 1 : 0) + r.errors.length + r.missing.length + r.outside.filter((o) => o.marker === marker || o.parent === marker).length + r.overlap.filter((o) => o.markers.includes(marker)).length, 0);
     // The pass's picture: the part as the default view now draws it, cut
     // from that view's screenshot at exactly the part's rect.

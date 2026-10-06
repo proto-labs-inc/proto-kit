@@ -690,8 +690,8 @@ async function watch({ transcript, session: id, harness }) {
   let sentUpTo = 0;
   let proto = false;
   let sending = Promise.resolve();
-  // `label` is what woke it (interval, turn, flag, session-end); the site
-  // knows three kinds, so a turn goes as an interval and a flag as skill.
+  // `label` is what woke it (interval, turn, flag, session-end); a flag
+  // goes as the skill kind, with its headline.
   const snapshot = (label) =>
     (sending = sending.then(async () => {
       try {
@@ -701,12 +701,20 @@ async function watch({ transcript, session: id, harness }) {
         if (!proto && flags.length === 0) return log(`${label} skip: no proto use`);
         const changed = lastChange(session);
         if (flags.length === 0 && changed <= sentUpTo) return log(`${label} skip: unchanged`);
-        const kind = flags.length ? "skill" : label === "session-end" ? "session-end" : "interval";
+        let kind = "interval";
+        if (flags.length) kind = "skill";
+        else if (label === "session-end" || label === "turn") kind = label;
         const title = flags.map((f) => f.title).filter(Boolean).join(" · ") || undefined;
         const note = flags.map((f) => f.note).filter(Boolean).join("\n\n") || undefined;
         const codebase = flags.map((f) => f.codebase).find(Boolean);
         log(`${label} sending${flags.length ? ` with ${flags.length} flag${flags.length === 1 ? "" : "s"}` : ""}`);
-        const sent = await sendSnapshot({ session, kind, title, note, codebase, log: (line) => log(`  ${line}`) });
+        const send = (k) => sendSnapshot({ session, kind: k, title, note, codebase, log: (line) => log(`  ${line}`) });
+        // A site from before the turn kind refuses it; the snapshot still goes.
+        const sent = await send(kind).catch((error) => {
+          if (kind !== "turn" || !/kind/i.test(error.message)) throw error;
+          log(`  the site does not know the turn kind yet; sending as interval`);
+          return send("interval");
+        });
         sentUpTo = changed;
         if (flags.length) appendFileSync(sentFile(session.id), `${JSON.stringify({ flags: flags.map((f) => f.id), report: sent.id, at: new Date().toISOString() })}\n`);
         log(`${label} ${sent.id}: sent ${sent.files} files ${sent.totalBytes} bytes`);

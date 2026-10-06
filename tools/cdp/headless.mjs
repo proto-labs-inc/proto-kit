@@ -173,7 +173,11 @@ export async function headlessPage(url, { width, height, display: _asked }, port
   const { display } = await ensureHeadless(_asked, port);
   const info = await version(port);
   const browser = await connect(info.webSocketDebuggerUrl);
-  const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
+  // Its own window at the viewport's size: tabs sharing one window while
+  // several lanes capture at once came back as tiles of the page (header
+  // and sidebar repeated), since only the front tab of a window is drawn
+  // at its emulated size.
+  const { targetId } = await browser.send("Target.createTarget", { url: "about:blank", newWindow: true, width, height });
   browser.close();
   const tabs = await (await fetch(`http://localhost:${port}/json/list`)).json();
   const tab = tabs.find((t) => t.id === targetId);
