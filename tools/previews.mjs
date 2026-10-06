@@ -8,8 +8,9 @@
  * variant's `preview` and `previewBackground`, and a set whose every
  * variant has a picture loses its `status: "building"`. Each variant is
  * also pictured in every preview state after the first, at
- * public/previews/states/<component>-<variant>@<state>.png (printed as
- * `states`), for looking at a state without taking screenshots by hand.
+ * <build>/looks/<component>-<variant>--<state>.png (printed as `states`,
+ * full paths; never published), for looking at a state without taking
+ * screenshots by hand.
  * --only <component>=<variant> pictures that one variant in every state
  * and stops there: no manifest change and nothing sent, so the unit
  * writing a variant can look at its own work while the others write
@@ -96,13 +97,17 @@ async function picture(view, state = null) {
       width: Math.min(viewport.width, Math.ceil(x1 + pad)) - Math.max(0, Math.floor(x0 - pad)),
       height: Math.min(viewport.height, Math.ceil(y1 + pad)) - Math.max(0, Math.floor(y0 - pad)),
     };
-    const file = state ? `states/${view.component}-${view.variant}@${state}.png` : `${view.component}-${view.variant}.png`;
+    // Pictures for looking (a state, or --only) go to the build folder, never
+    // into public/: they are not the prototype's, and publishing refuses odd names.
+    const look = state || only;
+    const file = look ? `${view.component}-${view.variant}--${state ?? firstState}.png` : `${view.component}-${view.variant}.png`;
+    const dir = look ? looksDir : previewsDir;
     const selector = `[data-proto-id=${JSON.stringify(view.component)}]`;
     const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}, [...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })])`;
-    await stableShot(opened.page, probe, join(previewsDir, file), clip);
+    await stableShot(opened.page, probe, join(dir, file), clip);
     const background = await evaluate(opened.page, backdropOf(selector));
     const part = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
-    if (state) statePictures.push({ component: view.component, variant: view.variant, state, file: `public/previews/${file}` });
+    if (look) statePictures.push({ component: view.component, variant: view.variant, state: state ?? firstState, file: join(looksDir, file) });
     else previews.push({ component: view.component, variant: view.variant, file: `previews/${file}`, background, rect: part });
     console.error(`… ${view.component}=${view.variant}${state ? ` in ${state}` : ""}: ${part.w}×${part.h} at ${part.x},${part.y}`);
   } finally {
@@ -113,8 +118,10 @@ async function picture(view, state = null) {
 // Every variant in every preview state other than the first (the default),
 // so a state's look is checked from a picture, not an improvised screenshot.
 const statePictures = [];
+const firstState = (manifest.states ?? [])[0]?.id ?? "default";
 const otherStates = (manifest.states ?? []).slice(1).map((st) => st.id);
-if (otherStates.length) mkdirSync(join(previewsDir, "states"), { recursive: true });
+const looksDir = join(logDir, "looks");
+mkdirSync(looksDir, { recursive: true });
 const jobs = [
   ...views.map((view) => [view, null]),
   ...otherStates.flatMap((state) => views.map((view) => [{ ...view, url: `${view.url}${view.url.includes("?") ? "&" : "?"}state=${encodeURIComponent(state)}` }, state])),
@@ -128,7 +135,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
 
 if (only) {
   dev.stop();
-  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: [...previews.map((p) => ({ state: (manifest.states ?? [])[0]?.id ?? "default", file: `public/${p.file}` })), ...statePictures.map((p) => ({ state: p.state, file: p.file }))], missing }));
+  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), missing }));
   process.exit(0);
 }
 
