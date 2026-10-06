@@ -22,6 +22,9 @@ and spacing from public/frozen/styles, so the module CSS only lays
 things out. Use a custom property only the way the page's own CSS uses
 it (grep public/frozen/styles for it first and copy the expression);
 never wrap one in a colour function of your own, and never use emoji.
+The workspace compiles no Tailwind: a utility class exists only if the
+page's CSS has it, so copy class names exactly as the markup writes
+them and put anything new in the module CSS.
 Import only with relative paths (no @/ aliases) and never edit
 tsconfig or vite.config.
 
@@ -32,7 +35,8 @@ second. Read each picture and check it for: the variant wider or taller than
 the card it replaces; points not on their line; a label the direction
 names that is missing; an element missing or shown twice; clipped or
 overlapping text; rows out of line; a control in the wrong place;
-wording that does not fit the state. Fix what you find, two rounds at
+wording that does not fit the state. The command's unstyled lists
+class names no stylesheet defines; fix every one. Fix what you find, two rounds at
 most. Never take screenshots any other way and
 never start a browser yourself.
 """

@@ -14,7 +14,8 @@
  * --only <component>=<variant> pictures that one variant in every state
  * and stops there: no manifest change and nothing sent, so the unit
  * writing a variant can look at its own work while the others write
- * theirs.
+ * theirs. Its `unstyled` lists the variant's class names no stylesheet
+ * defines (they do nothing; a frozen copy compiles no Tailwind).
  *
  * Usage: node tools/previews.mjs <workspace> [--pad 24] [--brief <id> --codebase <id>] [--no-send]
  *
@@ -106,6 +107,7 @@ async function picture(view, state = null) {
     const probe = `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}, [...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })])`;
     await stableShot(opened.page, probe, join(dir, file), clip);
     const background = await evaluate(opened.page, backdropOf(selector));
+    if (only) for (const c of JSON.parse(await evaluate(opened.page, UNSTYLED(selector)))) unstyled.add(c);
     const part = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
     if (look) statePictures.push({ component: view.component, variant: view.variant, state: state ?? firstState, file: join(looksDir, file) });
     else previews.push({ component: view.component, variant: view.variant, file: `previews/${file}`, background, rect: part });
@@ -114,6 +116,24 @@ async function picture(view, state = null) {
     await opened.close().catch(() => {});
   }
 }
+
+// Class names on the variant that no stylesheet on the page defines. A
+// frozen copy compiles no Tailwind: only the classes the page's own CSS
+// has exist, so a utility written fresh (px-[var(--x)] where the page
+// has px-(--x)) silently does nothing. Reported under --only so the unit
+// fixes it in its own module CSS.
+const unstyled = new Set();
+const frozenPage = join(workspace, "src", "frozen", "page.html");
+const pageClasses = new Set(existsSync(frozenPage) ? [...readFileSync(frozenPage, "utf8").matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/)) : []);
+const UNSTYLED = (selector) => `(() => {
+  const selectors = [];
+  const walk = (rules) => { for (const r of rules) { if (r.selectorText) selectors.push(r.selectorText); if (r.cssRules) walk(r.cssRules); } };
+  for (const sheet of document.styleSheets) { try { walk(sheet.cssRules); } catch {} }
+  const all = selectors.join(" ");
+  const classes = new Set();
+  for (const root of document.querySelectorAll(${JSON.stringify(selector)})) for (const e of [root, ...root.querySelectorAll("*")]) for (const c of e.classList) classes.add(c);
+  return JSON.stringify([...classes].filter((c) => !all.includes("." + CSS.escape(c))));
+})()`;
 
 // Every variant in every preview state other than the first (the default),
 // so a state's look is checked from a picture, not an improvised screenshot.
@@ -135,7 +155,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
 
 if (only) {
   dev.stop();
-  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), missing }));
+  console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, file: p.file })), unstyled: [...unstyled].filter((c) => !pageClasses.has(c)), missing }));
   process.exit(0);
 }
 

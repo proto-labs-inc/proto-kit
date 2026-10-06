@@ -152,6 +152,17 @@ used the wrong display and disturbed the checks running beside them).
    conversation and stop at that checkpoint. Record the answer as described
    under Blocked, then rerun the same command. Do not advance to serving or
    composition while the choice is unanswered.
+   **Variants start here, before anything else.** When the brief asks
+   for variants and the copy is frozen, the next thing you do once the
+   copy returns is step 8's start: pick the decision, find the element
+   in `src/frozen/page.html` by its marker (or by text and `data-pf`,
+   adding a `data-proto-id` if it has none), run `variant-set.mjs`,
+   wire the switch into `App.tsx` and dispatch the builders. Do not
+   start the server, read the codebase's source, write shared data or
+   add preview states first: the builders need only the frozen markup
+   and the brief, and every minute before they start is a minute added
+   to the build. Serving (step 5) and the rest of the change (step 7)
+   happen while they work.
 5. **Serve early.** The dev server the copy used has stopped; start the
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
@@ -193,12 +204,13 @@ used the wrong display and disturbed the checks running beside them).
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
-7. **Write the change.** When the brief asks for variants (step 8),
-   start them first: mark the element (add `data-proto-id` in
-   `page.html` if it has none), run `variant-set.mjs` and dispatch the
-   variant builders, then write the rest of the change (shared data,
-   preview states, wiring) while they work. The builders take minutes;
-   waiting for your own setup before starting them only adds to it.
+7. **Write the change.** The variant builders are already running
+   (the end of step 4); write the rest of the change (shared data,
+   preview states, wiring) while they work. A builder owns its variant:
+   when it reports back with its pictures checked, keep its files as
+   they are. Change a variant only for a fault check-states or the
+   previews name (step 9), and then only that fault; never rewrite
+   one to your own taste.
    On a frozen copy, find the elements the brief is
    about in `src/frozen/page.html` (by marker, or by text and `data-pf`;
    the parts list's rects say where each sits) and change only those:
@@ -391,7 +403,10 @@ A failure is `report_progress failed` with one plain sentence.
 > (such as "Today"); an element missing or shown twice; text clipped or
 > overlapping; rows out of line; a control in the wrong place; wording
 > that does not fit the state (a resuming view that still says
-> "paused"); colours the page does not use. Two rounds at most. Report the files written, the
+> "paused"); colours the page does not use. Its `unstyled` lists class
+> names on your variant that no stylesheet defines: they do nothing, so
+> fix every one (copy the class the page uses, or move the style into
+> your module CSS). Two rounds at most. Report the files written, the
 > last typecheck's result and what the pictures showed.
 
 On a frozen copy, the brief names the frozen element instead of a part
@@ -406,7 +421,11 @@ file, and adds how to style:
 > it first (`grep -o "var(--<name>)[^;]*" public/frozen/styles/*.css`)
 > and copy the expression. Never wrap a property in a colour function of
 > your own (`hsl(var(--x))` when the page writes `var(--x)` breaks the
-> colour) and never invent a value the page does not use. Icons are the
+> colour) and never invent a value the page does not use. The workspace
+> compiles no Tailwind: a utility class exists only if the page's CSS
+> already has it, so copy class names from the markup exactly as
+> written (`px-(--card-padding-x)`, not `px-[var(--card-padding-x)]`)
+> and write anything new in the module CSS. Icons are the
 > page's own inline SVGs, copied from the markup, not emoji.
 
 ## Component markers
