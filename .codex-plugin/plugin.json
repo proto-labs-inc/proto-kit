@@ -1,6 +1,6 @@
 {
   "name": "proto",
-  "version": "0.1.0+codex.20261006025137",
+  "version": "0.1.0+codex.20261006040526",
   "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs, driven by your coding agent.",
   "author": {
     "name": "Proto Labs"

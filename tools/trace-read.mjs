@@ -471,6 +471,34 @@ function atOf(trace, target) {
 
 /** Each skill the main agent started: through the Skill tool, or read
  *  from its file (Codex, Cursor, or an agent told to), once per skill. */
+/** The build's stages, read from the kit tools the main session ran:
+ *  where the copy, the change, the variants, the checks and the publish
+ *  began. Each is the first call of its kind (the build: the moment the
+ *  last copy call returned), so two runs of a
+ *  flow line up in `compare` whatever the skill printed. */
+export function stageMarks(trace, main) {
+  const tools = trace.tools.filter((t) => t.agent === main.id).sort((a, b) => a.at - b.at);
+  const first = (test, after = -Infinity) => tools.find((t) => t.at > after && test(t));
+  const has = (re) => (t) => re.test(t.group ?? "");
+  const marks = [];
+  const connect = first((t) => /^proto /.test(t.group ?? "") || t.name === "Skill");
+  if (connect) marks.push({ at: connect.at, label: "stage connect" });
+  const copy = first(has(/proto-build|freeze|replicate/));
+  if (copy) marks.push({ at: copy.at, label: "stage copy" });
+  // The build begins when the last copy call returns: the change, the
+  // fixers and the serving all come after it.
+  const lastCopy = [...tools].reverse().find(has(/proto-build|freeze|replicate/));
+  const copied = lastCopy ? lastCopy.end ?? lastCopy.at + (lastCopy.ms ?? 0) : null;
+  if (copied) marks.push({ at: copied, label: "stage build" });
+  const variants = first(has(/variant-set/));
+  if (variants) marks.push({ at: variants.at, label: "stage variants" });
+  const checks = first(has(/check-states/), variants?.at ?? copied ?? -Infinity);
+  if (checks) marks.push({ at: checks.at, label: "stage checks" });
+  const publish = first(has(/proto publish($| )/));
+  if (publish) marks.push({ at: publish.at, label: "stage publish" });
+  return marks.sort((a, b) => a.at - b.at);
+}
+
 function skillMarks(trace, main) {
   return [
     ...trace.tools.filter((t) => t.agent === main.id && t.name === "Skill").map((t) => ({ at: t.at, label: `skill ${t.input.skill}` })),
@@ -526,7 +554,7 @@ export function analyze(trace, flags = []) {
   const marked = flags.some((f) => f.kind === "phase");
   const marks = [
     ...trace.prompts.filter((p) => p.agent === main.id && p.from === "person").map((p) => ({ at: p.at, label: `person: ${promptLine(p.text)}` })),
-    ...(marked ? [] : skillMarks(trace, main)),
+    ...(marked ? [] : (() => { const stages = stageMarks(trace, main); return stages.length >= 2 ? stages : skillMarks(trace, main); })()),
     // Phases a person or an agent marked on the trace (phase flags).
     ...flags.filter((f) => f.kind === "phase").map((f) => ({ at: atOf(trace, f.target), label: `phase ${f.note}` })).filter((m) => !Number.isNaN(m.at)),
   ].sort((a, b) => a.at - b.at);

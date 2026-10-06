@@ -39,6 +39,7 @@ import { findPage } from "./cdp/attach.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { headlessPage, displayOf } from "./cdp/headless.mjs";
 import { stableShot } from "./cdp/capture.mjs";
+import { cropPng, decodePng, encodePng } from "./cdp/png.mjs";
 import { withLive } from "./cdp/live.mjs";
 import { liveMatchOf } from "./check.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
@@ -418,9 +419,26 @@ stage("check", checkBegan);
 const off = parts.filter((p) => p.status !== "matched");
 say(`checked ${parts.length} marked boxes: ${parts.length - off.length} in place${off.length ? `, ${off.length} off (${off.map((p) => `${p.marker} ${p.status}${p.delta !== null ? ` ${p.delta}px` : ""}`).join(", ")})` : ""}`);
 
-const image = existsSync(join(checkDir, "frozen.png")) ? await reporter.upload(readFileSync(join(checkDir, "frozen.png"))).catch(() => null) : null;
+// The site's copy view: each named part's own picture, cut from the
+// frozen render, set in at its place as it comes in.
 reporter.send([workflowEvent(buildDir, "copy", `Froze ${frozen.elements} elements with the page's own ${styles.length} stylesheets; ${parts.length - off.length} of ${parts.length} named boxes in place`)]);
-if (image) for (const part of parts.filter((p) => p.status === "matched" && p.role === "leaf" && p.rect)) reporter.send([{ kind: "matched", id: part.id, image, rect: part.rect }]);
+if (existsSync(join(checkDir, "frozen.png"))) {
+  const full = decodePng(readFileSync(join(checkDir, "frozen.png")));
+  const scale = full.width / viewport.width;
+  await Promise.all(
+    parts
+      .filter((p) => p.status === "matched" && p.role === "leaf" && p.rect && p.rect.w >= 1 && p.rect.h >= 1)
+      .map(async (part) => {
+        const x = Math.max(0, Math.round(part.rect.x * scale));
+        const y = Math.max(0, Math.round(part.rect.y * scale));
+        const width = Math.min(full.width - x, Math.round(part.rect.w * scale));
+        const height = Math.min(full.height - y, Math.round(part.rect.h * scale));
+        if (width <= 0 || height <= 0) return;
+        const image = await reporter.upload(encodePng(cropPng(full, { x, y, width, height }))).catch(() => null);
+        if (image) reporter.send([{ kind: "matched", id: part.id, image, rect: part.rect }]);
+      }),
+  );
+}
 await reporter.flush();
 
 const result = {

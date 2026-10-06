@@ -396,7 +396,7 @@ export function transcriptHtml(dir, { trace, summary, flags = [] } = {}) {
     const failed = steps.filter((x) => x.error).length;
     // Within a turn, a section per skill the agent started, so a long
     // unattended run reads as setup, import, build, serve.
-    const marks = (summary?.phases ?? []).filter((p) => /^(skill|phase) /.test(p.label) && p.at > (timed[0]?.at ?? 0) && p.at <= (timed.at(-1)?.at ?? 0));
+    const marks = (summary?.phases ?? []).filter((p) => /^(skill|phase|stage) /.test(p.label) && p.at > (timed[0]?.at ?? 0) && p.at <= (timed.at(-1)?.at ?? 0));
     let body;
     if (!marks.length) body = htmlItems(t, turn.items, seen, pages, byTarget);
     else {
