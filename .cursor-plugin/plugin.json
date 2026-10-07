@@ -1,7 +1,7 @@
 {
   "name": "proto",
   "displayName": "Proto",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20261007224923",
   "description": "Proto in your active agent conversation: connect your account, import your product's design system, build prototypes, and serve them at public URLs. Website actions provide prompts to copy into your agent.",
   "author": {
     "name": "Proto Labs"
