@@ -119,3 +119,42 @@ export const regionBox = (marker) => `(() => {
   const clipped = [Math.max(0, box[0]), Math.max(0, box[1]), Math.min(innerWidth, box[2]), Math.min(innerHeight, box[3])];
   return clipped[2] > clipped[0] && clipped[3] > clipped[1] ? JSON.stringify(clipped) : null;
 })()`;
+
+/** What on the page spills past the viewport's right edge, as a JSON list
+ *  of { label, by }: visible elements whose box ends more than a pixel
+ *  beyond it. A page that lays out at this width has none. */
+export const OVERFLOWING = `(() => {
+  const out = [];
+  for (const e of document.body.querySelectorAll("*")) {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0 || r.right <= innerWidth + 1) continue;
+    const s = getComputedStyle(e);
+    if (s.visibility === "hidden" || s.display === "none" || s.position === "fixed") continue;
+    const owner = e.closest("[data-proto-id]");
+    out.push({ label: (owner ? owner.getAttribute("data-proto-id") : e.tagName.toLowerCase()) + ((e.innerText || "").trim() ? ' "' + e.innerText.trim().replace(/\\s+/g, " ").slice(0, 30) + '"' : ""), by: Math.round(r.right - innerWidth) });
+  }
+  return JSON.stringify(out);
+})()`;
+
+/** The narrowest width, down to `floor`, at which an open page still lays
+ *  out without spilling sideways (its own CSS re-flows it), walking down in
+ *  `step` px and stopping at the first spill: a page can fit again further
+ *  down only because a breakpoint hides a whole bar (Supabase's top bar
+ *  below 768 px), which is not the same layout. */
+export async function narrowestWidth(page, { width, height, dpr }, { floor = 640, step = 25 } = {}) {
+  const fits = async (w) => {
+    await page.send("Emulation.setDeviceMetricsOverride", { width: w, height, deviceScaleFactor: dpr, mobile: false });
+    await new Promise((r) => setTimeout(r, 200));
+    return JSON.parse(await evaluate(page, OVERFLOWING)).length === 0;
+  };
+  try {
+    let narrowest = width;
+    for (let w = width - step; w >= floor; w -= step) {
+      if (!(await fits(w))) break;
+      narrowest = w;
+    }
+    return narrowest;
+  } finally {
+    await page.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: dpr, mobile: false });
+  }
+}

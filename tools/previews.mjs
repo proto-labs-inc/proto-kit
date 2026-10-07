@@ -17,7 +17,9 @@
  * theirs. Its `unstyled` lists the variant's class names no stylesheet
  * defines (they do nothing; a frozen copy compiles no Tailwind), and
  * `layout` the layout faults measured in each state: text over text,
- * text cut off, anything outside the variant's box, marks off a line.
+ * text cut off, anything outside the variant's box, marks off a line, and
+ * anything that spills past the page's edge at the narrowest width the
+ * page itself fits (viewport.minWidth), where the Frame re-flows it.
  *
  * Usage: node tools/previews.mjs <workspace> [--pad 24] [--brief <id> --codebase <id>] [--no-send]
  *
@@ -35,7 +37,7 @@ import { decodePng, encodePng } from "./cdp/png.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
-import { backdropOf, launchedDisplayOr, regionBox, viewsOf, waitForMarkers } from "./views.mjs";
+import { backdropOf, launchedDisplayOr, narrowestWidth, OVERFLOWING, regionBox, viewsOf, waitForMarkers } from "./views.mjs";
 
 const USAGE = "usage: node tools/previews.mjs <workspace> [--pad 24] [--only <component>=<variant>] [--brief <id> --codebase <id>] [--no-send]";
 const options = { pad: "24" };
@@ -284,7 +286,41 @@ function unstyledReport() {
   return Object.fromEntries([...unstyledBy].map(([region, found]) => [region, keep(found)]));
 }
 
+// ---- narrow: the variant at the narrowest width the page itself fits ----
+// The Frame re-flows the page down to that width when the review panel
+// takes room (manifest viewport.minWidth, measured by freeze); a variant
+// wider or stiffer than what it replaces makes the page spill there (R2's
+// switcher with a badge pushed the top bar 25 px past the edge).
+async function narrowCheck(view) {
+  const set = manifest.variantSets?.find((s) => s.component === view.component);
+  let minWidth = manifest.viewport?.minWidth;
+  const cache = join(logDir, "narrowest.json");
+  if (!minWidth && existsSync(cache)) minWidth = JSON.parse(readFileSync(cache, "utf8")).minWidth;
+  if (!minWidth) {
+    const base = set?.baseline ? `${dev.url}/?v.${set.component}=${encodeURIComponent(set.baseline)}` : `${dev.url}/`;
+    const opened = await headlessPage(base, { ...viewport, display });
+    try {
+      await waitForMarkers(opened.page);
+      minWidth = await narrowestWidth(opened.page, { width: viewport.width, height: viewport.height, dpr: display.dpr });
+      writeFileSync(cache, JSON.stringify({ minWidth }));
+    } finally {
+      await opened.close().catch(() => {});
+    }
+  }
+  if (!minWidth || minWidth >= viewport.width) return;
+  const opened = await headlessPage(view.url, { ...viewport, width: minWidth, display });
+  try {
+    await waitForMarkers(opened.page);
+    for (const spill of JSON.parse(await evaluate(opened.page, OVERFLOWING))) {
+      layout.push({ state: firstState, width: minWidth, issue: `spills past the page's right edge at ${minWidth}px, where the page itself still fits: ${spill.label} by ${spill.by}px (let it shrink, truncate or wrap)` });
+    }
+  } finally {
+    await opened.close().catch(() => {});
+  }
+}
+
 if (only) {
+  await narrowCheck(views[0]).catch((error) => missing.push({ component: views[0].component, variant: views[0].variant, why: `narrow check: ${error.message}` }));
   dev.stop();
   console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, only: options.only, pictures: statePictures.map((p) => ({ state: p.state, ...(p.region ? { region: p.region } : {}), file: p.file })), unstyled: unstyledReport(), layout, missing }));
   process.exit(0);

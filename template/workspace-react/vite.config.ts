@@ -10,10 +10,11 @@ const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 // Variant previews land in public/previews while this server is already
 // running. Vite only serves a public file it saw at startup or through
 // its watcher, and the watcher ignores pictures so a capture does not
-// reload every open page. Read previews/ and wireframes/ from disk
+// reload every open page. Read previews/, wireframes/ and references/
+// (Mobbin screenshots, saved mid-build too) from disk
 // instead. A file that is not there yet is a 404, never the app page:
 // the browser would cache that page under the image URL.
-const PUBLISHED = /^\/(?:previews|wireframes)\//;
+const PUBLISHED = /^\/(?:previews|wireframes|references)\//;
 const TYPES: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
