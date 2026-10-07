@@ -283,17 +283,17 @@ filesystem match.
 - When the document carries `codebase`, first read
   `~/.proto/<codebase>/codebase.json`. If it parses and its
   `source.path` exists, this codebase is already imported on this laptop:
-  use that record's source path, remote and live URL without asking the
-  user to confirm them. Skip all of **Find their code**, including its
+  run `node <kit>/tools/setup-codebase.mjs --codebase <id>` to validate and
+  reuse its source path, remote and live URL without asking for confirmation. Skip all of **Find their code**, including its
   scan, confirmation question and `set_codebase_source` call.
 - When the document carries `codebase` but that usable local record does
   not exist, resume with that id and run **Find their code** to recover
   the missing source pointers. Do not use the id itself to search for or
   score folders.
 - With no `codebase` in the document, this is a new setup. Run **Find
-  their code**, then call `set_codebase_source` with no `codebase` field;
-  the server creates the codebase, names it after the source folder and
-  returns the id. Keep that id for everything that follows.
+  their code**, then run `setup-codebase.mjs` with the confirmed source
+  and linked team, without `--codebase`; it creates the codebase, names it
+  after the source folder and returns the id. Keep that id for everything that follows.
 
 ### Find their code
 
@@ -346,17 +346,16 @@ system it extracts."**
    locally.", and **park**: tell them setup will pick up right here
    once the repo exists, and mean it (re-running setup resumes from
    files, not memory).
-6. **Create or record the codebase** once confirmed (this step is not
-   reached for an already-imported local record handled by the early
-   branch above):
-   `set_codebase_source { sourcePath, repoRemote }`. With no `codebase`
-   field the server creates the codebase in the laptop token's team and names it after the source
-   folder, and returns the id that keys everything from here on.
-   Resuming with a known id, pass `codebase` and the call records the
-   source instead. The local `codebase.json` below stays the laptop's
-   copy of the same pointers, and records the team the link helper
-   reported as `linkedAs.team`: that is how every later call knows
-   which of this laptop's credentials this codebase belongs to.
+6. **Create or record the codebase** with the confirmed folder:
+   `node <kit>/tools/setup-codebase.mjs --source <absolute-folder> --team <linked-team-id>`.
+   Add `--codebase <id>` when recovering an existing codebase and `--remote <url>`
+   only when the folder has no Git origin. The script selects that team's
+   credential, registers the source, and atomically saves the local record.
+   Keep the returned `codebase` for everything that follows. Outcomes are
+   `created`, `recovered`, or `reused`; failures exit nonzero with an actionable
+   message. Never assemble or overwrite codebase.json yourself.
+   If new creation has an uncertain outcome, reconcile the codebase in Proto
+   and resume with its ID; do not blindly retry a create without an ID.
 
 ### `~/.proto/<codebase>/codebase.json`
 
@@ -441,9 +440,9 @@ browser. Set that up once per machine, here:
    treat the other site as the product. Use the command's returned
    `url` as the actual page URL. Read that page (`evaluate`) for a
    signed-in marker: the user's name in a greeting or menu, an account
-   control, no sign-in form. **Never drive the browser's interface** (no
-   clicking its address bar, no typing into it, no computer-use
-   automation): the kit reads pages through the debug port only. If
+   control, no sign-in form. Use the debug port to inspect and interact
+   with the product's page controls; do not drive Chrome's address bar
+   or other browser chrome. If
    the page shows no signed-in
    marker, bring the Proto window to the front on that tab
    (`node tools/cdp/raise.mjs <url-substring>`: the one time the kit
@@ -451,17 +450,26 @@ browser. Set that up once per machine, here:
    in there and wait until they say they have; then read again. A
    password field on a signed-in page (a form asking for a new
    database password) is not a sign-in form: look for the account
-   control. After sign-in, read the tab's current URL again. Record that
-   actual page URL in
-   `codebase.json` as `source.liveUrl`: the import-design-system
+   control. Once sign-in is verified, discover the product yourself:
+   click through existing projects, navigation, tabs and menus to find
+   a representative page. Do not ask the user to navigate or confirm
+   routine exploration. Stay within the product and the requested task;
+   do not create, edit or delete product data to populate an empty view.
+   Ask only if sign-in, missing access, no usable existing content or a
+   genuine ambiguity prevents further progress. Finish exploration before
+   capturing the reference page; keep it stable while checks or repair
+   agents run. Read the chosen page's current URL and save it with
+   `node <kit>/tools/setup-codebase.mjs --codebase <id> --live-url <actual-url>`
+   (this reuses the record without cloud registration): the import-design-system
    skill takes it from there instead of asking again.
 3. From then on, skills find the page by looking at the open tabs
    over CDP (prefer the active tab; offer a pick when several
    match). Pasting a URL into the chat is always an accepted
    fallback: never a required step. A pasted URL identifies the
-   preferred page; it authorizes navigating a blank tab when there is
-   no product page, or opening one when there is no tab at all. It
-   never authorizes navigating an existing product page.
+   preferred starting page. Once signed in, follow the product's links
+   and controls to discover relevant existing views without asking the
+   user to do the clicking. Preserve the reference page while checks or
+   repair agents are running.
 
 ### The product's icon
 

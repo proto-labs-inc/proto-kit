@@ -69,6 +69,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { completionProblems, paletteDigest, checkFingerprint } from "./import-evidence.mjs";
 
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
   init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>] [--favicon <file>]
@@ -81,6 +82,8 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
   history <library> <slug> --theme <light|dark> --screenshot <png> --diff <png> [--live <png>] [--verdict <v>] --mismatch <n> --activity <line>
   event <library> [slug] <activity>
   take-queued <library>
+  survey <library> <light|dark> <capture JSON>
+  checks <library> <slug> <light|dark> <results JSON>
   complete <library>`;
 const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
 // Why a component was skipped, as the app groups them: it could not be
@@ -163,7 +166,7 @@ const paths = {
 };
 const now = () => new Date().toISOString();
 
-const EMPTY = { codebase: null, source: null, product: null, startedAt: null, completedAt: null, themes: { light: [], dark: [] }, type: [], components: [] };
+const EMPTY = { verification: null, codebase: null, source: null, product: null, startedAt: null, completedAt: null, themes: { light: [], dark: [] }, type: [], components: [] };
 
 function readManifest() {
   try {
@@ -235,6 +238,7 @@ function change(work) {
   return withLock(() => {
     const manifest = readManifest();
     const result = work(manifest);
+    if (["token", "tokens", "type", "types", "inventory", "component"].includes(subcommand)) manifest.completedAt = null;
     writeJsonAtomic(paths.manifest, manifest);
     if (result?.activity !== undefined) appendEvent(result.activity, result.slug);
     return result;
@@ -495,16 +499,41 @@ const commands = {
     if (taken.slug !== null) console.log(taken.slug);
   },
 
+  survey() {
+    const [theme, json] = positional;
+    if (!THEMES.includes(theme)) fail("survey needs light or dark and its capture JSON");
+    const evidence = readJsonArg(json);
+    change((manifest) => {
+      if (!manifest.startedAt || evidence.run !== manifest.startedAt) fail("The import changed during the survey; survey again.");
+      manifest.verification ??= { surveys: {}, checks: {} };
+      manifest.verification.surveys[theme] = { run: manifest.startedAt, palette: paletteDigest(evidence.palette), capturedAt: evidence.capturedAt };
+      manifest.completedAt = null;
+      return { activity: `Read the product's ${theme} colours` };
+    });
+  },
+
+  checks() {
+    const [slug, theme, json] = positional;
+    if (!THEMES.includes(theme)) fail("checks needs a component, theme and results JSON");
+    const evidence = readJsonArg(json);
+    change((manifest) => {
+      componentIn(manifest, slug);
+      if (evidence.run !== manifest.startedAt || evidence.fingerprint !== checkFingerprint(libraryDir, manifest, slug, theme)) fail("The component or palette changed during the check; check again.");
+      manifest.verification ??= { surveys: {}, checks: {} };
+      manifest.verification.checks[slug] ??= {};
+      manifest.verification.checks[slug][theme] ??= {};
+      for (const state of evidence.states) {
+        manifest.verification.checks[slug][theme][state.state] = { fingerprint: evidence.fingerprint, verdict: state.verdict, typecheck: evidence.typecheck === true };
+      }
+      manifest.completedAt = null;
+    });
+  },
+
   complete() {
     change((manifest) => {
-      const moving = manifest.components.filter((c) => c.status !== "done" && c.status !== "skipped");
-      if (moving.length > 0) fail(`still moving: ${moving.map((c) => `${c.slug} (${c.status})`).join(", ")}; finish or skip them first`);
-      const light = new Set(manifest.themes.light.map((token) => token.name));
-      const dark = new Set(manifest.themes.dark.map((token) => token.name));
-      const onlyLight = [...light].filter((name) => !dark.has(name));
-      const onlyDark = [...dark].filter((name) => !light.has(name));
-      if (onlyLight.length || onlyDark.length) fail(`light and dark palettes need the same stable token names; only light: ${onlyLight.join(", ") || "none"}; only dark: ${onlyDark.join(", ") || "none"}`);
-      manifest.completedAt = now();
+      const problems = completionProblems(libraryDir, manifest);
+      if (problems.length) fail(problems.join("\n"));
+      manifest.completedAt ??= now();
       return { activity: `Finished: ${coverage(manifest.components)}` };
     });
   },

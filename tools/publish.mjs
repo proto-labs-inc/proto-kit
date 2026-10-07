@@ -35,6 +35,7 @@ import { buildOfWorkspace } from "./build-folder.mjs";
 import { createReporter } from "./build-report.mjs";
 import { capturePublishedPreview } from "./publish-preview.mjs";
 import { callTool, readConfig } from "./mcp-call.mjs";
+import { validatePublishedManifest } from "./variant-manifest.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
@@ -103,6 +104,11 @@ if (kind === "library") {
   if (JSON.parse(readFileSync(manifestPath, "utf8")).codebase === null) {
     fail(`${dist}/manifest.json names no codebase; a library with nothing imported has nothing to publish`);
   }
+}
+// Validate before credentials, capture, or any network request.
+if (kind === "prototype") {
+  try { validatePublishedManifest(workspace, dist); }
+  catch (error) { fail(`cannot publish: ${error.message}`); }
 }
 // What a build carries that is never published: the workspace's
 // identity record (public/__proto-workspace.json, the local dev server's

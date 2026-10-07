@@ -30,6 +30,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { checkFingerprint } from "../import-evidence.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "fixtures/meridian");
 const LIBRARY_MJS = join(HERE, "..", "library.mjs");
@@ -267,6 +269,23 @@ async function play() {
 }
 
 function complete() {
+  // This driver simulates the import from fixtures, including verification.
+  // Real imports record evidence only through survey.mjs and check.mjs.
+  const readManifest = () => JSON.parse(readFileSync(join(libraryDir, "public", "manifest.json"), "utf8"));
+  let manifest = readManifest();
+  for (const theme of ["light", "dark"]) {
+    lib("survey", libraryDir, theme, JSON.stringify({ run: manifest.startedAt, palette: manifest.themes[theme], capturedAt: "fixture" }));
+  }
+  manifest = readManifest();
+  for (const component of manifest.components.filter((entry) => entry.status === "done")) {
+    const unit = JSON.parse(readFileSync(join(libraryDir, "src", "components", component.slug, "component.json"), "utf8"));
+    for (const theme of ["light", "dark"]) {
+      lib("checks", libraryDir, component.slug, theme, JSON.stringify({
+        run: manifest.startedAt, fingerprint: checkFingerprint(libraryDir, manifest, component.slug, theme),
+        typecheck: true, states: unit.states.map((state) => ({ state: state.name, verdict: "match" })),
+      }));
+    }
+  }
   lib("complete", libraryDir);
   console.log("✓ complete");
 }

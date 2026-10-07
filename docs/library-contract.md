@@ -393,8 +393,9 @@ experience:
    landed meanwhile, so landings never queue builds (`--wait` waits
    instead, for the finish). The writer's lock is untouched, so a
    unit's own lines stay instant while a build runs.
-7. Finish by running `complete`, which sets `completedAt` and appends
-   the coverage line, and publishing once more. Check local `queue.json` after
+7. Finish with `node tools/finish-import.mjs <codebase>`, which validates
+   completion, sets `completedAt`, and waits for the final publication. The
+   import runner publishes progress but never marks completion itself. Check local `queue.json` after
    each landing and at the finish, without a persistent watch. Later requests
    are handled when the user resumes import work in their conversation.
 
@@ -407,3 +408,25 @@ different status strings, a `done` component with no `module` or no
 states, a `module` outside `src/components/`, paths outside
 `components/`, or a token, type style, component or state that
 disappears.
+
+## Completion evidence
+
+`manifest.verification` records `surveys` by theme and `checks` by component,
+theme, and state name. Survey entries carry the current `startedAt` as `run`,
+the palette digest, and the capture time. Check entries carry their verdict,
+typecheck result, and a fingerprint of the current component folder, theme
+palette, type styles, survey evidence, and import run. The survey and check
+tools write these through the library writer under its existing lock.
+
+A survey must start after `init`; the initial survey used to discover the
+page title and icon does not count. New imports reset all evidence. Changes
+to component files or palettes make prior fingerprints stale. Older libraries
+remain readable but require fresh evidence before completion.
+
+`complete` refuses until both theme surveys match the installed palettes,
+palette names agree, and every built component state has a current accepted
+check in both themes. Explicit skips retain their kind, reason and screenshot.
+Mutating library content clears `completedAt`; retrying completion without
+changes preserves its timestamp. `finish-import` returns `published` only
+after the publisher succeeds with `--wait`; failed publication can be retried
+without repeating successful checks.

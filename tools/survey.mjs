@@ -35,7 +35,9 @@
  *               each candidate's first instance cropped to its own box
  *               at 2x from one screenshot of the page
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findPage } from "./cdp/attach.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
@@ -71,6 +73,9 @@ if (!liveUrl) {
   console.error(`${home}/codebase.json has no source.liveUrl: the product page setup opened in the Proto window`);
   process.exit(1);
 }
+const manifestPath = join(home, "library", "public", "manifest.json");
+const surveyManifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null;
+const surveyRun = surveyManifest?.completedAt === null ? surveyManifest.startedAt : null;
 const surveyRoot = join(home, "run", "survey");
 const out = options.out ?? (options.theme ? join(surveyRoot, options.theme) : surveyRoot);
 mkdirSync(out, { recursive: true });
@@ -440,6 +445,13 @@ writeFileSync(
   join(out, "survey.json"),
   JSON.stringify({ draft: draftPath, page: data.page, palette: palette.map(({ px, ...rest }) => rest), colours: colours.length, type: data.type, candidates }, null, 1) + "\n",
 );
+
+// Only a survey started during this import can serve as completion evidence.
+if (options.theme && surveyRun) {
+  const evidence = { run: surveyRun, palette: palette.map(({ px, ...rest }) => rest), capturedAt: new Date().toISOString() };
+  const saved = spawnSync(process.execPath, [fileURLToPath(new URL("./library.mjs", import.meta.url)), "survey", codebase, options.theme, JSON.stringify(evidence)], { encoding: "utf8" });
+  if (saved.status !== 0) throw new Error(saved.stderr.trim() || "Could not record the survey; survey again.");
+}
 
 // The summary the orchestrator plans from: the page, and the draft one
 // component a line with its looks, their texts and its picture.

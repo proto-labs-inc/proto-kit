@@ -8,7 +8,7 @@
  * the library is published as they land (publishes coalesce, so this
  * never queues builds). What does not match, or could not be written,
  * lands as skipped with the product's picture and where it differs,
- * so the library completes at once; it is listed for a unit to fix,
+ * so intermediate progress can be published; it is listed for a unit to fix,
  * and lands as built when the unit's check passes.
  *
  * Usage: node tools/import.mjs <codebase> [<plan.json>] [--theme <light|dark>] [--lanes <n>]
@@ -31,13 +31,13 @@
  * A type style without a name is named from where it is used.
  *
  * The moment every component has been written and checked is the
- * import's gate: the library is completed right here (library.mjs
- * complete), whatever is left, and what is left is the long tail
+ * import's gate: the light pass is ready here; finish-import owns completion after
+ * both themes are checked. What is left is the long tail
  * (tools/tail.mjs rule 1), named with its reason for a background
  * unit; the run's tail.jsonl gets the phase record the tail's own
  * decisions are made from.
  *
- * Prints one JSON line: { seconds, built: [slug], toFix: [{ slug, states, unfitted, reason }], failed: [{ slug, error }], gate: { line, completeSeconds, complete } }.
+ * Prints one JSON line: { seconds, built: [slug], toFix: [{ slug, states, unfitted, reason }], failed: [{ slug, error }], gate: { line, status: "awaiting-verification" } }.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -238,7 +238,7 @@ async function lane() {
 
 /**
  * A component the import could not finish stays in the library with
- * the product's picture and why, as skipped, so the library completes
+ * the product's picture and why, as skipped, so the library progresses
  * without waiting on the unit that fixes it; the unit lands it as done
  * when its check passes. The picture is the survey's crop, else the
  * product capture of its latest check.
@@ -303,17 +303,7 @@ function whereItDiffers(component, states) {
 await Promise.all(Array.from({ length: Math.max(1, Number(options.lanes)) }, lane));
 
 // ---- the gate: the library is usable now; the rest is the tail ----
-const gateBegan = Date.now();
-let complete = true;
-let completeError = null;
-try {
-  write("complete");
-} catch (error) {
-  complete = false;
-  completeError = error.message.split("\n").pop();
-}
 publish();
-const completeSeconds = Math.round((Date.now() - gateBegan) / 100) / 10;
 // The tail's own record: every component with its weight (its largest
 // state's pixels), the built ones matched already.
 const weightOf = (slug) => Math.max(1, ...(areas.get(slug) ?? [1]));
@@ -338,12 +328,11 @@ for (const entry of failed) {
 }
 const left = toFix.length + failed.length;
 let line = `Usable now: ${built.length} of ${components.length} built in ${Math.round((Date.now() - started) / 1000)} s`;
-if (complete) line += `; the library is complete (${completeSeconds} s)`;
-else line += `; the library could not be completed (${completeError})`;
+line += "; theme verification and finish-import still required";
 if (left > 0) line += `. ${left} left for later, each with its reason above; they are the long tail and go to background units.`;
 step(line);
 
-console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 1000), built, toFix, failed, gate: { line, complete, completeSeconds } }));
+console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 1000), built, toFix, failed, gate: { line, status: "awaiting-verification" } }));
 
 /** Names for type styles the plan left unnamed, from the elements that use them. */
 function nameTypes(styles) {

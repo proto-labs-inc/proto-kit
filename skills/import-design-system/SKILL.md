@@ -95,20 +95,26 @@ node tools/library.mjs component <codebase> <slug> status done
 node tools/library.mjs component <codebase> <slug> status skipped --kind <kind> --reason "<sentence>" --screenshot <png>
 node tools/library.mjs event <codebase> [slug] "<activity>"
 node tools/library.mjs take-queued <codebase>
-node tools/library.mjs complete <codebase>
+node tools/finish-import.mjs <codebase>
 ```
 
 The headless Chrome that draws every copy is launched with the Proto
 window's own display (its real device scale factor and colour
 profile), so a component written from the page matches it to the
-pixel. Import tools read the Proto window without navigating it or
-changing product data. The Proto window is started in sRGB
+pixel. Capture and check tools read the current Proto page. Before
+capturing it, the agent explores the signed-in product through its page
+controls over the debug port. Open existing projects, views, menus and
+settings to discover representative components without asking the user
+to navigate. Do not create, edit or delete product data for the import.
+Once checks or repair agents start, keep their reference page stable.
+The Proto window is started in sRGB
 (`tools/cdp/chrome.mjs`): one started without it draws through its
 screen's colour profile, and every component then differs by one
 uniform colour shift (explain-diff says so); quit it and start it
-again when no import is running. When this workflow needs a theme change, use
-the product's visible theme control yourself when it can be identified
-reliably; otherwise ask the user to switch it. Holding a hover or focus
+again when no import is running. When this workflow needs a theme change,
+discover the product's theme control in its account or appearance menus
+and switch it yourself. Ask only after exploration finds no usable control
+or a real access blocker. Holding a hover or focus
 look on an element (`"force"`) is done with the DevTools pseudo-class
 and let go straight after.
 
@@ -119,7 +125,9 @@ and let go straight after.
    <codebase> --theme light`
    for the page's title and favicon, then `init` (fetch the favicon to
    a file first; leave `--favicon` out when there is none), then
-   `publish-library.mjs` in the background. `init` appends "Reading
+   `publish-library.mjs` in the background. Run the light survey again after
+   `init` so its capture belongs to the current import; the first survey only
+   supplied the page title and favicon. `init` appends "Reading
    the source": the user sees the import is alive in seconds. On
    `tunnel: blocked` the import runs exactly the same (checks use the
    local address, publishing goes over 443); say the serve skill's
@@ -128,15 +136,20 @@ and let go straight after.
    uses it, and `host-library.mjs` shares it when run again later.
 
 
-2. **The page's state and light theme.** If the page is showing
-   a welcome screen, an empty list or a sign-in wall instead of the
-   product, ask the user one plain question naming what to do ("Open
-   a project in the Proto window so its dashboard is showing, then
-   tell me") and survey again once they have. Do not navigate or alter
-   product data in their window. The first survey and build use the
-   product's light mode. If the page is dark, switch it to light with
-   the product's visible theme control when it can be identified
-   reliably; otherwise ask the user.
+2. **Discover a representative page and light theme.** Verify sign-in;
+   ask the user to authenticate only when it is actually needed. Once
+   signed in, handle discovery yourself. From a welcome screen or empty
+   list, open the product's navigation and inspect existing projects,
+   dashboards and work items until a representative view is visible.
+   Explore relevant menus and tabs to identify component states. Do not
+   ask the user to click around or confirm routine navigation. If no
+   usable existing content is available, explain what you checked and
+   ask for the missing content or access; do not create sample records.
+   Discover and use the theme control to select light mode, then return
+   to the chosen view, save its actual URL with
+   `setup-codebase.mjs --codebase <codebase> --live-url <actual-url>`,
+   and survey again. Finish navigation before capturing states and keep
+   the reference view stable while checks or repair agents run.
 
 3. **Plan: edit the survey's draft, briefly.** The survey prints the
    draft one component a line: its slug, its looks with their text, and
@@ -175,15 +188,17 @@ and let go straight after.
    component that matches in every state lands as built, and the
    library publishes as they land. A component that does not match,
    or could not be written, stays in the library as skipped with the
-   product's picture and where it differs, so the library completes
-   now; the unit that fixes it lands it as built. It prints what is
+   product's picture and where it differs; intermediate progress is
+   published now; the unit that fixes it lands it as built. It prints what is
    built and what is left to fix, with each failing state's verdict
    and where the difference sits. Matching captured colours are written as stable
    `--proto-token-<name>` variables rather than literals, so the same
    generated component can resolve another theme's values.
 
-   Then switch the product page to dark mode with its visible theme
-   control when it can be identified reliably; otherwise ask the user.
+   Then use the theme control discovered above to switch the product
+   page to dark mode yourself, returning to the same reference view.
+   If it cannot be found, explore the account and appearance menus before
+   asking for help with a specific blocker.
    Run `node tools/survey.mjs <codebase> --theme dark`, replace the provisional
    dark palette with `node tools/library.mjs tokens <codebase> dark
    @"$HOME/.proto/<codebase>/run/survey/dark/palette.json"`, and run
@@ -192,15 +207,16 @@ and let go straight after.
    names. Fix every dark `toFix` result just like a light result; a pass
    records its theme and the library labels it.
 
-5. **The gate, then the tail.** The runner's return is the gate: it
-   completed the library itself (`gate.complete`) and left every
-   component it could not finish as skipped, with the product's
-   picture and its reason (`toFix[].reason`, one line each, printed as
-   "<slug> left for later: ..."). Relay the runner's `gate.line` to the
-   user as it stands, in one line, then go to the Finish below. The
-   import's time is the import's: nothing waits on a unit, you never
-   fix a component yourself (not one, not even a small one). After the Finish,
-   continue only with work the user requested in this conversation.
+5. **Finish verification, then publish completion.** The runner reports
+   `gate.status: "awaiting-verification"`; it never completes the import.
+   Relay its progress line without claiming completion. After the dark check,
+   explicitly mark each still-failing built component skipped with its picture,
+   kind and a concrete reason, or repair and recheck it. Skipped components do
+   not need passing checks; built components need every declared state to pass
+   in both themes. Preserve the combined light/dark repair list for the tail.
+   Run the Finish checklist below. A missing or stale check is work to do,
+   never permission to claim success. Component or palette changes require
+   new checks; an older import may also need fresh theme surveys.
 
    Then, for every component in `toFix` or `failed`, dispatch one
    `importer` sub-agent, **all in one turn, in the background**, with
@@ -221,10 +237,9 @@ and let go straight after.
    unit comes back "nothing on the live page matches". If the tab
    must change, wait until every unit has reported, and say so.
 
-   Nothing waits on the units. Your next message after the gate is
-   the gate line, in the same turn the runner returned, before you
-   dispatch anything: the user hears "usable now" the moment it is
-   true. From then on `node tools/tail.mjs decide <codebase>` reads the
+   Nothing waits on the units. Relay the runner's progress promptly; claim
+   completion only after finish-import reports `outcome: "published"`.
+   From then on `node tools/tail.mjs decide <codebase>` reads the
    units' numbers as they stand and returns at once with one line
    ("Fixing in the background: 13 of 15 matched; the rest improved 2%
    in the last minute, about 4 more minutes to go"). Run it when a
@@ -236,12 +251,12 @@ and let go straight after.
 
    As each unit reports, spot-check it (re-run `check.mjs --theme
    <theme>` on one state) and land it: `status done`, or `status
-   skipped` again with its kind, the unit's reason and picture. Publish
-   after each landing (the run stays complete; the publish carries the
-   change), and say one short line when a component lands this way
+   skipped` again with its kind, the unit's reason and picture. Recheck every
+   state in both themes for changed components, then run `finish-import.mjs`
+   after each landing. Say one short line when a component lands this way
    ("Badge now matches the product; the library is republished").
 
-6. **Finish**, per the checklist below, right after step 5's gate;
+6. **Finish**, per the checklist below, after step 5's verification;
    every landing after it publishes again.
 
 If anything interrupts you (a question, a crash, a resumed session):
@@ -370,8 +385,8 @@ to build a skipped component, and its "Import again" a request to run
 the whole import again. `node tools/library.mjs take-queued <codebase>`
 pops one request and prints its slug (nothing printed means nothing
 queued). A component's slug: survey again, plan that component alone,
-run `import.mjs` with it, fix what is left as above, then `complete`
-and publish. `*`: start this skill over from step 1 (`init` on a
+run `import.mjs` with it, fix what is left as above, then
+`finish-import.mjs <codebase>`. `*`: start this skill over from step 1 (`init` on a
 completed run starts fresh). Check the queue after each landing, at
 the finish. Do not start a persistent watch or keep the session alive to
 consume requests. Later queued work is handled when the user asks to continue
@@ -385,9 +400,12 @@ Every line, in order, before you say the import is done:
   `found`, `extracting` or `queued` (the runner leaves what it could
   not finish as skipped, with the product's picture and where it
   differs, so this holds the moment it returns);
-- `node tools/library.mjs complete <codebase>` (it refuses otherwise);
-- `node tools/publish-library.mjs <codebase> --wait`: this last publish
-  carries `completedAt`, so the published copy says the import finished;
+- `node tools/finish-import.mjs <codebase>`: validates current theme surveys,
+  matching palette names, and passing checks for every built state in both
+  themes, then completes and publishes with `--wait`. It returns
+  `outcome: "published"` only after publication succeeds. On a publication
+  failure, run it again; local completion is preserved. Never call complete
+  and publish separately or infer success from an intermediate publication;
 - one sentence to the user: the library is published and stays
   viewable after this laptop closes, and how many components are still
   being fixed in the background (each lands and publishes on its own);

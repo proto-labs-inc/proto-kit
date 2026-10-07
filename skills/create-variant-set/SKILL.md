@@ -13,9 +13,15 @@ full serve workflow, provision or restart a tunnel, or register the prototype.
 
 1. Read `public/prototype.json`, the selected component, and its current view.
    Preserve every existing state, variant set, marker, and shared style.
-2. Immediately add the new set to `prototype.json` with `status: "building"`,
-   an empty `variants` array, an empty `default`, and a short title. This lets
-   the Frame show progress while the longer design work runs.
+2. Register the loading set with the guarded writer, never by rewriting the
+   manifest:
+   `node <kit>/tools/variant-manifest.mjs begin <workspace> <component> --title "<short title>"`.
+   It saves a backup and adds `status: "building"`, empty `variants`, and empty
+   `default`. Creation refuses an existing component ID. Choose a new ID for a
+   new set; do not clear or rename an existing set to make room. Keep the
+   returned revision for finishing this set. For a dependent set, also pass
+   `--requires-component <parent> --requires-variant <parent-variant>` so its
+   loading entry has the same dependency as the completed set.
 3. Create the directions requested by the brief. Keep each variant in its own
    module with scoped styles under `src/variants/<component>/<variant-id>.*`.
    Shared files may contain only invariant structure, design-system imports,
@@ -26,6 +32,11 @@ full serve workflow, provision or restart a tunnel, or register the prototype.
 5. Finish the manifest entry with component, title, variants, `sourceFiles`,
    component-only SVG previews, default, baseline when there is a pre-set
    original, showcase state, and overview. Remove `status` when complete.
+   Save that single entry to a temporary JSON file, then run
+   `node <kit>/tools/variant-manifest.mjs finish <workspace> <component> --entry <file> --expected <revision>`.
+   The entry's component must match the target. If the set changed, read it
+   again with the writer's `read` command and reconcile it before retrying.
+   Backups live in `<workspace>/.proto/manifest-backups/`, outside the build.
    Store preview, reference-image, and wireframe paths relative to the build
    root without a leading slash, for example `previews/example.svg` and
    `references/example.png`.

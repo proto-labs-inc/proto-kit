@@ -33,6 +33,14 @@ register the prototype, or change unrelated states or variant sets.
    Store preview, reference-image, and wireframe paths relative to the build
    root without a leading slash, for example `previews/example.svg`.
 
+For manifest changes, read the target with
+`node <kit>/tools/variant-manifest.mjs read <workspace> <component>` before
+editing. Save only the revised set to a temporary JSON file, then use
+`node <kit>/tools/variant-manifest.mjs update <workspace> <component> --entry <file> --expected <revision>`.
+Use the revision returned by `read`. A stale edit is refused; read again and
+reconcile before retrying. The writer backs up the manifest and preserves every
+other set. Do not rewrite the manifest directly.
+
 ## Verify and publish
 
 - Run `pnpm typecheck`. Verify every new variant and one unaffected sibling

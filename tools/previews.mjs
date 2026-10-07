@@ -22,6 +22,7 @@
  * the part's node, with its picture, so the site shows the change.
  * Prints one JSON line: { previews: [{ component, variant, file, rect }], missing: [...] }.
  */
+import { recordVariantPreviews } from "./variant-manifest.mjs";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildOfWorkspace, markerRects } from "./build-folder.mjs";
@@ -140,21 +141,8 @@ if (only) {
 }
 
 // ---- the manifest ----
+recordVariantPreviews(workspace, manifest, previews);
 const fresh = JSON.parse(readFileSync(manifestPath, "utf8"));
-for (const set of fresh.variantSets ?? []) {
-  let complete = true;
-  for (const variant of set.variants) {
-    const made = previews.find((p) => p.component === set.component && p.variant === variant.id);
-    if (!made) {
-      complete = false;
-      continue;
-    }
-    variant.preview = made.file;
-    variant.previewBackground = made.background;
-  }
-  if (complete) delete set.status;
-}
-writeFileSync(manifestPath, JSON.stringify(fresh, null, 2) + "\n");
 
 // ---- the site: the part as the prototype now draws it ----
 if (reporter) {

@@ -31,6 +31,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { writeVariantSet } from "./variant-manifest.mjs";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
@@ -68,6 +69,23 @@ if (options.baseline) {
   baseline = { id, title: title.trim(), note: "The page as it is today" };
 }
 if (!variants.some((v) => v.id === options.default) && baseline?.id !== options.default) fail(`--default ${options.default} is not one of the variants`);
+
+// Refuse duplicate creation before touching the switch, styles, or slot.
+const entry = {
+  component, title: options.title, status: "building",
+  variants: [
+    ...variants.map(v => ({ ...v, sourceFiles: [`src/variants/${component}/${v.id}.tsx`, `src/variants/${component}/${v.id}.module.css`] })),
+    ...(baseline ? [baseline] : []),
+  ],
+  default: options.default,
+};
+if (options.state) entry.state = options.state;
+if (baseline) entry.baseline = baseline.id;
+if (options.overview) entry.overview = { title: options.title, description: options.overview };
+try {
+  if (existsSync(join(workspace, "src", "variants", component, "index.tsx"))) fail(`${component} already has a switch; creation cannot overwrite it`);
+  writeVariantSet(workspace, { operation: "create", component, entry });
+} catch (error) { fail(error.message); }
 
 const pascal = (slug) => slug.replace(/(^|-)([a-z0-9])/g, (_, __, c) => c.toUpperCase());
 const dir = join(workspace, "src", "variants", component);
@@ -149,25 +167,6 @@ if (options.slot) {
     slot = { class: options.slot, heightFreed: false, note: `no pinned height on .page .${options.slot} in src/App.module.css; nothing to free` };
   }
 }
-
-// ---- the manifest ----
-const manifestPath = join(workspace, "public", "prototype.json");
-const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-const entry = {
-  component,
-  title: options.title,
-  status: "building",
-  variants: [
-    ...written.map((v) => ({ id: v.id, title: v.title, note: v.note, sourceFiles: [v.module, v.styles] })),
-    ...(baseline ? [{ id: baseline.id, title: baseline.title, note: baseline.note }] : []),
-  ],
-  default: options.default,
-};
-if (options.state) entry.state = options.state;
-if (baseline) entry.baseline = baseline.id;
-if (options.overview) entry.overview = { title: options.title, description: options.overview };
-manifest.variantSets = [...(manifest.variantSets ?? []).filter((set) => set.component !== component), entry];
-writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 
 // The site hears the set is being written from the tool itself, so it never sits on the copy's last line.
 const build = buildOfWorkspace(workspace);

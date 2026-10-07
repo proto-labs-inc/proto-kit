@@ -52,6 +52,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyState, passTrend, readRecords, record, tailFile, unitBudget } from "./tail.mjs";
+import { checkFingerprint } from "./import-evidence.mjs";
 import { restoreFolder } from "./unit-restore.mjs";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
 import { resolveStates } from "./live-selector.mjs";
@@ -166,6 +167,18 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error(`check gave up after ${patience / 1000}s: a capture never completed; check the live tab is still open and try again`);
     process.exit(2);
   }, patience).unref();
+  const manifestBefore = target.land ? JSON.parse(readFileSync(join(library, "public", "manifest.json"), "utf8")) : null;
+  const fingerprint = target.land ? checkFingerprint(library, manifestBefore, slug, options.theme) : null;
+  // Invalidate the states being attempted before touching the browser. A timeout
+  // or capture failure must not leave an older passing check as the latest proof.
+  if (target.land) {
+    const pending = { run: manifestBefore.startedAt, fingerprint, typecheck: false, states: states.map((state) => ({ state: state.name, verdict: "pending" })) };
+    const started = spawnSync(process.execPath, [join(kit, "tools", "library.mjs"), "checks", library, slug, options.theme, JSON.stringify(pending)], { encoding: "utf8" });
+    if (started.status !== 0) {
+      console.error(started.stderr.trim() || "Could not start check verification.");
+      process.exit(1);
+    }
+  }
   let checked;
   try {
     checked = await checkComponent({ unit, slug, appUrl: target.appUrl, liveMatch: liveMatchOf(target.liveUrl), out: target.out, codebase, only: options.state ?? null, theme: options.theme });
@@ -212,6 +225,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const back = restoreFolder({ folder: dirname(target.unitPath), slug, runDir: join(home, "run") });
     restored = back.restored;
     if (restored) console.error(`${slug}: restored ${dirname(target.unitPath)} to how the import wrote it (from ${back.path})`);
+  }
+  if (target.land && !restored) {
+    const evidence = { run: manifestBefore.startedAt, fingerprint, typecheck: typecheck.ok, states: checked.states.map((entry) => ({ state: entry.state, verdict: entry.result?.verdict ?? "failed" })) };
+    const landed = spawnSync(process.execPath, [join(kit, "tools", "library.mjs"), "checks", library, slug, options.theme, JSON.stringify(evidence)], { encoding: "utf8" });
+    if (landed.status !== 0) {
+      console.error(landed.stderr.trim() || "Could not record check evidence; run the check again.");
+      process.exitCode = 1;
+    }
   }
   console.log(JSON.stringify({ slug, states: summary, matched: checked.matched, typecheck, stop, restored }));
 }
