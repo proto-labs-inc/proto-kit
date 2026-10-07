@@ -54,6 +54,20 @@ this operation. An existing local registration is not permission to keep
 updating from local files. Never edit, reset, or pull a user's source checkout
 while switching the plugin registration back to GitHub.
 
+When a copied prompt supplies a required release version, first run the offline check:
+
+```sh
+node <kit>/tools/check-plugin.cjs <installed-kit-root> <prompt-version>
+```
+
+`current` means the installed release meets the prompt version; skip downloading.
+`update_needed` means run the separate updater below. Unknown versions also need
+an online check. Copied prompts embed this check for kits too old to contain it.
+The check never contacts GitHub and cannot discover releases newer than the prompt.
+For an explicit request for the latest version, run the updater regardless.
+If sandbox networking is blocked, use the host permission process and retry;
+stop if permission is denied or the permitted attempt fails.
+
 Run the standalone updater for the current harness:
 
 ```sh
