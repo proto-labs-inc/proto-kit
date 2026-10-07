@@ -77,7 +77,10 @@ function libraryData(): Plugin {
           // A crop or history image that is not there yet is a 404, never
           // the SPA fallback: the browser would cache the app's own page
           // under the image's URL and keep showing it.
+          // A missing file may only not exist yet (a preview being written):
+          // never let a browser or the tunnel's edge cache its absence.
           res.statusCode = 404;
+          res.setHeader("Cache-Control", "no-store");
           res.end();
         }
       });

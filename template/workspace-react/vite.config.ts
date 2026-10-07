@@ -47,7 +47,10 @@ function publicAssets(): Plugin {
           res.setHeader("Access-Control-Allow-Origin", "*");
           res.end(body);
         } catch {
+          // A missing file may only not exist yet (a preview being written):
+          // never let a browser or the tunnel's edge cache its absence.
           res.statusCode = 404;
+          res.setHeader("Cache-Control", "no-store");
           res.end();
         }
       });
