@@ -20,7 +20,8 @@ import { buildOfWorkspace } from "./build-folder.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
-import { launchedDisplayOr, waitForMarkers } from "./views.mjs";
+import { launchedDisplayOr, regionBox, waitForMarkers } from "./views.mjs";
+import { evaluate } from "./cdp/cdp.mjs";
 
 const USAGE = "usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> | --page] [--pad 24]";
 const args = process.argv.slice(2);
@@ -75,12 +76,10 @@ try {
   let rect = null;
   if (part) {
     const mine = marks?.marks.filter((m) => m.id === part && !m.hidden && m.rect[2] > 0 && m.rect[3] > 0) ?? [];
-    if (mine.length === 0) missing.push({ part, why: marks === null ? "the app did not mount" : `nothing marked ${part} in this view` });
+    const drawn = mine.length ? await evaluate(opened.page, regionBox(part)) : null;
+    if (!drawn) missing.push({ part, why: marks === null ? "the app did not mount" : `nothing marked ${part} in this view` });
     else {
-      const x0 = Math.min(...mine.map((m) => m.rect[0]));
-      const y0 = Math.min(...mine.map((m) => m.rect[1]));
-      const x1 = Math.max(...mine.map((m) => m.rect[0] + m.rect[2]));
-      const y1 = Math.max(...mine.map((m) => m.rect[1] + m.rect[3]));
+      const [x0, y0, x1, y1] = JSON.parse(drawn);
       rect = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
       clip = { x: Math.max(0, Math.floor(x0 - pad)), y: Math.max(0, Math.floor(y0 - pad)) };
       clip.width = Math.min(viewport.width, Math.ceil(x1 + pad)) - clip.x;

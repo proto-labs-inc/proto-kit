@@ -61,6 +61,7 @@ ${part} Keep its data (names, numbers, wording) and the product's look, rearrang
 ## Structure
 
 ${structure}
+- A menu, dropdown or popover: render it through \`createPortal\` into \`document.body\` (the region it opens from may clip it), mark its root \`data-proto-id="<region>-<name>"\` (for example \`${regions[0].marker}-menu\`) so the self-check pictures and checks it with its region, and place it with \`useAnchor(triggerRef, { open })\` from \`../anchor\`. Never position it by hand.
 - Preview states are read with \`usePreviewState\` from \`@proto-labs-inc/rig\`, with the ids the prompt gives.
 - No new dependencies. Import only with relative paths (no \`@/\` aliases). Touch no other file; never edit \`tsconfig\` or \`vite.config\`.
 
@@ -77,7 +78,7 @@ ${lacking}
 1. \`pnpm typecheck\` in the workspace; fix what it names.
 2. \`node ${join(KIT_TOOLS, "previews.mjs")} ${workspace} --only ${component}=${variant.id}\` pictures your variant in every preview state in about a second${multi ? ", every region separately" : ""}. Its output also lists${multi ? ", per region" : ""}:
    - \`unstyled\`: class names no stylesheet defines. They do nothing; fix every one (copy the class the page uses, or move the style into your module CSS).
-   - \`layout\`: faults measured in the render (text over text, text cut off, anything outside the variant's box, dots or icons a few pixels off a shared line). Fix every one.
+   - \`layout\`: faults measured in the render (text over text, text cut off, anything outside the variant's box, a menu off the page, dots or icons a few pixels off a shared line). Fix every one.
 3. Read each picture and check for: the variant wider or taller than the card it replaces; a label the direction names that is missing; an element missing or shown twice; rows out of line; a control in the wrong place; wording that does not fit the state (a resuming view that still says "paused"); colours the page does not use.
 
 Two rounds of fixes at most. Never take screenshots any other way and never start a browser yourself.

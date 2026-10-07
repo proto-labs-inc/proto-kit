@@ -35,7 +35,7 @@ import { decodePng, encodePng } from "./cdp/png.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
-import { backdropOf, launchedDisplayOr, viewsOf, waitForMarkers } from "./views.mjs";
+import { backdropOf, launchedDisplayOr, regionBox, viewsOf, waitForMarkers } from "./views.mjs";
 
 const USAGE = "usage: node tools/previews.mjs <workspace> [--pad 24] [--only <component>=<variant>] [--brief <id> --codebase <id>] [--no-send]";
 const options = { pad: "24" };
@@ -95,14 +95,13 @@ async function picture(view, state = null) {
     const shots = [];
     for (const [i, region] of regions.entries()) {
       const mine = marks?.marks.filter((m) => m.id === region && !m.hidden && m.rect[2] > 0 && m.rect[3] > 0) ?? [];
-      if (mine.length === 0) {
+      // The region with whatever hangs off it (an open menu), not only its own box.
+      const drawn = mine.length ? await evaluate(opened.page, regionBox(region)) : null;
+      if (!drawn) {
         missing.push({ component: view.component, variant: view.variant, ...(multi ? { region } : {}), ...(state ? { state } : {}), why: marks === null ? "the app did not mount" : `nothing marked ${region} in this view` });
         continue;
       }
-      const x0 = Math.min(...mine.map((m) => m.rect[0]));
-      const y0 = Math.min(...mine.map((m) => m.rect[1]));
-      const x1 = Math.max(...mine.map((m) => m.rect[0] + m.rect[2]));
-      const y1 = Math.max(...mine.map((m) => m.rect[1] + m.rect[3]));
+      const [x0, y0, x1, y1] = JSON.parse(drawn);
       const clip = {
         x: Math.max(0, Math.floor(x0 - pad)),
         y: Math.max(0, Math.floor(y0 - pad)),
@@ -124,7 +123,7 @@ async function picture(view, state = null) {
         const found = unstyledBy.get(region) ?? new Set();
         for (const c of JSON.parse(await evaluate(opened.page, UNSTYLED(selector)))) found.add(c);
         unstyledBy.set(region, found);
-        for (const issue of JSON.parse(await evaluate(opened.page, LAYOUT(selector)))) layout.push({ state: state ?? firstState, ...(multi ? { region } : {}), issue });
+        for (const issue of JSON.parse(await evaluate(opened.page, LAYOUT(selector, region)))) layout.push({ state: state ?? firstState, ...(multi ? { region } : {}), issue });
       }
       const rect = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
       shots.push({ region, path, background, rect });
@@ -191,14 +190,22 @@ const UNSTYLED = (selector) => `(() => {
 // few pixels. Names each by its nearest data-proto-id and its text.
 // Whether the design makes sense stays with the picture.
 const layout = [];
-const LAYOUT = (selector) => `(() => {
-  const roots = [...document.querySelectorAll(${JSON.stringify(selector)})].filter((r) => r.getClientRects().length);
+const LAYOUT = (selector, region) => `(() => {
+  // The region's elements, and its pieces portaled elsewhere (a menu named
+  // "<region>-…" rendered into <body>), which are checked against the page.
+  const inRegion = [...document.querySelectorAll(${JSON.stringify(selector)})].filter((r) => r.getClientRects().length);
+  const portaled = [...document.querySelectorAll('[data-proto-id^=' + JSON.stringify(${JSON.stringify(region)} + "-") + ']')].filter((e) => e.getClientRects().length && !inRegion.some((r) => r.contains(e)) && !e.parentElement.closest('[data-proto-id^=' + JSON.stringify(${JSON.stringify(region)} + "-") + ']'));
+  const roots = [...inRegion, ...portaled];
+  const page = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+  // A menu or popover (fixed or absolute inside the region) is meant to
+  // leave the region's box; it only has to stay on the page.
+  const overlayOf = (e, root) => { for (let a = e; a && a !== root; a = a.parentElement) { const p = getComputedStyle(a).position; if (p === "fixed" || p === "absolute") return a; } return null; };
   const issues = [];
   const visible = (e) => { const s = getComputedStyle(e); return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0.05; };
   const label = (e) => { const owner = e.closest("[data-proto-id]"); const text = (e.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 30); return (owner ? owner.getAttribute("data-proto-id") : e.tagName.toLowerCase()) + (text ? ' "' + text + '"' : ""); };
   const px = (n) => Math.round(n);
   for (const root of roots) {
-    const box = root.getBoundingClientRect();
+    const box = portaled.includes(root) ? page : root.getBoundingClientRect();
     const all = [root, ...root.querySelectorAll("*")].filter((e) => e.getClientRects().length && visible(e));
     // Text over text: each text run's boxes against every other run's.
     const runs = [];
@@ -226,10 +233,12 @@ const LAYOUT = (selector) => `(() => {
       if (hides && e.textContent.trim() && (e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 3)) {
         issues.push("text cut off: " + label(e) + (s.textOverflow === "ellipsis" ? " (truncated with an ellipsis)" : "") + ", content " + e.scrollWidth + "x" + e.scrollHeight + " in a " + e.clientWidth + "x" + e.clientHeight + " box");
       }
-      // Outside the variant's box.
-      if (e !== root && r.width > 0 && r.height > 0 && s.position !== "fixed") {
-        const out = Math.max(box.left - r.left, r.right - box.right, box.top - r.top, r.bottom - box.bottom);
-        if (out > 1.5) issues.push("outside the variant: " + label(e) + " by " + px(out) + "px");
+      // Outside the variant's box; a menu or popover, outside the page.
+      if (e !== root && r.width > 0 && r.height > 0) {
+        const overlay = box === page ? null : overlayOf(e, root);
+        const bounds = overlay || box === page ? page : box;
+        const out = Math.max(bounds.left - r.left, r.right - bounds.right, bounds.top - r.top, r.bottom - bounds.bottom);
+        if (out > 1.5) issues.push((bounds === page ? "off the page: " : "outside the variant: ") + label(e) + " by " + px(out) + "px");
       }
     }
     // Near misses: small marks and thin lines whose centres sit within 10px

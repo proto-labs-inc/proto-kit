@@ -174,6 +174,55 @@ export default function ${Name}({ className }: { className?: string }) {
   written.push({ id: variant.id, title: variant.title, note: variant.note, module: rel(`${variant.id}.tsx`), styles: rel(`${variant.id}.module.css`), Name });
 }
 
+// ---- menus: placed under their trigger ----
+// A menu inside a top bar is clipped by it, so builders portal it into
+// <body>, where it lost its place and opened at the page's left edge (the
+// main agent fixed it by hand in R2 before and after). One hook places it.
+const anchorFile = join(workspace, "src", "variants", "anchor.ts");
+if (!existsSync(anchorFile)) {
+  writeFileSync(
+    anchorFile,
+    `import { type CSSProperties, type RefObject, useLayoutEffect, useState } from "react";
+
+/**
+ * Where a menu or popover opened from \`trigger\` sits when it is rendered
+ * through createPortal into document.body (so the region it opens from,
+ * say a top bar, does not clip it): fixed, just under the trigger, aligned
+ * to its start or end edge, following scroll and resize.
+ *
+ *   const style = useAnchor(buttonRef, { open, align: "start" });
+ *   {open && createPortal(<div style={style} data-proto-id="<region>-menu">…</div>, document.body)}
+ */
+export function useAnchor(
+  trigger: RefObject<HTMLElement | null>,
+  { open = true, align = "start", gap = 4 }: { open?: boolean; align?: "start" | "end"; gap?: number } = {},
+): CSSProperties {
+  const [style, setStyle] = useState<CSSProperties>({ position: "fixed", visibility: "hidden" });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = trigger.current?.getBoundingClientRect();
+      if (!r) return;
+      setStyle(
+        align === "end"
+          ? { position: "fixed", top: r.bottom + gap, right: window.innerWidth - r.right, zIndex: 50 }
+          : { position: "fixed", top: r.bottom + gap, left: r.left, zIndex: 50 },
+      );
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [trigger, open, align, gap]);
+  return style;
+}
+`,
+  );
+}
+
 // ---- the switch ----
 const SwitchName = `${pascal(component)}Variants`;
 const ids = [...(baseline ? [baseline.id] : []), ...variants.map((v) => v.id)];

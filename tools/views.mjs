@@ -99,3 +99,23 @@ export const backdropOf = (selector) => `(() => {
   while (e) { const c = getComputedStyle(e).backgroundColor; if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent') return c; e = e.parentElement; }
   return getComputedStyle(document.body).backgroundColor;
 })()`;
+
+/** The box a region draws in, as [x0, y0, x1, y1] in CSS px, or null when
+ *  nothing of it shows: the marked element and everything inside it (an
+ *  open menu that hangs below a top bar), and its pieces portaled elsewhere
+ *  (marked "<marker>-…"), clipped to the viewport. */
+export const regionBox = (marker) => `(() => {
+  const own = [...document.querySelectorAll('[data-proto-id=' + JSON.stringify(${JSON.stringify(marker)}) + ']')];
+  const pieces = [...document.querySelectorAll('[data-proto-id^=' + JSON.stringify(${JSON.stringify(marker)} + "-") + ']')].filter((e) => !own.some((o) => o.contains(e)));
+  let box = null;
+  for (const top of [...own, ...pieces]) for (const e of [top, ...top.querySelectorAll("*")]) {
+    const s = getComputedStyle(e);
+    if (s.display === "none" || s.visibility === "hidden") continue;
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
+    box = box ? [Math.min(box[0], r.left), Math.min(box[1], r.top), Math.max(box[2], r.right), Math.max(box[3], r.bottom)] : [r.left, r.top, r.right, r.bottom];
+  }
+  if (!box) return null;
+  const clipped = [Math.max(0, box[0]), Math.max(0, box[1]), Math.min(innerWidth, box[2]), Math.min(innerHeight, box[3])];
+  return clipped[2] > clipped[0] && clipped[3] > clipped[1] ? JSON.stringify(clipped) : null;
+})()`;
