@@ -28,7 +28,33 @@ full serve workflow, provision or restart a tunnel, or register the prototype.
    and tokens.
 4. Ground the directions in real references. Use supplied references first,
    then pull a small, relevant comparison set from Mobbin and register it under
-   `references` with images, notes, and variant associations.
+   `references` with images, notes, and variant associations. No Mobbin
+   account or Mobbin MCP is needed:
+   - Find examples with your web search, restricted to `mobbin.com`
+     (e.g. "mobbin create project flow web"). Search for the pattern, not
+     the product's domain: a book page's metadata is a product, media or
+     listing detail page on Mobbin. Results that are one flow or screen
+     (`mobbin.com/explore/flows/<id>`, `.../screens/<id>`) are candidates;
+     a topic result (`mobbin.com/explore/web/screens/product-detail`) is
+     read with `node <kit>/tools/mobbin.mjs browse web/screens/product-detail`,
+     which lists its examples. Without web search, start from
+     `node <kit>/tools/mobbin.mjs topics --platform web --match "<words>"`.
+   - A title says little about the picture: a flow often opens on a home
+     page. `node <kit>/tools/mobbin.mjs screens <url>` says how many screens
+     a flow has. Save a candidate with
+     `node <kit>/tools/mobbin.mjs save <workspace> <url> --as <name> [--screen <n>]`,
+     which writes `public/references/<name>.webp` and prints
+     `{app, url, image}`, then look at the picture before using it (if
+     your image viewer cannot open WebP, convert a copy outside the
+     workspace: `sips -s format png <file> --out <tmp>/<name>.png`). Delete
+     the ones you do not use.
+   - Keep two to four, at least one per new direction. Add each to the
+     set's `references` in the entry you finish in step 5, as
+     `{app, url, image, note, variant}`: the note says what to look at
+     (for a flow, which screen: its link opens the flow at the start), the
+     variant is the id it informs.
+   If the tool errors (Mobbin changed its pages), go on without Mobbin
+   references and say so in the report.
 5. Finish the manifest entry with component, title, variants, `sourceFiles`,
    component-only SVG previews, default, baseline when there is a pre-set
    original, showcase state, and overview. Remove `status` when complete.
