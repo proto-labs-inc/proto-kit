@@ -68,6 +68,7 @@ used the wrong display and disturbed the checks running beside them).
 |---|---|
 | see a state, a variant, a part or the whole page | `node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>] [--part <marker> \| --page]`, then read the picture it prints |
 | see one variant in every state (a variant builder, checking its own work) | `node tools/previews.mjs <workspace> --only <set>=<id>` |
+| check a control does what it should (Resume starts the restore in every region) | `node tools/click.mjs <workspace> --variant <set>=<id> --click "<text>" [--state <id>] [--in <region>]` |
 | know what is broken (blank views, errors, parts out of place) | `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>` |
 | make the variant previews the site shows | `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>` |
 | pick a free slug | `list_prototypes { codebase }` |
