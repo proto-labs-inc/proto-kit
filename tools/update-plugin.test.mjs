@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync, copyFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { updatePlugin } from './update-plugin.mjs';
 const v = '0.1.0+codex.20261007220000';
 function put(root, version = v) { mkdirSync(join(root, '.codex-plugin'), { recursive: true }); writeFileSync(join(root, '.codex-plugin/plugin.json'), JSON.stringify({ version })); }
@@ -37,3 +38,22 @@ test('dirty Cursor checkout is preserved', () => {
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 test('unknown harness is rejected without execution', () => assert.throws(() => updatePlugin('unknown'), /Pass --agent/));
+
+
+test('CLI runs through a symlinked temporary directory instead of silently succeeding', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'proto-launch-'));
+  try {
+    const actual = join(temp, 'actual folder');
+    const alias = join(temp, 'alias folder');
+    mkdirSync(actual);
+    copyFileSync(new URL('./update-plugin.mjs', import.meta.url), join(actual, 'update.mjs'));
+    symlinkSync(actual, alias, 'dir');
+    for (const directory of [actual, alias]) {
+      // Invalid host reaches CLI validation without network or plugin mutations.
+      const result = spawnSync(process.execPath, [join(directory, 'update.mjs'), '--agent', 'invalid'], { encoding: 'utf8' });
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /Proto update failed: Pass --agent/);
+      assert.equal(result.stdout, '');
+    }
+  } finally { rmSync(temp, { recursive: true, force: true }); }
+});

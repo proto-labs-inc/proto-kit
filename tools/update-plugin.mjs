@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Standalone: copied prompts download this file from GitHub release.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const repo = 'https://github.com/proto-labs-inc/proto-kit.git';
 const shortRepo = 'proto-labs-inc/proto-kit';
@@ -61,7 +61,9 @@ export function updatePlugin(host, { run = (cmd, args) => execFileSync(cmd, args
     return { status: 'verified', agent: host, version: actual, installedRoot: root, next: `Read ${join(root, 'skills/update/SKILL.md')} for any needed repair, then continue the original request. Reload the host if its tools or hooks still use the old copy.` };
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// Node resolves the module URL through symlinks, but argv keeps the launch path.
+// macOS temporary directories commonly use /var -> /private/var.
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {
   try {
     if (process.argv.length !== 4 || process.argv[2] !== '--agent') throw new Error('Usage: node update-plugin.mjs --agent codex|claude|cursor');
     console.log(JSON.stringify(updatePlugin(process.argv[3]), null, 2));
