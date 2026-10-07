@@ -50,8 +50,8 @@ async function fixture(t, harness, { refused = false, ambiguous = false } = {}) 
     rmSync(home, { recursive: true, force: true });
   });
   const app = `http://127.0.0.1:${server.address().port}`;
-  // PROTO_APP keeps any watcher these tests start off the real site.
-  const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, PROTO_APP: app };
+  // Both product calls and reporting stay on the fake site.
+  const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, PROTO_APP: app, PROTO_REPORT_APP: app };
   async function run(tool, args = [], input = "") {
     const child = spawn(process.execPath, [join(kit, "tools", tool), ...args], { env, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "", stderr = "";

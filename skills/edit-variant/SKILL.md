@@ -18,7 +18,9 @@ imported token value for each theme rather than adding one-theme literal
 colours, and verify the edited variant in both themes.
 
 1. Read `public/prototype.json`, the target view, and the variant's recorded
-   `sourceFiles` before searching more broadly.
+   `sourceFiles` before searching more broadly. Reuse the set's existing
+   references as design context; inspect relevant screenshots before editing
+   and pass their paths, links, and notes to any builder. Do not gather new ones.
 2. Change only the target variant's module and scoped styles. Preserve its ID,
    every sibling variant, preview state, component marker, URL behavior, and
    shared design-system token unless the brief explicitly requires a related

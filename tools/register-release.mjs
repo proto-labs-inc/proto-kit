@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-/** Main is the published Git marketplace. Verify the immutable remote manifest
- * before registering; never announce a local-only checkout or a failed fetch. */
-import { readFileSync } from "node:fs";
+/** Register only the generated commit already published on release. */
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -33,12 +31,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (process.env.GITHUB_REF !== "refs/heads/main" || process.env.GITHUB_REPOSITORY !== "proto-labs-inc/proto-kit") {
       throw new Error("Only the published proto-kit main branch may register releases");
     }
-    const commit = process.env.GITHUB_SHA;
+    const commit = process.env.PROTO_RELEASE_SHA;
     if (!/^[0-9a-f]{40}$/.test(commit ?? "")) throw new Error("Missing source commit");
-    const local = JSON.parse(readFileSync(new URL("../.codex-plugin/plugin.json", import.meta.url), "utf8"));
+    const published = execFileSync("git", ["ls-remote", "origin", "refs/heads/release"], { encoding: "utf8" }).trim().split(/\s/)[0];
+    if (published !== commit) throw new Error("Release commit is not the published release branch");
     const remote = JSON.parse(execFileSync("gh", ["api", `repos/proto-labs-inc/proto-kit/contents/.codex-plugin/plugin.json?ref=${commit}`, "-H", "Accept: application/vnd.github.raw+json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
-    if (remote.version !== local.version || remote.name !== "proto") throw new Error("Published manifest does not match the checkout");
-    console.log(JSON.stringify(await registerRelease({ app: process.env.PROTO_APP_URL, token: process.env.PROTO_KIT_RELEASE_TOKEN, commit, version: local.version })));
+    if (remote.name !== "proto") throw new Error("Published manifest does not match the checkout");
+    console.log(JSON.stringify(await registerRelease({ app: process.env.PROTO_APP_URL, token: process.env.PROTO_KIT_RELEASE_TOKEN, commit, version: remote.version })));
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

@@ -268,11 +268,18 @@ used the wrong display and disturbed the checks running beside them).
      collections; never manufacture dark colors by inversion.
 8. **Variants in parallel.** Decide one or two decisions the brief
    supports a real choice on (layout, hierarchy, interaction pattern,
-   density); none when it supports none. For each, one command writes
-   the skeleton:
+   density); none when it supports none. For each new set, gather and inspect
+   references using `docs/variant-references.md` before choosing its directions
+   or dispatching builders. Use supplied references first and Mobbin's no-account
+   web path, never the Mobbin MCP. Save the selected references as a temporary
+   JSON array with `{app, url, image, note, variant}` entries; associate them
+   with the direction IDs after designing from the research. If research fails,
+   report the gap and use the available references (an empty array if none).
+   One command then writes the skeleton and each builder's reference brief:
    `node tools/variant-set.mjs <workspace> <marker> --title "<set>"
    --variants "<id>=<Title>|<note>;<id>=<Title>|<note>" --default <id>
-   --baseline current=Current --overview "<the question>" --slot <class>`
+   --baseline current=Current --overview "<the question>" --slot <class>
+   --references <references.json>`
    where `<marker>` is the `data-proto-id` of the part the set varies
    and `<class>` its slot in App.tsx (`className={styles["partNN"]}`).
    A decision that changes several parts of the page together (the top
@@ -293,8 +300,9 @@ used the wrong display and disturbed the checks running beside them).
    Then one `proto:variant-builder` subagent per variant, all in
    parallel, in the background, each with its brief file and direction
    (the variant brief below); do not
-   pass a model, and never a `name` (step 6 says why). Mobbin
-   references are not gathered in a build: the baseline is the reference.
+   pass a model, and never a `name` (step 6 says why). Each generated brief
+   includes the relevant screenshots and notes; builders inspect them before
+   implementing. Keep the registered references when finishing the set.
    On a frozen copy the baseline is the frozen element itself:
    `<Frozen replace={{ "<marker>": <XVariants baseline={<FrozenHtml marker="<marker>" />} /> }} />`
    (`FrozenHtml` from `src/frozen/Frozen`). Variant builders write their

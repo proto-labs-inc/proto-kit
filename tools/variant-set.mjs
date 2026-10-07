@@ -14,6 +14,7 @@
  *        --variants "<id>=<Title>|<note>;<id>=<Title>|<note>" --default <id>
  *        [--baseline <id>=<Title>] [--state <state id>] [--overview "<what is being decided>"]
  *        [--slot <class>] [--regions <marker>,<marker>,...]
+ *        [--references <json file>] (array of {app, url, image, note, variant})
  *
  * --regions: one design decision that changes several parts of the page
  * (the top bar's project switcher and the page's notice) is one set with
@@ -85,6 +86,14 @@ if (options.baseline) {
 }
 if (!variants.some((v) => v.id === options.default) && baseline?.id !== options.default) fail(`--default ${options.default} is not one of the variants`);
 
+let references = [];
+if (options.references) {
+  try {
+    references = JSON.parse(readFileSync(options.references, "utf8"));
+    if (!Array.isArray(references)) throw new Error("expected a reference array");
+  } catch (error) { fail(`--references: ${error.message}`); }
+}
+
 const pascal = (slug) => slug.replace(/(^|-)([a-z0-9])/g, (_, __, c) => c.toUpperCase());
 const dir = join(workspace, "src", "variants", component);
 
@@ -119,6 +128,7 @@ const entry = {
   ],
   default: options.default,
   regions,
+  references,
 };
 if (options.state) entry.state = options.state;
 if (baseline) entry.baseline = baseline.id;
@@ -377,7 +387,7 @@ if (frozen) {
 }
 for (const v of written) {
   v.brief = join(briefsDir, `${component}--${v.id}.md`);
-  writeFileSync(v.brief, variantBrief({ workspace, component, setTitle: options.title, variant: v, regions: regionNames.map((r) => ({ ...r, markup: markup[r.marker] ?? null })) }));
+  writeFileSync(v.brief, variantBrief({ workspace, component, setTitle: options.title, variant: v, references, regions: regionNames.map((r) => ({ ...r, markup: markup[r.marker] ?? null })) }));
 }
 
 // The site hears the set is being written from the tool itself, so it never sits on the copy's last line.

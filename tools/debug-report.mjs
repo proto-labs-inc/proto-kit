@@ -84,6 +84,7 @@ import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
 import { rolloutsHolding, CODEX_HOME } from "./codex-transcripts.mjs";
 import { callTool, CONFIG_PATH } from "./mcp-call.mjs";
+import { reportTarget } from "./report-target.mjs";
 
 const CLAUDE_PROJECTS = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
 const CODEX_SESSIONS = join(CODEX_HOME, "sessions");
@@ -548,8 +549,8 @@ async function inBatches(items, n, fn) {
   );
 }
 
-async function call(name, args) {
-  const result = await callTool(name, args, undefined, { signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+async function call(name, args, target) {
+  const result = await callTool(name, args, target, { signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
   const text = result?.content?.[0]?.text ?? "";
   if (result?.isError) throw new Error(`${name}: ${text}`);
   return JSON.parse(text);
@@ -558,6 +559,8 @@ async function call(name, args) {
 /** Collect, pack and upload one snapshot; returns { id, files, totalBytes }.
  *  `log` gets phase timings and failed attempts, `progress` each upload. */
 export async function sendSnapshot({ session, kind, title, note, codebase, log = () => {}, progress = () => {} }) {
+  const target = reportTarget(codebase);
+  log(`reporting to ${target.app}`);
   let mark = Date.now();
   const phase = (name, extra = "") => {
     const now = Date.now();
@@ -586,7 +589,7 @@ export async function sendSnapshot({ session, kind, title, note, codebase, log =
       ...(environment.harnessVersion ? { harnessVersion: environment.harnessVersion } : {}),
       kitVersion: environment.kitVersion,
       files: packed.map((f) => ({ name: f.name, size: f.size })),
-    });
+    }, target);
     phase("begin", ` ${report.id}`);
     const byName = new Map(packed.map((f) => [f.name, f]));
     let done = 0;
@@ -600,7 +603,7 @@ export async function sendSnapshot({ session, kind, title, note, codebase, log =
     let finished;
     for (let attempt = 1; ; attempt++) {
       try {
-        finished = await call("finish_debug_report", { id: report.id });
+        finished = await call("finish_debug_report", { id: report.id }, target);
         break;
       } catch (error) {
         if (attempt >= 2 || !/storage unavailable/.test(error.message)) throw error;

@@ -134,33 +134,22 @@ them nothing they already had.
 
 ### Keep the plugin current
 
-For Codex, first read `codex plugin marketplace list --json`. If the selected
-Proto marketplace is local, preserve that source and run only
-`codex plugin add proto@proto-kit`; do not replace it with the document's
-remote source, pull its checkout, or discard its changes. The normal remote
-upgrade command below applies only to a Git marketplace. Resolve the installed
-root from the install result and verify its manifest.
+Use GitHub's generated `release` branch for normal installs and updates.
+Local files require an explicit user request for this operation; an existing
+local registration does not make local the default. Follow the source
+selection and migration steps in `../update/SKILL.md` before updating.
+An older setup document that names main or an unpinned GitHub source must
+use release instead. Never fall back to main when release is unavailable.
 
-If the Proto plugin is already installed, update it before anything
-else (using the local-marketplace branch above when applicable), with the document's
-`install.<harness>.update` command for the harness you are running
-in. Two notes the command does not say: Codex has no plugin update,
-so its command re-adds the plugin, which installs the refreshed
-snapshot; on Cursor, a Customize-panel install is refreshed by the
-user in that panel, a local plugin folder by the `git pull` in the
-command, and either way the user then runs **Developer: Reload
-Window** so Cursor loads the new copy (the chat survives the
-reload).
+For a fresh install:
 
-If an update was installed just now, re-read this skill from the
-updated copy before continuing: the text you are following may be
-stale.
+- Codex: `codex plugin marketplace add proto-labs-inc/proto-kit --ref release && codex plugin add proto@proto-kit`.
+- Claude: `claude plugin marketplace add proto-labs-inc/proto-kit#release && claude plugin install proto@proto-kit`.
+- Cursor: `git clone --branch release https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto`, then **Developer: Reload Window**.
 
-On Cursor, when the plugin is not installed at all (the prompt was
-pasted into a chat without it), install it yourself with the
-document's `install.cursor.install` command, tell the user to run
-**Developer: Reload Window**, and continue from the installed copy's
-`skills/setup/SKILL.md`.
+For an existing installation, run the update skill's plugin steps and verify
+the installed version. Re-read this setup skill from the new installed copy
+before linking the laptop. Preserve local development folders and their edits.
 
 ### Prerequisites
 

@@ -159,11 +159,11 @@ the setup code mints the laptop token afterward.
 
 ```sh
 # Claude Code
-claude plugin marketplace add proto-labs-inc/proto-kit && claude plugin install proto@proto-kit
+claude plugin marketplace add proto-labs-inc/proto-kit#release && claude plugin install proto@proto-kit
 # Codex (CLI or the desktop app; trust the hooks when asked)
-codex plugin marketplace add proto-labs-inc/proto-kit && codex plugin add proto@proto-kit
+codex plugin marketplace add proto-labs-inc/proto-kit --ref release && codex plugin add proto@proto-kit
 # Cursor (local plugin folder; see the Cursor section below)
-git clone https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto, then run "Developer: Reload Window" in Cursor.
+git clone --branch release https://github.com/proto-labs-inc/proto-kit ~/.cursor/plugins/local/proto, then run "Developer: Reload Window" in Cursor.
 ```
 
 If the plugin is already installed, update it first so it is on the
@@ -178,15 +178,16 @@ claude plugin marketplace update proto-kit && claude plugin update proto@proto-k
 # Codex
 codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit
 # Cursor
-git -C ~/.cursor/plugins/local/proto pull, then run "Developer: Reload Window" in Cursor (or Refresh in the Customize panel for a marketplace install).
+git -C ~/.cursor/plugins/local/proto pull --ff-only origin release, then run "Developer: Reload Window" in Cursor (or Refresh in the Customize panel for a marketplace install).
 ```
 
-For Codex, inspect `codex plugin marketplace list --json` first. A configured
-local marketplace stays local: run only `codex plugin add proto@proto-kit`,
-without upgrading the remote or changing its checkout. Resolve the actual
-installed root and run `node <installed-kit>/tools/codex-install.mjs`; `--check`
-verifies MCP and role synchronization. Existing conversation descriptions may
-remain cached until plugin discovery refreshes.
+These update commands assume the marketplace already tracks `release`.
+For an existing main or local registration, follow the migration in
+`skills/update/SKILL.md` first. Normal updates always use GitHub release;
+local installs require an explicit request for that operation. Local source
+folders and their edits are preserved when switching registrations.
+Resolve the installed root and run `node <installed-kit>/tools/codex-install.mjs`
+on Codex; `--check` verifies MCP and role synchronization.
 
 Then run `/proto:setup` (Claude Code) or `$setup` (Codex) in any
 session; in Cursor, type `/` in the chat and pick the Proto setup
@@ -262,6 +263,42 @@ node tools/fake-import/run.mjs /tmp/demo-library
 # the skipped card and the driver extracts it
 ```
 
+## Debug report destination
+
+Debug reports (automatic and manual) go to `https://prototypes.fun`, even
+when the linked product app or `PROTO_APP` points to a local development
+server. They use the existing laptop login; R2 storage credentials belong
+only on the hosted server. Reports remain available to authorized staff.
+Begin and finish use the same team credential throughout an upload. A login
+refused by the hosted service fails visibly in the telemetry log; it does
+not fall back to the development server. For isolated reporter tests only,
+`PROTO_REPORT_APP` explicitly selects a different reporting origin.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Automated kit releases
+
+Push or merge source changes to `main`. The Publish Proto release workflow
+runs checks, generates a fresh version, and advances `release` with a normal
+fast-forward push. No agent or developer has to bump a manifest. Main is the
+source branch; installations track release. Do not commit directly to release.
+
+CI stamps the Codex, portable, and Cursor manifests together and records the
+source commit and GitHub run ID in `.proto-release.json`. Versions retain the
+existing 14-digit UTC format for compatibility with the cloud API, and always
+advance past the previous release even when runs occur in the same second.
+Rerunning a published source reuses its release commit, allowing registration
+retries without a new version. Stale runs cannot roll back the release branch.
+
+Failures before the release push leave the previous package available. Cloud
+registration happens afterward in the same workflow; if it fails, the package
+is available but cloud update notices lag. Rerun that workflow to retry.
+
+Activation: merge this workflow into main, allow its `contents: write` token
+to create/update release, and verify the first run. Existing
+`PROTO_APP_URL` and `PROTO_KIT_RELEASE_TOKEN` configure cloud registration.
+Protect release from human pushes while allowing this workflow to advance it.
+Update the cloud setup-command producer alongside this change and migrate
+existing marketplace registrations to release. Never fall back to main.

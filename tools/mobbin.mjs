@@ -32,6 +32,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { repairReferenceServing } from "./repair-reference-serving.mjs";
 
 const SITE = "https://mobbin.com";
 const HEADERS = { "User-Agent": "Proto (+https://prototypes.fun)" };
@@ -190,6 +191,8 @@ async function saveCommand(workspace, given, flags) {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${name}.webp`);
   writeFileSync(file, Buffer.from(await response.arrayBuffer()));
+  const repair = repairReferenceServing(resolve(workspace));
+  if (repair.changed) console.error(`Updated ${repair.file} to serve reference images added while Vite is running.`);
   console.log(JSON.stringify({ app: example.app, url, image: `references/${name}.webp` }));
 }
 

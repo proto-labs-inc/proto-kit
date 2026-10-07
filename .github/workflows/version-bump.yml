@@ -1,7 +1,5 @@
-name: Codex version moved forward
+name: Release automation tests
 on:
-  push:
-    branches: [main]
   pull_request:
 permissions:
   contents: read
@@ -10,11 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tools/check-version-bump.test.mjs
-      - name: A kit change bumps .codex-plugin/plugin.json (AGENTS.md)
-        run: node tools/check-version-bump.mjs "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" HEAD
+      - run: node --test tools/publish-release.test.mjs tools/register-release.test.mjs

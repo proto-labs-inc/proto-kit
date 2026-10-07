@@ -64,7 +64,7 @@ const session = (...extra) =>
     { type: "assistant", sessionId: sid, uuid: "a1", parentUuid: "u1", timestamp: "2026-10-06T10:00:05.000Z", message: { role: "assistant", model: "claude", content: [{ type: "text", text: ["On it.", ...extra].join(" ") }] } },
   ].map((r) => JSON.stringify(r)).join("\n") + "\n";
 
-async function fakeSite(t, { hang = false } = {}) {
+async function fakeSite(t, { hang = false, relink = false, refuse = false } = {}) {
   const home = mkdtempSync(join(tmpdir(), "debug-report-e2e-"));
   const transcript = join(home, ".claude", "projects", "p", `${sid}.jsonl`);
   const proto = join(home, ".proto");
@@ -72,6 +72,7 @@ async function fakeSite(t, { hang = false } = {}) {
   const puts = [];
   const finishes = [];
   const bodies = new Map();
+  const auth = [];
   const server = createServer(async (req, res) => {
     if (req.method === "PUT") {
       puts.push(req.url);
@@ -88,10 +89,16 @@ async function fakeSite(t, { hang = false } = {}) {
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw);
     const { name, arguments: args } = body.params ?? {};
+    auth.push({ name, bearer: req.headers.authorization });
+    if (refuse) {
+      res.writeHead(401).end();
+      return;
+    }
     let result = {};
     const base = `http://127.0.0.1:${server.address().port}`;
     if (name === "begin_debug_report") {
       begins.push(args);
+      if (relink) writeFileSync(join(proto, "config.json"), JSON.stringify({ app: "http://127.0.0.1:1", credentials: [{ secret: "different-team" }] }));
       const id = `r${begins.length}`;
       result = { id, contentType: "application/gzip", uploads: args.files.map((f) => ({ name: f.name, uploadUrl: `${base}/put/${id}/${f.name}` })) };
     }
@@ -129,7 +136,7 @@ async function fakeSite(t, { hang = false } = {}) {
     await new Promise((resolve) => server.close(resolve));
     rmSync(home, { recursive: true, force: true });
   });
-  const env = (extra = {}) => ({ ...process.env, HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude"), CODEX_HOME: join(home, ".codex"), PROTO_APP: app, ...extra });
+  const env = (extra = {}) => ({ ...process.env, HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude"), CODEX_HOME: join(home, ".codex"), PROTO_APP: app, PROTO_REPORT_APP: app, ...extra });
   const run = (args, extra) => {
     const child = spawn(process.execPath, [tool, ...args], { env: env(extra), stdio: ["ignore", "pipe", "pipe"] });
     children.push(child);
@@ -141,8 +148,27 @@ async function fakeSite(t, { hang = false } = {}) {
   };
   const logFile = join(proto, "telemetry", `${sid}.log`);
   const log = () => (existsSync(logFile) ? readFileSync(logFile, "utf8") : "");
-  return { home, transcript, begins, puts, finishes, bodies, run, log, pidFile: join(proto, "telemetry", `${sid}.pid`) };
+  return { home, transcript, begins, puts, finishes, bodies, auth, run, log, pidFile: join(proto, "telemetry", `${sid}.pid`) };
 }
+
+test("reports bypass the product server and keep the same identity through finish", async (t) => {
+  const f = await fakeSite(t, { relink: true });
+  writeFileSync(join(f.home, ".proto", "config.json"), JSON.stringify({ app: "http://127.0.0.1:1", credentials: [{ secret: "laptop-secret" }] }));
+  const { status, stderr } = await f.run(["send", "--transcript", f.transcript], { PROTO_APP: "http://127.0.0.1:1" }).done;
+  assert.equal(status, 0, stderr);
+  assert.equal(f.begins.length, 1);
+  assert.deepEqual(f.finishes, ["r1"]);
+  assert.ok(f.auth.every((r) => r.bearer === "Bearer laptop-secret"));
+});
+
+test("a hosted authentication refusal fails without uploading or falling back locally", async (t) => {
+  const f = await fakeSite(t, { refuse: true });
+  const { status, stderr } = await f.run(["send", "--transcript", f.transcript], { PROTO_APP: "http://127.0.0.1:1" }).done;
+  assert.notEqual(status, 0);
+  assert.match(stderr, /credential no longer works/);
+  assert.equal(f.puts.length, 0);
+  assert.equal(f.finishes.length, 0);
+});
 
 async function until(check, ms = 20_000) {
   const deadline = Date.now() + ms;

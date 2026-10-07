@@ -26,6 +26,42 @@ function workspace() {
 }
 const run = (ws, ...args) => spawnSync(process.execPath, [tool, ws, "paused-notice", "--title", "Paused state", "--variants", "badge=Badge|a badge;dot=Dot|a dot", "--default", "badge", "--baseline", "current=Current", "--no-send", ...args], { encoding: "utf8" });
 
+test("references are published in the manifest and routed to the relevant builder briefs", () => {
+  const ws = workspace();
+  const references = [
+    { app: "Badge example", url: "https://mobbin.com/example-badge", image: "references/badge.webp", note: "Group status with its action", variant: "badge" },
+    { app: "Dot example", url: "https://mobbin.com/example-dot", image: "references/dot.webp", note: "Compact status", variant: "dot" },
+    { app: "Shared example", url: "https://mobbin.com/example-shared", image: "references/shared.webp", note: "Keep the hierarchy" },
+  ];
+  const file = join(ws, "references.json");
+  writeFileSync(file, JSON.stringify(references));
+  const res = run(ws, "--references", file);
+  assert.equal(res.status, 0, res.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(ws, "public", "prototype.json"))).variantSets[0].references, references);
+  const out = JSON.parse(res.stdout);
+  for (const v of out.variants) {
+    const brief = readFileSync(v.brief, "utf8");
+    assert.ok(brief.includes(join(ws, "public", "references", `${v.id}.webp`)));
+    assert.ok(brief.includes("https://mobbin.com/example-shared"));
+    assert.ok(brief.includes(references.find(ref => ref.variant === v.id).note));
+    assert.ok(!brief.includes(`example-${v.id === "badge" ? "dot" : "badge"}`));
+  }
+});
+
+test("invalid references are refused before creating a set or source files", () => {
+  for (const references of [{}, [{ variant: "missing" }]]) {
+    const ws = workspace();
+    const file = join(ws, "references.json");
+    const manifest = join(ws, "public", "prototype.json");
+    const before = readFileSync(manifest, "utf8");
+    writeFileSync(file, JSON.stringify(references));
+    const res = run(ws, "--references", file);
+    assert.equal(res.status, 1);
+    assert.equal(readFileSync(manifest, "utf8"), before);
+    assert.equal(existsSync(join(ws, "src", "variants")), false);
+  }
+});
+
 test("a set with two regions writes one module per variant with a component per region, a switch per region, and the manifest's regions", () => {
   const ws = workspace();
   const res = run(ws, "--regions", "paused-notice,project-switcher");

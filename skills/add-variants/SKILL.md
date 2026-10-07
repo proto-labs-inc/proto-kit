@@ -22,14 +22,11 @@ register the prototype, or change unrelated states or variant sets.
    source files recorded for the selected reference variants.
 2. Preserve all existing variants and their relative order. Put the new
    variants at the top of the set's `variants` array.
-3. Reuse the selected variants and registered references as design context,
-   and pull relevant examples from Mobbin for the new directions. Register the
-   Mobbin references with images, notes, and variant associations. Find them
-   with your web search restricted to `mobbin.com` (or the tool's `topics`
-   and `browse`), and save each with
-   `node <kit>/tools/mobbin.mjs save <workspace> <mobbin url> --as <name>`,
-   as create-variant-set describes; no Mobbin account is needed. If it
-   errors, go on without Mobbin references and say so.
+3. Reuse the selected variants and the set's registered references as design
+   context. Inspect relevant existing screenshots before designing. Do not
+   gather new external references for variants added to an existing set. Give
+   any builder the relevant existing screenshot paths, source links, and notes.
+   Preserve the set's references.
 4. Put each new variant in its own module with scoped styles under
    `src/variants/<component>/<variant-id>.*`. Shared files may contain only
    genuinely invariant structure or tokens.

@@ -4,25 +4,15 @@ The Proto plugin for Claude Code, Codex and Cursor. Skills live in
 `skills/`, the tools they run in `tools/`, the library and workspace
 templates in `template/`.
 
-## Every change pushed to main bumps the Codex version
+## GitHub owns release versions
 
-Codex installs the plugin into
-`~/.codex/plugins/cache/proto-kit/proto/<version>/`, keyed by the
-`version` in `.codex-plugin/plugin.json`. A push that leaves that
-string unchanged never reaches a laptop that already has it: `codex
-plugin marketplace upgrade` and `codex plugin add` keep the copy they
-have, and the user runs the old kit while believing they updated.
+Source changes go to main. `.github/workflows/register-release.yml` tests the
+kit and generates a uniquely versioned snapshot on release. Do not manually
+bump manifests for normal source changes or commit directly to release.
+`tools/publish-release.mjs` stamps all versioned host manifests and records
+source/run provenance. Normal plugin installs and updates use GitHub release;
+local files are only used when the user explicitly requests a local install.
 
-So in the same commit as any change to the kit, set it to the current
-UTC time:
-
-```sh
-v="0.1.0+codex.$(date -u +%Y%m%d%H%M%S)"
-sed -i '' "s/\"version\": \"0.1.0+codex.[0-9]*\"/\"version\": \"$v\"/" .codex-plugin/plugin.json
-```
-
-Claude Code needs nothing: its manifest has no version, so each
-marketplace commit is a new one.
-
-CI checks it: `tools/check-version-bump.mjs` fails a push or pull
-request that changes the kit without moving this version forward.
+Run `node --test tools/publish-release.test.mjs tools/register-release.test.mjs`
+when changing release automation. Preserve idempotent retries, monotonically
+increasing versions, and fast-forward publication without force pushes.
