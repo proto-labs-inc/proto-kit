@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22
       - name: Test release construction and registration
-        run: node --test tools/publish-release.test.mjs tools/register-release.test.mjs tools/variant-manifest.test.mjs tools/publish.test.mjs
+        run: node --test tools/update-plugin.test.mjs tools/publish-release.test.mjs tools/register-release.test.mjs tools/variant-manifest.test.mjs tools/publish.test.mjs
       - name: Generate version and advance release branch
         id: release
         run: node tools/publish-release.mjs

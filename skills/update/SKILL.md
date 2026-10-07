@@ -54,31 +54,19 @@ this operation. An existing local registration is not permission to keep
 updating from local files. Never edit, reset, or pull a user's source checkout
 while switching the plugin registration back to GitHub.
 
-First verify `git ls-remote --exit-code https://github.com/proto-labs-inc/proto-kit.git refs/heads/release` succeeds. If the release is unavailable, stop and
-report the failure; do not fall back to main or local files.
+Run the standalone updater for the current harness:
 
-- **Codex**: inspect `codex plugin marketplace list --json`. If Proto is local,
-  tracks main, or points elsewhere, remove only its marketplace registration
-  with `codex plugin marketplace remove proto-kit`, then run
-  `codex plugin marketplace add proto-labs-inc/proto-kit --ref release`.
-  For the correctly registered source, run
-  `codex plugin marketplace upgrade proto-kit && codex plugin add proto@proto-kit`.
-  Verify the resulting installed manifest against the release manifest.
-- **Claude Code**: inspect `claude plugin marketplace list --json`. If the
-  source is not `proto-labs-inc/proto-kit#release`, replace the Proto marketplace
-  registration using `claude plugin marketplace remove proto-kit`, then
-  `claude plugin marketplace add proto-labs-inc/proto-kit#release` and
-  `claude plugin install proto@proto-kit`. Otherwise run
-  `claude plugin marketplace update proto-kit && claude plugin update proto@proto-kit`.
-  Reload the plugin as directed by Claude; use the new installPath afterward.
-- **Cursor**: for a clean local plugin checkout of the official repository,
-  fetch `origin release`, switch to `release` (create it tracking
-  `origin/release` on first migration), and `git pull --ff-only origin release`.
-  If the folder has local edits or divergent commits, preserve it and report
-  that migration needs a separate clean install; never reset or discard it.
-  A Customize-panel install must select the release ref; if that surface
-  cannot select a ref, use the supported Git checkout installation instead.
-  Run **Developer: Reload Window** so Cursor loads the new copy.
+```sh
+node <kit>/tools/update-plugin.mjs --agent codex
+# Use --agent claude or --agent cursor in those hosts.
+```
+
+It fetches GitHub release, replaces old marketplace registrations, installs
+and verifies the resulting manifest, and prints the installed root as JSON.
+It never falls back to main or local files. A dirty or divergent Cursor
+checkout stops the update without discarding files. Any failure stops the
+flow; do not claim success or improvise another source.
+
 - **Explicit local testing**: use the exact folder the user named. For Codex,
   register that folder and run `codex plugin add proto@proto-kit`. Give edited
   local packages a fresh development version before installing; never change
