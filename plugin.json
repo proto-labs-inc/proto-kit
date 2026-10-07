@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schema/1.0.0/plugin.json",
   "name": "proto",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20261007215445",
   "description": "Proto on your laptop: set up your account, import your product's design system, build prototypes, and serve them at public URLs, driven by your coding agent.",
   "extensions": {
     "com.openai": {
