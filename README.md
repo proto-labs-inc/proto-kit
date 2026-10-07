@@ -280,6 +280,10 @@ MIT. See [LICENSE](LICENSE).
 
 ## Automated kit releases
 
+Copied prompts check the installed kit locally before downloading an update.
+The local check compares against the prompt’s release version; copy a fresh
+prompt when testing a newly published release.
+
 Push or merge source changes to `main`. The Publish Proto release workflow
 runs checks, generates a fresh version, and advances `release` with a normal
 fast-forward push. No agent or developer has to bump a manifest. Main is the
