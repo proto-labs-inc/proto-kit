@@ -68,6 +68,7 @@ used the wrong display and disturbed the checks running beside them).
 |---|---|
 | see a state, a variant, a part or the whole page | `node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>] [--part <marker> \| --page]`, then read the picture it prints |
 | see one variant in every state (a variant builder, checking its own work) | `node tools/previews.mjs <workspace> --only <set>=<id>` |
+| check a control does what it should (Resume starts the restore in every region) | `node tools/click.mjs <workspace> --variant <set>=<id> --click "<text>" [--state <id>] [--in <region>]` |
 | know what is broken (blank views, errors, parts out of place) | `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>` |
 | make the variant previews the site shows | `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>` |
 | pick a free slug | `list_prototypes { codebase }` |
@@ -152,6 +153,18 @@ used the wrong display and disturbed the checks running beside them).
    conversation and stop at that checkpoint. Record the answer as described
    under Blocked, then rerun the same command. Do not advance to serving or
    composition while the choice is unanswered.
+   **Variants start here, before anything else.** When the brief asks
+   for variants and the copy is frozen, the next thing you do once the
+   copy returns is step 8's start: pick the decision, find the element
+   in `src/frozen/page.html` by its marker (or by text and `data-pf`,
+   adding a `data-proto-id` if it has none; every region, when the
+   decision spans several), run `variant-set.mjs`,
+   wire the switch into `App.tsx` and dispatch the builders. Do not
+   start the server, read the codebase's source, write shared data or
+   add preview states first: the builders need only the frozen markup
+   and the brief, and every minute before they start is a minute added
+   to the build. Serving (step 5) and the rest of the change (step 7)
+   happen while they work.
 5. **Serve early.** The dev server the copy used has stopped; start the
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
@@ -193,7 +206,14 @@ used the wrong display and disturbed the checks running beside them).
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
-7. **Write the change.** On a frozen copy, find the elements the brief is
+7. **Write the change.** The variant builders are already running
+   (the end of step 4); write the rest of the change (shared data,
+   preview states, wiring) while they work. A builder owns its variant:
+   when it reports back with its pictures checked, keep its files as
+   they are. Change a variant only for a fault check-states or the
+   previews name (step 9), and then only that fault; never rewrite
+   one to your own taste.
+   On a frozen copy, find the elements the brief is
    about in `src/frozen/page.html` (by marker, or by text and `data-pf`;
    the parts list's rects say where each sits) and change only those:
    - A redesigned region: write it as a React component under
@@ -212,9 +232,12 @@ used the wrong display and disturbed the checks running beside them).
      preview state when a reviewer should reach it).
    - The frozen page is in the theme it was captured in (`frozen.json`
      `htmlAttrs`); keep the change in that theme.
-   - Styling the change: the same rules as the frozen variant brief
-     below. Use the page's own class names from the frozen markup, and
-     custom properties exactly as `public/frozen/styles` writes them.
+   - Styling the change: the same rules as the variant briefs
+     (`tools/variant-brief.mjs`). Use the page's own class names from
+     the frozen markup, exactly as written (the workspace compiles no
+     Tailwind); custom properties exactly as `public/frozen/styles`
+     writes them; anything the page does not show from the codebase's
+     own components.
    On the rebuild copy, edit only the parts the brief is about, from the
    parts list and the copied files: never re-read the live page with
    ad-hoc scripts, the read has everything. A part from the library is a
@@ -252,13 +275,24 @@ used the wrong display and disturbed the checks running beside them).
    --baseline current=Current --overview "<the question>" --slot <class>`
    where `<marker>` is the `data-proto-id` of the part the set varies
    and `<class>` its slot in App.tsx (`className={styles["partNN"]}`).
+   A decision that changes several parts of the page together (the top
+   bar's project switcher and the page's notice) is **one set** with
+   `--regions <marker>,<marker>` (the first is the set's key, the same as
+   `<marker>`), never two sets and never a second region wired by hand.
+   Mark any region that has no marker first (`data-proto-id="<kebab-name>"`
+   on that element in `page.html`); regions may not sit inside each other.
+   Each builder then writes all of its variant's regions in one file, with
+   the state they share (`useShared`, `src/variants/store.ts`), and the
+   output prints the exact `replace={{ … }}` for App.tsx, one switch per
+   region, each with its region's `FrozenHtml` as the baseline.
    It writes the manifest entry (`status: "building"`), the switch
    `src/variants/<marker>/index.tsx` on `useVariant`, one stub per
    variant, and frees the slot's pinned height. You replace the part in
    App.tsx with the switch, the part itself as its baseline:
    `<MarkerVariants className={styles["partNN"]} baseline={<Part className={styles["partNN"]} />} />`.
    Then one `proto:variant-builder` subagent per variant, all in
-   parallel, in the background, with the variant brief below; do not
+   parallel, in the background, each with its brief file and direction
+   (the variant brief below); do not
    pass a model, and never a `name` (step 6 says why). Mobbin
    references are not gathered in a build: the baseline is the reference.
    On a frozen copy the baseline is the frozen element itself:
@@ -365,39 +399,17 @@ A failure is `report_progress failed` with one plain sentence.
 
 ## The variant brief
 
-> Write the `<id>` variant ("<Title>": <note>) of the "<set title>" set
-> in the Proto prototype at `<workspace>`. Its files are
-> `src/variants/<marker>/<id>.tsx` and `<id>.module.css` (stubs exist;
-> replace them). The part it varies is the copy at
-> `src/parts/<slug>/<Name>.tsx` and `.module.css`: keep its data (names,
-> numbers, copy) and the product's values (its colours, type and spacing;
-> `src/tokens.css` holds the page's custom properties), rearranged as the
-> direction says. The root keeps `data-proto-id="<marker>"`; every
-> coherent piece inside carries its own kebab-case `data-proto-id`. The
-> component takes `{ className?: string }` and puts it on the root. No
-> new dependencies; touch no other file. Run `pnpm typecheck` in the
-> workspace, then look at your variant as it renders:
-> `node <kit>/tools/previews.mjs <workspace> --only <marker>=<id>` pictures
-> it in every preview state in about a second; read each picture it
-> lists and fix what looks broken (overlapping or clipped text, points
-> off a line, misaligned rows, a control in the wrong place, colours the
-> page does not use). Two rounds at most. Report the files written, the
-> last typecheck's result and what the pictures showed.
+`variant-set.mjs` writes each builder's brief to a file (its output's
+`variants[].brief`, `<build>/briefs/<marker>--<id>.md`): the structure,
+styling and codebase rules, the self-check and the report, filled in for
+that workspace. Never retype or paraphrase those rules in the prompt;
+the file is their one copy. The prompt is the file and the direction:
 
-On a frozen copy, the brief names the frozen element instead of a part
-file, and adds how to style:
-
-> The part it varies is the frozen element marked `<marker>` in
-> `src/frozen/page.html` (and the change's component, if one is written).
-> Style with the page's own class names, copied from that markup: they
-> carry the page's exact colours, type and spacing from
-> `public/frozen/styles`, and the module CSS only lays them out. Where a
-> custom property is needed, use it exactly as the page's CSS does: find
-> it first (`grep -o "var(--<name>)[^;]*" public/frozen/styles/*.css`)
-> and copy the expression. Never wrap a property in a colour function of
-> your own (`hsl(var(--x))` when the page writes `var(--x)` breaks the
-> colour) and never invent a value the page does not use. Icons are the
-> page's own inline SVGs, copied from the markup, not emoji.
+> Your brief is `<brief path>`: read it first and follow it.
+> This variant: <what it shows and how, in a few sentences: the
+> hierarchy, the data and wording to keep, anything the page does not
+> say that must not be invented>. Preview states: <the ids, and what
+> each looks like in this variant; which control moves between them>.
 
 ## Component markers
 

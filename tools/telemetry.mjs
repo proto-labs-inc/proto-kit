@@ -69,7 +69,7 @@ export async function ensureReporter(session, info = "") {
   const out = openSync(join(TELEMETRY_DIR, `${session.id}.log`), "a");
   try {
     const tool = fileURLToPath(new URL("./debug-report.mjs", import.meta.url));
-    const child = spawn(process.execPath, [tool, "watch", "--transcript", session.path, "--session", session.id], {
+    const child = spawn(process.execPath, [tool, "watch", "--transcript", session.path, "--session", session.id, ...(session.harness ? ["--harness", session.harness] : [])], {
       detached: true,
       stdio: ["ignore", out, out],
     });

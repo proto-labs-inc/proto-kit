@@ -122,3 +122,44 @@ The same clicks on every run's published snapshot:
 | Links | inside the prototype | 9 to supabase.com: a sidebar click left the prototype. Fixed in `3c8dfdd` (frozen links and forms no longer navigate). |
 
 Keeping the page's scripts was tried outside the kit: frozen with its scripts, the Supabase page redirected to its sign-in page within 3 s (no session on the copy's origin). The freeze keeps scripts out.
+
+## Two regions: the switcher and the notice together (2026-10-06, evening)
+
+`prompt-two-regions.md`: one decision across the top bar's project
+switcher and the page's notice, three variants, states `default`,
+`menu-open`, `resuming`. Run like B7 to B11 (website form, Copy build
+prompt, the tmux agent, auto-person).
+
+| | R2-before (kit `3bf0562`) | R2-after (kit `da46acb`) |
+|---|---|---|
+| Total | 7m27s | 12m32s |
+| Variants stage | 4m38s | 7m11s |
+| Checks stage | 1m44s | 4m20s |
+| Builders | 153 to 191 s | 545 to 560 s |
+| One set, both regions | one set; the switcher wired by hand by the main agent (`src/change/switcher.tsx`, 194 lines) with a React context for shared state | one set with `regions`, `replace={{...}}` from variant-set, nothing by hand |
+| Each builder wrote both regions | yes (asked to export a `Switcher`) | yes, plus `useShared` |
+| Resume in one region restarts both | mostly (notice to switcher, switcher-first's menu) | no: handlers left empty; states only reachable from the URL |
+| check-states on the switcher | 206 px "outside the change", hidden in the 0.38% noise | counted as changed |
+| Previews show both regions | no | yes, stacked in page order |
+| Main agent fixed variants after the builders | dropdowns at the page's left edge, an outline | dropdowns at the page's left edge (an anchor hook), a dark box |
+
+R2-after's builders were slow because of the kit, not the task: the
+layout check called every item of an open dropdown "outside the variant"
+(10 to 16 a run) and the region's picture was cut to the switcher's own
+box, so the menu never showed; notice-first ran its self-check 12 times.
+Fixed in `6c0277b` (menus and popovers are checked against the page; a
+region's picture covers its open menus; `useAnchor` for portaled menus).
+The dead Resume buttons are addressed in `ebee1c8` (`click.mjs`, and the
+brief says controls move between preview states). Not yet re-run.
+
+R2-again (kit `61225a7`, with `6c0277b` and `ebee1c8`): 11m21s (variants
+5m24s, checks 4m42s); builders 202, 246 and 477 s (switcher-first was sent
+back for a notice that only slimmed while the menu was open, colours the
+page does not use and a hand-drawn spinner). Resume now restarts both
+regions wherever a Resume exists (R2-after: none); the builders clicked
+their controls about 50 times with click.mjs. The main agent still fixed
+the menus: all three opened about 150 px from the switcher, because the
+generated useAnchor measured the trigger before the frozen page finished
+laying out (*likely*; it now follows the trigger every frame, `useAnchor`
+in variant-set). Notice-first's switcher dot does not show the restore.
+

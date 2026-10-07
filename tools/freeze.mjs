@@ -38,6 +38,7 @@ import { workflowEvent } from "./workflow-report.mjs";
 import { findPage } from "./cdp/attach.mjs";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { headlessPage, displayOf } from "./cdp/headless.mjs";
+import { narrowestWidth } from "./views.mjs";
 import { stableShot } from "./cdp/capture.mjs";
 import { cropPng, decodePng, encodePng } from "./cdp/png.mjs";
 import { withLive } from "./cdp/live.mjs";
@@ -417,6 +418,17 @@ writeFileSync(
   join(frozenDir, "frozen.json"),
   JSON.stringify({ url: frozen.url, title: frozen.title, viewport: frozen.viewport, htmlAttrs: frozen.htmlAttrs, bodyAttrs: frozen.bodyAttrs, styles, frozenAt: new Date().toISOString() }, null, 2) + "\n",
 );
+// The width the page was frozen at: it lays out right only there, so the
+// Frame draws it at this width and scales it down when the review panel
+// leaves less room (a top bar would otherwise overflow and scroll).
+{
+  const manifestPath = join(workspace, "public", "prototype.json");
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.viewport = { width: Math.round(frozen.viewport.width), height: Math.round(frozen.viewport.height) };
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  }
+}
 writeFileSync(join(frozenDir, "Frozen.tsx"), FROZEN_TSX);
 writeFileSync(join(workspace, "src", "App.tsx"), APP_TSX);
 // The template's baseline would restyle the frozen page; the page brings its own.
@@ -432,6 +444,7 @@ const viewport = tree.viewport ?? { width: frozen.viewport.width, height: frozen
 const page = await headlessPage(dev.url, { width: viewport.width, height: viewport.height, display });
 let measured = [];
 let mounted = false;
+let minWidth = null;
 try {
   for (let i = 0; i < 50 && !mounted; i += 1) {
     mounted = await evaluate(page.page, `Boolean(document.querySelector('[data-pf]'))`);
@@ -443,6 +456,10 @@ try {
     await evaluate(page.page, `JSON.stringify(${JSON.stringify(marks.map((m) => m.marker))}.map(marker => { const el = document.querySelector('[data-proto-id="' + marker + '"]'); if (!el) return { marker, found: false }; const r = el.getBoundingClientRect(); return { marker, found: true, rect: { x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height } } }))`),
   );
   await stableShot(page.page, `JSON.stringify([innerWidth, innerHeight, document.fonts.status, document.querySelectorAll('[data-pf]').length])`, join(checkDir, "frozen.png"));
+  // How narrow the copy can go before anything spills sideways: its own CSS
+  // re-flows it down to here (Supabase's top bar: about 1100 px of 1200),
+  // so the Frame re-flows it to here and scales it only below.
+  minWidth = await narrowestWidth(page.page, { width: viewport.width, height: viewport.height, dpr: display.dpr });
 } finally {
   await page.close();
   dev.stop();
@@ -456,6 +473,12 @@ const parts = marks.map((mark) => {
   const status = !got?.found ? "missing" : delta === null || delta <= 1.5 ? "matched" : "moved";
   return { id: mark.id, name: mark.name, marker: mark.marker, role: mark.role, rect: want, status, delta: delta === null ? null : Math.round(delta * 10) / 10 };
 });
+if (minWidth) {
+  const manifestPath = join(workspace, "public", "prototype.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.viewport = { ...(manifest.viewport ?? { width: Math.round(viewport.width), height: Math.round(viewport.height) }), minWidth };
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+}
 stage("check", checkBegan);
 const off = parts.filter((p) => p.status !== "matched");
 say(`checked ${parts.length} marked boxes: ${parts.length - off.length} in place${off.length ? `, ${off.length} off (${off.map((p) => `${p.marker} ${p.status}${p.delta !== null ? ` ${p.delta}px` : ""}`).join(", ")})` : ""}`);

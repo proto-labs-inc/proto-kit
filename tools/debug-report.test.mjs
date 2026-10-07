@@ -17,12 +17,12 @@ test("file names become plain path segments the site accepts", () => {
 
 test("a packed file is exactly the original, gzipped", async () => {
   const dir = mkdtempSync(join(tmpdir(), "debug-report-test-"));
-  // 65535 ASCII bytes, so the 3-byte "—" straddles a 64 KiB read, and a
-  // secret-looking string that must arrive untouched.
-  const body = `${"a".repeat(65_535)}— and 🙂 sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAA ${"b".repeat(70_000)}\n`;
-  writeFileSync(join(dir, "in.jsonl"), body);
+  // 65535 ASCII bytes, so the 3-byte "—" straddles a 64 KiB read; the
+  // API key is the only thing changed.
+  const body = (key) => `${"a".repeat(65_535)}— and 🙂 ${key} ${"b".repeat(70_000)}\n`;
+  writeFileSync(join(dir, "in.jsonl"), body("sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAA"));
   const packed = await gzipTo({ name: "in.jsonl.gz", path: join(dir, "in.jsonl") }, dir);
-  assert.equal(gunzipSync(readFileSync(packed.gz)).toString(), body);
+  assert.equal(gunzipSync(readFileSync(packed.gz)).toString(), body("[redacted-key]"));
 });
 
 test("binary files survive packing byte for byte", async () => {
@@ -57,6 +57,12 @@ test("a transcript path says which agent and session it is", () => {
 
 const tool = fileURLToPath(new URL("./debug-report.mjs", import.meta.url));
 const sid = "33333333-3333-4333-8333-333333333333";
+/** A Claude Code transcript that used Proto, with `extra` said in it. */
+const session = (...extra) =>
+  [
+    { type: "user", sessionId: sid, uuid: "u1", timestamp: "2026-10-06T10:00:00.000Z", message: { role: "user", content: "build it with proto:create-prototype" } },
+    { type: "assistant", sessionId: sid, uuid: "a1", parentUuid: "u1", timestamp: "2026-10-06T10:00:05.000Z", message: { role: "assistant", model: "claude", content: [{ type: "text", text: ["On it.", ...extra].join(" ") }] } },
+  ].map((r) => JSON.stringify(r)).join("\n") + "\n";
 
 async function fakeSite(t, { hang = false } = {}) {
   const home = mkdtempSync(join(tmpdir(), "debug-report-e2e-"));
@@ -65,12 +71,17 @@ async function fakeSite(t, { hang = false } = {}) {
   const begins = [];
   const puts = [];
   const finishes = [];
+  const bodies = new Map();
   const server = createServer(async (req, res) => {
     if (req.method === "PUT") {
       puts.push(req.url);
       if (hang) return; // never answers
-      req.resume();
-      req.on("end", () => res.end());
+      const chunks = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => {
+        bodies.set(decodeURIComponent(req.url.split("/").slice(3).join("/")), Buffer.concat(chunks));
+        res.end();
+      });
       return;
     }
     let raw = "";
@@ -94,7 +105,7 @@ async function fakeSite(t, { hang = false } = {}) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const app = `http://127.0.0.1:${server.address().port}`;
   mkdirSync(dirname(transcript), { recursive: true });
-  writeFileSync(transcript, `${JSON.stringify({ skill: "proto:create-prototype" })}\n`);
+  writeFileSync(transcript, session());
   mkdirSync(join(proto, "acme", "node_modules"), { recursive: true });
   mkdirSync(join(proto, "acme", "coverage"), { recursive: true });
   writeFileSync(join(proto, "config.json"), JSON.stringify({ app, credentials: [{ secret: "laptop-secret" }] }));
@@ -130,7 +141,7 @@ async function fakeSite(t, { hang = false } = {}) {
   };
   const logFile = join(proto, "telemetry", `${sid}.log`);
   const log = () => (existsSync(logFile) ? readFileSync(logFile, "utf8") : "");
-  return { home, transcript, begins, puts, finishes, run, log, pidFile: join(proto, "telemetry", `${sid}.pid`) };
+  return { home, transcript, begins, puts, finishes, bodies, run, log, pidFile: join(proto, "telemetry", `${sid}.pid`) };
 }
 
 async function until(check, ms = 20_000) {
@@ -149,17 +160,55 @@ test("send uploads ~/.proto without the laptop secret or skipped folders", async
   assert.ok(names.includes("session.jsonl.gz"));
   assert.ok(names.includes("proto/acme/notes.md.gz"));
   assert.ok(!names.some((n) => /config\.json|node_modules|coverage/.test(n)), names.join(" "));
-  // Of traces/, each trace's report, summary and flags, and a Cursor
-  // trace's transcript and step log; never the pages built from them.
-  assert.deepEqual(names.filter((n) => n.startsWith("proto/traces/")).sort(), [
-    "proto/traces/cursor-conv/flags.json.gz",
-    "proto/traces/cursor-conv/hooks.jsonl.gz",
-    "proto/traces/cursor-conv/transcript.jsonl.gz",
-    "proto/traces/older-session/report.md.gz",
-    "proto/traces/older-session/summary.json.gz",
-  ]);
+  // Of traces/, this session's whole trace, rebuilt for the snapshot (its
+  // pages too), but not the transcript copies sent as session.jsonl; no
+  // other session's trace.
+  const traces = names.filter((n) => n.startsWith("proto/traces/"));
+  assert.ok(traces.length > 0 && traces.every((n) => n.startsWith(`proto/traces/${sid}/`)), traces.join(" "));
+  for (const page of ["transcript.html.gz", "summary.json.gz", "report.md.gz", "meta.json.gz"]) assert.ok(traces.includes(`proto/traces/${sid}/${page}`), page);
+  assert.ok(!traces.includes(`proto/traces/${sid}/transcript.jsonl.gz`));
   assert.equal(f.puts.length, names.length);
   assert.deepEqual(f.finishes, ["r1"]);
+});
+
+test("a snapshot holds only the prototype, build and serve folder the session worked on, without secrets", async (t) => {
+  const f = await fakeSite(t);
+  const proto = join(f.home, ".proto");
+  writeFileSync(join(proto, "acme", "codebase.json"), "{}\n");
+  for (const dir of ["prototypes/mine/src", "prototypes/other/src", "run/builds/b1", "run/builds/b2", "run/mine", "run/other"]) mkdirSync(join(proto, "acme", dir), { recursive: true });
+  for (const file of ["prototypes/mine/src/App.tsx", "prototypes/other/src/App.tsx", "run/builds/b1/steps.json", "run/builds/b2/steps.json", "run/other/spec.json"]) writeFileSync(join(proto, "acme", file), "x\n");
+  writeFileSync(join(proto, "acme", "run", "mine", "spec.json"), JSON.stringify({ command: ["cloudflared", "tunnel", "run", "--token", `eyJ${"a".repeat(200)}`] }));
+  writeFileSync(join(proto, "acme", "run", "live-frame.rgba"), "frame");
+  mkdirSync(join(proto, "elsewhere"), { recursive: true });
+  writeFileSync(join(proto, "elsewhere", "codebase.json"), "{}\n");
+  writeFileSync(join(proto, "elsewhere", "notes.md"), "x\n");
+  writeFileSync(f.transcript, session(`node proto-build.mjs b1 --codebase acme --slug mine; cat ${proto}/acme/prototypes/mine/src/App.tsx ${proto}/acme/run/builds/b1/steps.json`, "the laptop secret is laptop-secret-123456 and Bearer abcdefghijklmnopqrstuvwxyz"));
+  writeFileSync(join(proto, "config.json"), JSON.stringify({ app: JSON.parse(readFileSync(join(proto, "config.json"), "utf8")).app, credentials: [{ secret: "laptop-secret-123456" }] }));
+  const { status, stderr } = await f.run(["send", "--transcript", f.transcript]).done;
+  assert.equal(status, 0, stderr);
+  const names = f.begins[0].files.map((x) => x.name);
+  for (const kept of ["proto/acme/prototypes/mine/src/App.tsx.gz", "proto/acme/run/builds/b1/steps.json.gz", "proto/acme/run/mine/spec.json.gz", "proto/acme/notes.md.gz"]) assert.ok(names.includes(kept), kept);
+  for (const left of ["prototypes/other", "builds/b2", "run/other", "live-frame.rgba", "proto/elsewhere"]) assert.ok(!names.some((n) => n.includes(left)), left);
+  const body = (name) => gunzipSync(f.bodies.get(name)).toString("utf8");
+  assert.doesNotMatch(body("proto/acme/run/mine/spec.json.gz"), /eyJa/);
+  assert.match(body("proto/acme/run/mine/spec.json.gz"), /--token","\[redacted|\[redacted-token\]/);
+  assert.doesNotMatch(body("session.jsonl.gz"), /laptop-secret-123456|abcdefghijklmnopqrstuvwxyz/);
+});
+
+test("flag records a headline and the watcher sends it as a skill report", async (t) => {
+  const f = await fakeSite(t);
+  const w = f.run(["watch", "--transcript", f.transcript, "--session", sid]);
+  await until(() => existsSync(f.pidFile));
+  const token = "dbgmark-abc123def456";
+  writeFileSync(f.transcript, session(`debug-report.mjs flag --token ${token}`));
+  const { status, stdout, stderr } = await f.run(["flag", "--token", token, "--title", "Build stuck on checks", "--note", "n", "--wait"]).done;
+  assert.equal(status, 0, stderr);
+  const out = JSON.parse(stdout);
+  assert.equal(out.id, "r1");
+  assert.equal(f.begins[0].kind, "skill");
+  assert.equal(f.begins[0].title, "Build stuck on checks");
+  w.kill("SIGTERM");
+  await w.done;
 });
 
 test("send gives up on storage that never answers, in bounded time", async (t) => {
@@ -193,7 +242,7 @@ test("the watcher resends only when the session changed, not its own log", async
   const skips = (f.log().match(/skip: unchanged/g) ?? []).length;
   await until(() => (f.log().match(/skip: unchanged/g) ?? []).length >= skips + 2);
   assert.equal(f.begins.length, 1);
-  writeFileSync(f.transcript, `${JSON.stringify({ skill: "proto:create-prototype" })}\n{"more":1}\n`);
+  writeFileSync(f.transcript, session("more"));
   await until(() => f.finishes.length === 2);
   w.kill("SIGTERM");
   const { status } = await w.done;
@@ -222,5 +271,5 @@ test("run through a symlink in a folder with a space, it still runs as a script"
   symlinkSync(tool, join(dir, "debug-report.mjs"));
   const res = spawnSync(process.execPath, [join(dir, "debug-report.mjs")], { encoding: "utf8" });
   assert.equal(res.status, 2);
-  assert.match(res.stderr, /usage: debug-report\.mjs send\|watch/);
+  assert.match(res.stderr, /usage: debug-report\.mjs flag\|send\|watch/);
 });

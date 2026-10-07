@@ -12,6 +12,13 @@ import { evaluate } from "./cdp/cdp.mjs";
  * preview state, one per variant of each set (at the set's showcase
  * state when it names one).
  */
+/** The markers a check treats as changed: those named on the command
+ *  line, and every region of every variant set (a set that spans the top
+ *  bar and a notice changes both). */
+export function changedMarkers(manifest, named = []) {
+  return new Set([...named, ...(manifest.variantSets ?? []).flatMap((set) => set.regions ?? [set.component])].map((m) => m.trim()).filter(Boolean));
+}
+
 export function viewsOf(manifest, appUrl) {
   const views = [{ name: "default", url: `${appUrl}/`, state: null, component: null, variant: null }];
   // The copy: the default state with every set at its baseline, the page
@@ -32,7 +39,7 @@ export function viewsOf(manifest, appUrl) {
       const params = new URLSearchParams();
       params.set(`v.${set.component}`, variant.id);
       if (set.state) params.set("state", set.state);
-      views.push({ name: `variant:${set.component}=${variant.id}`, url: `${appUrl}/?${params}`, state: set.state ?? null, component: set.component, variant: variant.id });
+      views.push({ name: `variant:${set.component}=${variant.id}`, url: `${appUrl}/?${params}`, state: set.state ?? null, component: set.component, variant: variant.id, regions: set.regions ?? [set.component] });
     }
   }
   return views;
@@ -92,3 +99,62 @@ export const backdropOf = (selector) => `(() => {
   while (e) { const c = getComputedStyle(e).backgroundColor; if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent') return c; e = e.parentElement; }
   return getComputedStyle(document.body).backgroundColor;
 })()`;
+
+/** The box a region draws in, as [x0, y0, x1, y1] in CSS px, or null when
+ *  nothing of it shows: the marked element and everything inside it (an
+ *  open menu that hangs below a top bar), and its pieces portaled elsewhere
+ *  (marked "<marker>-…"), clipped to the viewport. */
+export const regionBox = (marker) => `(() => {
+  const own = [...document.querySelectorAll('[data-proto-id=' + JSON.stringify(${JSON.stringify(marker)}) + ']')];
+  const pieces = [...document.querySelectorAll('[data-proto-id^=' + JSON.stringify(${JSON.stringify(marker)} + "-") + ']')].filter((e) => !own.some((o) => o.contains(e)));
+  let box = null;
+  for (const top of [...own, ...pieces]) for (const e of [top, ...top.querySelectorAll("*")]) {
+    const s = getComputedStyle(e);
+    if (s.display === "none" || s.visibility === "hidden") continue;
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
+    box = box ? [Math.min(box[0], r.left), Math.min(box[1], r.top), Math.max(box[2], r.right), Math.max(box[3], r.bottom)] : [r.left, r.top, r.right, r.bottom];
+  }
+  if (!box) return null;
+  const clipped = [Math.max(0, box[0]), Math.max(0, box[1]), Math.min(innerWidth, box[2]), Math.min(innerHeight, box[3])];
+  return clipped[2] > clipped[0] && clipped[3] > clipped[1] ? JSON.stringify(clipped) : null;
+})()`;
+
+/** What on the page spills past the viewport's right edge, as a JSON list
+ *  of { label, by }: visible elements whose box ends more than a pixel
+ *  beyond it. A page that lays out at this width has none. */
+export const OVERFLOWING = `(() => {
+  const out = [];
+  for (const e of document.body.querySelectorAll("*")) {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0 || r.right <= innerWidth + 1) continue;
+    const s = getComputedStyle(e);
+    if (s.visibility === "hidden" || s.display === "none" || s.position === "fixed") continue;
+    const owner = e.closest("[data-proto-id]");
+    out.push({ label: (owner ? owner.getAttribute("data-proto-id") : e.tagName.toLowerCase()) + ((e.innerText || "").trim() ? ' "' + e.innerText.trim().replace(/\\s+/g, " ").slice(0, 30) + '"' : ""), by: Math.round(r.right - innerWidth) });
+  }
+  return JSON.stringify(out);
+})()`;
+
+/** The narrowest width, down to `floor`, at which an open page still lays
+ *  out without spilling sideways (its own CSS re-flows it), walking down in
+ *  `step` px and stopping at the first spill: a page can fit again further
+ *  down only because a breakpoint hides a whole bar (Supabase's top bar
+ *  below 768 px), which is not the same layout. */
+export async function narrowestWidth(page, { width, height, dpr }, { floor = 640, step = 25 } = {}) {
+  const fits = async (w) => {
+    await page.send("Emulation.setDeviceMetricsOverride", { width: w, height, deviceScaleFactor: dpr, mobile: false });
+    await new Promise((r) => setTimeout(r, 200));
+    return JSON.parse(await evaluate(page, OVERFLOWING)).length === 0;
+  };
+  try {
+    let narrowest = width;
+    for (let w = width - step; w >= floor; w -= step) {
+      if (!(await fits(w))) break;
+      narrowest = w;
+    }
+    return narrowest;
+  } finally {
+    await page.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: dpr, mobile: false });
+  }
+}

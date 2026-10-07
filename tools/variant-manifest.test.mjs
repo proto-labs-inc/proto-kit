@@ -13,6 +13,8 @@ function fixture(t) {
     const root = mkdtempSync(join(tmpdir(), 'proto-variant-guard-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     mkdirSync(join(root, 'public'), { recursive: true });
+    mkdirSync(join(root, 'src'), { recursive: true });
+    writeFileSync(join(root, 'src/App.tsx'), '<main><div data-proto-id="location-world-map" /><div data-proto-id="country-detail" /></main>');
     const manifest = { name: 'graph', states: [{ id: 'detail' }], variantSets: [complete('location-world-map'), complete('location-map-highlight')], extra: { keep: true } };
     writeFileSync(join(root, 'public/prototype.json'), JSON.stringify(manifest));
     return { root, manifest, path: join(root, 'public/prototype.json') };
