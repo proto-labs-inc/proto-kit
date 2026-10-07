@@ -23,3 +23,6 @@ sed -i '' "s/\"version\": \"0.1.0+codex.[0-9]*\"/\"version\": \"$v\"/" .codex-pl
 
 Claude Code needs nothing: its manifest has no version, so each
 marketplace commit is a new one.
+
+CI checks it: `tools/check-version-bump.mjs` fails a push or pull
+request that changes the kit without moving this version forward.

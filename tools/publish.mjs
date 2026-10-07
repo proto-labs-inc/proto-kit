@@ -138,6 +138,8 @@ const TYPES = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".avif": "image/avif",
   ".webp": "image/webp",
   ".ico": "image/x-icon",
   ".txt": "text/plain",
