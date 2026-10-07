@@ -152,3 +152,14 @@ region's picture covers its open menus; `useAnchor` for portaled menus).
 The dead Resume buttons are addressed in `ebee1c8` (`click.mjs`, and the
 brief says controls move between preview states). Not yet re-run.
 
+R2-again (kit `61225a7`, with `6c0277b` and `ebee1c8`): 11m21s (variants
+5m24s, checks 4m42s); builders 202, 246 and 477 s (switcher-first was sent
+back for a notice that only slimmed while the menu was open, colours the
+page does not use and a hand-drawn spinner). Resume now restarts both
+regions wherever a Resume exists (R2-after: none); the builders clicked
+their controls about 50 times with click.mjs. The main agent still fixed
+the menus: all three opened about 150 px from the switcher, because the
+generated useAnchor measured the trigger before the frozen page finished
+laying out (*likely*; it now follows the trigger every frame, `useAnchor`
+in variant-set). Notice-first's switcher dot does not show the restore.
+

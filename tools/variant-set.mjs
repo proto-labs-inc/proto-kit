@@ -188,7 +188,8 @@ if (!existsSync(anchorFile)) {
  * Where a menu or popover opened from \`trigger\` sits when it is rendered
  * through createPortal into document.body (so the region it opens from,
  * say a top bar, does not clip it): fixed, just under the trigger, aligned
- * to its start or end edge, following scroll and resize.
+ * to its start or end edge, following it as the page lays out, scrolls
+ * and resizes.
  *
  *   const style = useAnchor(buttonRef, { open, align: "start" });
  *   {open && createPortal(<div style={style} data-proto-id="<region>-menu">…</div>, document.body)}
@@ -200,22 +201,28 @@ export function useAnchor(
   const [style, setStyle] = useState<CSSProperties>({ position: "fixed", visibility: "hidden" });
   useLayoutEffect(() => {
     if (!open) return;
+    // Every frame while open: the frozen page's stylesheets and fonts land
+    // after a menu opened in a preview state, and move the trigger without
+    // resizing anything (R2-again's menus opened 150 px off).
+    let frame = 0;
+    let last = "";
     const place = () => {
       const r = trigger.current?.getBoundingClientRect();
-      if (!r) return;
-      setStyle(
-        align === "end"
-          ? { position: "fixed", top: r.bottom + gap, right: window.innerWidth - r.right, zIndex: 50 }
-          : { position: "fixed", top: r.bottom + gap, left: r.left, zIndex: 50 },
-      );
+      if (r) {
+        const next: CSSProperties =
+          align === "end"
+            ? { position: "fixed", top: r.bottom + gap, right: window.innerWidth - r.right, zIndex: 50 }
+            : { position: "fixed", top: r.bottom + gap, left: r.left, zIndex: 50 };
+        const key = JSON.stringify(next);
+        if (key !== last) {
+          last = key;
+          setStyle(next);
+        }
+      }
+      frame = requestAnimationFrame(place);
     };
     place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
+    return () => cancelAnimationFrame(frame);
   }, [trigger, open, align, gap]);
   return style;
 }
