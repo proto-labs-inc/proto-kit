@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 // Offline only. Invoked by the Proto update skill.
+// Usage: check-plugin.cjs <kit root> <required version> [branch]
+// A prompt from a preview site names the kit branch it was built against; no
+// branch means main's release. An install from another branch never counts
+// as current, whatever its version, so a laptop moves back to the release.
 const fs = require('node:fs');
 const path = require('node:path');
-const [root, required] = process.argv.slice(2);
+const [root, required, channel = 'main'] = process.argv.slice(2);
 const valid = value => /^0\.1\.0\+codex\.\d{14}$/.test(value || '');
 let result = { status: 'update_needed', reason: 'missing_or_unreadable_plugin' };
 try {
@@ -10,8 +14,10 @@ try {
   const installedRoot = path.resolve(root);
   const { version } = JSON.parse(fs.readFileSync(path.join(installedRoot, '.codex-plugin/plugin.json'), 'utf8'));
   const provenance = JSON.parse(fs.readFileSync(path.join(installedRoot, '.proto-release.json'), 'utf8'));
-  result = { status: 'update_needed', reason: 'unknown_required_version', installedRoot, version };
-  if (valid(required) && valid(version)) {
+  const installedChannel = provenance.channel || 'main';
+  result = { status: 'update_needed', reason: 'unknown_required_version', installedRoot, version, channel: installedChannel };
+  if (installedChannel !== channel) result.reason = 'other_branch';
+  else if (valid(required) && valid(version)) {
     const current = version >= required && provenance.version === version;
     result = { ...result, status: current ? 'current' : 'update_needed', reason: current ? 'meets_prompt_version' : 'older_or_unverified_release' };
   }
