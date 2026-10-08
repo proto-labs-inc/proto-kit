@@ -200,12 +200,13 @@ function ids(node, out = []) {
   return out;
 }
 
-function wireframeIn(dir, name) {
+export function wireframeIn(dir, name) {
   const file = join(dir, name.endsWith(".json") ? name : `${name}.json`);
   if (!existsSync(file)) throw new Error(`from "${name}": ${file} does not exist`);
   const data = JSON.parse(readFileSync(file, "utf8"));
   if (data.root) return data;
-  if (data.wireframe?.root) return resolveWireframe(dir, data.wireframe);
+  // A take or option written as changes to another drawing.
+  if (data.wireframe) return resolveWireframe(dir, data.wireframe);
   throw new Error(`from "${name}": ${file} holds no wireframe`);
 }
 
@@ -268,7 +269,8 @@ async function base(flags) {
       console.log(`${join(dir, `${name}.json`)}\nids: ${ids(drawing.root).join(", ")}`);
       return;
     } catch (error) {
-      if (Date.now() > until) throw error;
+      // Only a file still being written is worth waiting for.
+      if (!(error instanceof SyntaxError) || Date.now() > until) throw error;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }

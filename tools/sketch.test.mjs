@@ -31,3 +31,15 @@ test("replace and into put parts where they are named", () => {
   const out = applyChanges(base, [{ replace: "usage", with: { t: "table", id: "t", cols: ["a"] } }, { into: "main", add: { t: "button", label: "Go" }, at: 0 }]);
   assert.deepEqual(out.root.children[1].children.map((c) => c.t), ["button", "text", "table"]);
 });
+
+test("a take written as changes can itself be what a moment starts from", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { wireframeIn } = await import("./sketch.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "sketch-"));
+  writeFileSync(join(dir, "base.json"), JSON.stringify(base));
+  writeFileSync(join(dir, "calm.json"), JSON.stringify({ type: "direction", id: "calm", wireframe: { from: "base", changes: [{ remove: "nav" }] } }));
+  const drawing = wireframeIn(dir, "calm");
+  assert.deepEqual(drawing.root.children.map((c) => c.id), ["main"]);
+});
