@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Offline only. Keep the embedded copy in proto-cloud's plugin-check-source.ts in sync.
+// Offline only. Invoked by the Proto update skill.
 const fs = require('node:fs');
 const path = require('node:path');
 const [root, required] = process.argv.slice(2);

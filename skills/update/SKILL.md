@@ -7,7 +7,7 @@ description: >-
   version expects, restarting them as needed. Use when the user asks to
   update Proto or get the latest version, when a Proto skill behaves as an
   older version did, or on its own to repair the runs after pulling the kit
-  by hand.
+  by hand. Also use before a copied Proto request when it names this skill.
 ---
 
 # Update
@@ -62,24 +62,35 @@ node <kit>/tools/check-plugin.cjs <installed-kit-root> <prompt-version>
 
 `current` means the installed release meets the prompt version; skip downloading.
 `update_needed` means run the separate updater below. Unknown versions also need
-an online check. Copied prompts embed this check for kits too old to contain it.
+an online check. If this kit lacks the checker, use the online updater below.
 The check never contacts GitHub and cannot discover releases newer than the prompt.
 For an explicit request for the latest version, run the updater regardless.
-If sandbox networking is blocked, use the host permission process and retry;
-stop if permission is denied or the permitted attempt fails.
 
-Run the standalone updater for the current harness:
+For a copied request, only check/update the plugin, then resume that exact request
+from the verified installed root. Do not run prototype migrations or restart
+serving processes merely because the prompt asked for a version check.
+
+When an update is needed, download and run the release's updater so this skill
+also picks up fixes to the updater itself. Replace `AGENT` with `codex`, `claude`,
+or `cursor` for the current host:
 
 ```sh
-node <kit>/tools/update-plugin.mjs --agent codex
-# Use --agent claude or --agent cursor in those hosts.
+bash -c 'set -eu; proto_update_dir=$(mktemp -d); trap "rm -rf \"$proto_update_dir\"" EXIT; curl --retry 2 --fail --silent --show-error --location https://raw.githubusercontent.com/proto-labs-inc/proto-kit/refs/heads/release/tools/update-plugin.mjs -o "$proto_update_dir/update.mjs"; node "$proto_update_dir/update.mjs" --agent AGENT'
 ```
+
+Use the host's permission process for network access and plugin-directory writes.
+A sandbox DNS or network failure is a reason to request permission and retry the
+same command, not a reason to switch sources. Stop if permission is denied or
+the permitted retry fails. Verify the updater returned `status: verified` and
+an `installedRoot`; an empty successful process result is not proof of an update.
+Read the needed skill from that root, reloading host tools if necessary, then
+continue the original request.
 
 It fetches GitHub release, replaces old marketplace registrations, installs
 and verifies the resulting manifest, and prints the installed root as JSON.
 It never falls back to main or local files. A dirty or divergent Cursor
-checkout stops the update without discarding files. Any failure stops the
-flow; do not claim success or improvise another source.
+checkout stops the update without discarding files. A failed permitted attempt
+stops the flow; do not claim success or improvise another source.
 
 - **Explicit local testing**: use the exact folder the user named. For Codex,
   register that folder and run `codex plugin add proto@proto-kit`. Give edited
