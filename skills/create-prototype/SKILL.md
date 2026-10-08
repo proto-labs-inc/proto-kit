@@ -86,7 +86,8 @@ used the wrong display and disturbed the checks running beside them).
    or connected, ask whether the user wants to install or connect it; if they
    decline, read the link in a browser. Only go straight to the browser when
    neither a callable connector nor a matching installable plugin exists.
-   **Then sketch first** (`docs/sketch.md`) for a website request: show
+   **Then sketch first** (`docs/sketch.md`) when `brief.inputs.sketch` is
+   true (the person chose "Sketch it first?"): show
    the person references within a minute, wireframe the directions they
    steer you to, and build only once they press Build this (or skip).
    Do this before any title, slug, copy or serving: the sketch decides

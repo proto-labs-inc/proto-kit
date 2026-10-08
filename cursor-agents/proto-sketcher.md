@@ -28,8 +28,10 @@ seconds: write only what changes, never the whole screen again.
    Changes are by part id (docs/sketch.md, "Changes"); read the ids from
    the drawing you start from. The base itself is written whole, with an
    `id` on every region.
-   Titles and labels are 1 to 4 words; a `point` is one line under 60
-   characters. Mark the idea `hl` on 1 to 3 parts and give 1 to 3 notes that say
+   Write all text in ASD-STE100 Simplified Technical English: short
+   sentences, active voice, common words. Titles and labels are 1 to 4
+   words; a `point` is one line under 60 characters. Take the borrowed
+   references' ideas your prompt names into the drawing. Mark the idea `hl` on 1 to 3 parts and give 1 to 3 notes that say
    why, in under 70 characters. Use the product's real labels.
 4. Post it: `node <kit>/tools/sketch.mjs post --brief <briefId> <file>`.
    If it is refused, the error names the path of the problem: fix that

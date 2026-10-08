@@ -11,6 +11,16 @@ The person can go back to any step at any time (re-rank, flip to an older
 take, pick a different direction). Nothing they did is lost, so treat
 every choice as the latest word, not as an error to undo.
 
+A sketch happens only when the brief asks for it: `brief.inputs.sketch`
+is true (the person left "Sketch it first?" on). Otherwise build straight
+away.
+
+**Write every line the person reads in ASD-STE100 Simplified Technical
+English**: titles, points, notes, status lines. Short sentences (at most
+20 words, a note at most 12), active voice, one idea per sentence, common
+words, no idioms or marketing words. "Status sits next to each table." not
+"Status is elegantly surfaced in context, so risky tables pop."
+
 Speed is the feature. The person is watching. Something new must appear
 within seconds of every choice they make: a status line at once, planned
 cards at once, each drawing as soon as it is ready.
@@ -34,7 +44,10 @@ and `read_sketch` MCP tools). `<id>` below is the brief id.
 **Never end your turn while sketching.** The person answers in the
 studio, not in this chat: if you stop, nothing hears them. Run `wait` in
 the foreground (Bash timeout 600000), never in the background, and loop
-on it until they commit. Sketchers run in the background and post on
+on it until they commit. If the person pastes a sketch prompt from the
+website instead (it carries one step and everything chosen so far, for
+when you were not waiting), do that step, unless the stream shows you
+already did it, then go back to `wait`. Sketchers run in the background and post on
 their own; you do not wait for them.
 
 ## 1. References (target: on screen within 30 seconds)
@@ -43,7 +56,7 @@ their own; you do not wait for them.
    in the same message dispatch the **base wireframe** sketcher in the
    background (step 4 below says what it draws). It must be ready before
    the person has finished ranking.
-2. Pick search words from the brief: 2 or 3 `--recent` phrases (what it
+2. You decide the search words, from the brief: 2 or 3 `--recent` phrases (what it
    should feel like: "inline warning", "permissions settings", "status
    badge table") and 2 to 4 Mobbin topics
    (`node tools/mobbin.mjs topics --platform web --match "<words>"`,
@@ -58,18 +71,22 @@ their own; you do not wait for them.
    relevant to this brief: the right kind of screen, a pattern the
    person could borrow. Drop gimmicks and anything off-topic even if its
    words matched. Aim for 10 (8 to 12), both sources when both have good
-   ones. Fewer good ones beat ten weak ones.
+   ones. Fewer good ones beat ten weak ones. If no Recent result fits,
+   say so in a status line rather than padding with weak ones.
+   For each one you keep, look at it on the sheet and write `notes`: 1 to
+   3 key things in that design that this brief could borrow ("Each check
+   has its own fix button.", "Counts come before the list."). The studio
+   puts the first note in the person's note when they pick it, and offers
+   the others; write them as the person would.
 3. Post them as one `references` event. Copy `title`, `app`, `url`,
    `image`, `video`, `width`, `height` from `candidates.json` as they are
-   (media must stay on the source's CDN); write a short kebab `id` and a
-   `why`: one line on what this one offers *this* brief ("Status sits
-   next to each item, so risky tables read at a glance"), never a
-   description of the picture.
+   (media must stay on the source's CDN); write a short kebab `id` and
+   its `notes`.
 
    ```
    node tools/sketch.mjs post --brief <id> refs.json
    ```
-   `refs.json`: `{"type":"references","items":[{"id":"better-stack-settings","source":"mobbin","app":"Better Stack","title":"Settings","url":"…","image":"…","why":"…"}, …]}`
+   `refs.json`: `{"type":"references","items":[{"id":"better-stack-settings","source":"mobbin","app":"Better Stack","title":"Settings","url":"…","image":"…","notes":["Status sits next to each item.","Risky items use one color."]}, …]}`
 4. The **base wireframe** (dispatched in step 1): one `proto:sketcher`,
    in the background, draws the current
    screen (`referenceUrl`) as `~/.proto/sketches/<id>/base.json`, with no
@@ -169,7 +186,7 @@ person.
 
 | Choice | Answer |
 |---|---|
-| `ranked` (`picks` best first, with notes) | Plan 3 directions that differ in their *point*, drawn from the top picks and every note. Post `directions-planned` at once (`id`, `title` 2-4 words, `point` one line). Dispatch one `proto:sketcher` per direction, **all in one message, in the background**. A later `ranked` is a new round: plan new directions (new ids); the old ones stay. |
+| `ranked` (`picks` best first, with notes) | Plan 3 directions that differ in their *point*, each built on 1 or 2 of the top picks and their notes (the person's notes win over yours). Post `directions-planned` at once (`id`, `title` 2-4 words, `point` one line). Dispatch one `proto:sketcher` per direction, **all in one message, in the background**. A later `ranked` is a new round: plan new directions (new ids); the old ones stay. |
 | `more-references` | Search with different words or topics, post a second `references` batch of 4 to 6 new ones. |
 | `refine` (`direction` is a take id, `note`) | Dispatch a sketcher to redraw that take with the note: new id `<first-id>-2` (then `-3`), `revises` the take id. |
 | `more-directions` (`note`?) | Plan one more direction unlike the others (with the note), post `directions-planned` for it, dispatch a sketcher. |
@@ -177,7 +194,9 @@ person.
 | `chose` | Nothing to draw; it is part of the spec. |
 | `commit` | Stop sketching. Post `{"type":"handed-off","line":"Copying the screen to build on"}` and build (below). |
 
-A sketcher's brief (its prompt) holds: the brief text, the direction
+A sketcher's brief (its prompt) holds: the brief text, what to borrow
+(each borrowed reference's title, image address, and the person's note
+on it), the direction
 (`id`, `title`, `point`, `borrows` reference ids, and for a refine the
 take id it revises and the note) or the moment (`id`, `direction`,
 `title`, `question`, the options' labels and points), which drawing it
