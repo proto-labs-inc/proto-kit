@@ -363,13 +363,27 @@ system it extracts."**
 }
 ```
 
-### Leave the local library stopped
+### Try the published library first
 
-Do not scaffold, host, publish, or import a local library before the handoff
-below decides what this codebase needs. The cloud checks whether this member
-has a starter after the real codebase is ready. If it has
-none, the handoff runs **import-design-system**, which owns starting the local
-library host.
+Immediately after the codebase is created, recovered or reused, call
+`attach_onboarding_library { codebase }`, before opening the Proto browser,
+visiting the product page, requesting sign-in or setting the product icon.
+Do not scaffold, host, publish or import a local library before this call.
+
+- `attached`, `already-attached` or `existing-library`: the codebase has a
+  published library. Preserve it, clear any obsolete setup blocker with
+  `report_setup_action { codebase, action: null }`, then go straight to
+  **Verify** and **Handoff**. Skip the reference-page and product-icon steps,
+  sign-in, design-system import and local library serving for setup. A brief
+  can still require product exploration later as part of creating a prototype.
+- `not-configured`, a tool error, or an interrupted/failed attachment: continue
+  the normal setup flow below, including the reference page and product icon,
+  then **import-design-system** in the handoff. Do not stop setup or require a
+  successful attachment retry. A failed attachment is not setup completion;
+  the normal import must pass its completion gate.
+
+Only successful attachment skips the normal flow. Do not infer success from
+partial copies or a reserved build id.
 
 ### Report blockers to the setup surface
 
@@ -531,20 +545,10 @@ codebase id is in the document), then:
 Setup ends by continuing, not by stopping (an Edit prompt ends at
 "Editing a prototype" above instead):
 
-1. Call `attach_onboarding_library { codebase }`. The call is idempotent. Read
-   its `outcome` exactly:
-   - `attached` or `already-attached`: the configured starter is published;
-     continue.
-   - `existing-library`: the codebase already has a published library; preserve
-     it and continue.
-   - `not-configured`: run **import-design-system** now and continue only after
-     its completion gate. That skill owns scaffolding, hosting and publishing
-     the local library.
-   A tool error is not `not-configured`: retry once if the call was interrupted
-   or reports a transient failure. If it still fails, remain in setup, tell the
-   user in one plain sentence that Proto could not finish the design system,
-   and offer to retry. Never continue to success or create a prototype until
-   one of the successful outcomes above or the normal import's completion gate.
+1. Use the result of **Try the published library first**; do not call attachment
+   again here. For `attached`, `already-attached` or `existing-library`, the
+   design system is ready. For `not-configured` or any attachment failure, run
+   **import-design-system** now and continue only after its completion gate.
 2. If the document carried a `brief`, hand it to **create-prototype**
    verbatim: title, description, the brief document URL, the
    reference page (`productUrl`), the reference HTML (structure
