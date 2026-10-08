@@ -20,22 +20,26 @@ root is unclear, use `codex plugin list --json -m proto-kit` or
 `claude plugin list --json`; Cursor's folder install is at
 `~/.cursor/plugins/local/proto`.
 
-Read the required version from the copied prompt and run:
+Read the required version from the copied prompt, and the branch if it names
+one: a prompt copied from a preview site says which proto-kit branch its build
+came from (for example "Required Proto kit: 0.1.0+codex.20261008150000 from
+branch sketch-first"). No branch means `main`. Run:
 
 ```sh
-node <kit>/tools/check-plugin.cjs <kit> <prompt-version>
+node <kit>/tools/check-plugin.cjs <kit> <prompt-version> <branch>
 ```
 
 This script reads local files only:
 
-- `current`: the installed release meets the prompt's version. Skip step 2 and
-  continue the original request using this kit.
+- `current`: the installed kit is from the prompt's branch and meets its
+  version. Skip step 2 and continue the original request using this kit.
 - `update_needed`: go to step 2.
 
 The check compares with the prompt's version, not releases published after the
 prompt was copied. If the prompt has no version, pass `unknown`. If this kit is
 missing the checker, go to step 2. Missing or unverified installations also need
-step 2.
+step 2. So does a kit from another branch (`other_branch`): a build of a
+preview branch never serves main's prompts, and the other way round.
 
 ## 2. Install the updated kit
 
@@ -44,6 +48,14 @@ with `codex`, `claude` or `cursor` for the current host:
 
 ```sh
 bash -c 'set -eu; proto_update_dir=$(mktemp -d); trap "rm -rf \"$proto_update_dir\"" EXIT; curl --retry 2 --fail --silent --show-error --location https://raw.githubusercontent.com/proto-labs-inc/proto-kit/refs/heads/release/tools/update-plugin.mjs -o "$proto_update_dir/update.mjs"; node "$proto_update_dir/update.mjs" --agent AGENT'
+```
+
+When the prompt names a branch other than `main`, download the updater from
+that branch's builds and pass the branch, replacing `BRANCH` with the name
+exactly as the prompt gives it:
+
+```sh
+bash -c 'set -eu; proto_update_dir=$(mktemp -d); trap "rm -rf \"$proto_update_dir\"" EXIT; curl --retry 2 --fail --silent --show-error --location https://raw.githubusercontent.com/proto-labs-inc/proto-kit/refs/heads/preview/BRANCH/tools/update-plugin.mjs -o "$proto_update_dir/update.mjs"; node "$proto_update_dir/update.mjs" --agent AGENT --branch BRANCH'
 ```
 
 The script installs and verifies the GitHub release, switches old marketplace

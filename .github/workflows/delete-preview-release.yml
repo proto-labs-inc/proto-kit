@@ -1,0 +1,18 @@
+name: Delete preview release
+# A deleted source branch takes its preview/<branch> release with it.
+on: delete
+permissions:
+  contents: write
+jobs:
+  delete:
+    if: github.repository == 'proto-labs-inc/proto-kit' && github.event.ref_type == 'branch' && github.event.ref != 'main' && github.event.ref != 'release' && !startsWith(github.event.ref, 'preview/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete preview/<branch> if it exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.ref }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/preview/${BRANCH}" --silent 2>/dev/null; then
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/preview/${BRANCH}"
+          fi

@@ -13,6 +13,10 @@ bump manifests for normal source changes or commit directly to release.
 source/run provenance. Normal plugin installs and updates use GitHub release;
 local files are only used when the user explicitly requests a local install.
 
-Run `node --test tools/publish-release.test.mjs tools/register-release.test.mjs`
+Other source branches publish to `preview/<branch>` the same way, for Vercel
+previews of the proto branch with the same name: a feature that spans proto
+and proto-kit uses one branch name in both repos.
+
+Run `node --test tools/check-plugin.test.mjs tools/update-plugin.test.mjs tools/publish-release.test.mjs tools/register-release.test.mjs`
 when changing release automation. Preserve idempotent retries, monotonically
 increasing versions, and fast-forward publication without force pushes.

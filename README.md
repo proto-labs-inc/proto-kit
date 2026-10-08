@@ -297,6 +297,15 @@ advance past the previous release even when runs occur in the same second.
 Rerunning a published source reuses its release commit, allowing registration
 retries without a new version. Stale runs cannot roll back the release branch.
 
+Every other source branch publishes the same way to `preview/<branch>`: each
+push gets a fresh version, and `.proto-release.json` records the branch. Those
+builds are not registered with the cloud. A Vercel preview of the proto branch
+with the same name reads `preview/<branch>/.proto-release.json` from GitHub and
+names that build and branch in its prompts; the update skill installs it and
+moves back to `release` on the next prompt from a site that names no branch.
+Deleting the source branch deletes its preview branch. So a feature that spans
+both repos uses the same branch name in both.
+
 Failures before the release push leave the previous package available. Cloud
 registration happens afterward in the same workflow; if it fails, the package
 is available but cloud update notices lag. Rerun that workflow to retry.

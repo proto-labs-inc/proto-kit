@@ -1,16 +1,19 @@
 name: Publish Proto release
+# main publishes release (and registers it with the app); every other source
+# branch publishes preview/<branch>, which preview sites of the same proto
+# branch name in their prompts.
 on:
   push:
-    branches: [main]
+    branches: ['**', '!release', '!preview/**']
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: publish-kit-release
+  group: publish-kit-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.repository == 'proto-labs-inc/proto-kit' && github.ref == 'refs/heads/main'
+    if: github.repository == 'proto-labs-inc/proto-kit' && github.ref != 'refs/heads/release' && !startsWith(github.ref, 'refs/heads/preview/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +29,7 @@ jobs:
         run: node tools/publish-release.mjs
       # GITHUB_TOKEN pushes do not trigger another push workflow.
       - name: Verify published manifest and record release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           PROTO_RELEASE_SHA: ${{ steps.release.outputs.commit }}
