@@ -103,7 +103,8 @@ or 375 by 760 (mobile) and draws every part in ink, except the parts
 marked `hl`, which it draws in the accent: **the idea**. Notes become
 numbered pins on the part with the text beside the drawing.
 
-Parts (`t`), each also taking `id`, `hl`, `note`, `grow`, `w`, `h`:
+Parts (`t`), each also taking `id`, `hl`, `note`, `grow`, `w`, `h` and
+`tone`:
 
 | t | fields | draws |
 |---|---|---|
@@ -124,6 +125,11 @@ Parts (`t`), each also taking `id`, `hl`, `note`, `grow`, `w`, `h`:
 | `avatar`, `icon`, `divider`, `spacer` | | `spacer` pushes siblings apart |
 
 Rules that make a wireframe say something:
+
+- **Colour only when it is the point.** A wireframe is ink and one accent.
+  When the brief or a note is about colour ("Restore is red"), give that
+  part `tone` (`red`, `green`, `amber`, `blue`): it is drawn in that
+  colour, even when it is also highlighted.
 
 - **One idea per direction.** Mark it `hl` on 1 to 3 parts. Everything
   else is the existing screen, plain.
@@ -194,8 +200,8 @@ person.
 |---|---|
 | `ranked` (`picks` best first, with notes) | Plan 3 directions that differ in their *point*, each built on 1 or 2 of the top picks and their notes (the person's notes win over yours). Post `directions-planned` at once (`id`, `title` 2-4 words, `point` one line). Dispatch one `proto:sketcher` per direction, **all in one message, in the background**. A later `ranked` is a new round: plan new directions (new ids); the old ones stay. |
 | `more-references` | Search with different words or topics, post a second `references` batch of 4 to 6 new ones. |
-| `refine` (`direction` is a take id, `note`) | Dispatch a sketcher to redraw that take with the note: new id `<first-id>-2` (then `-3`), `revises` the take id. |
-| `more-directions` (`note`?) | Plan one more direction unlike the others (with the note), post `directions-planned` for it, dispatch a sketcher. |
+| `refine` (`direction` is a take id, `note`) | Dispatch a sketcher to redraw that take with the note: new id `<first-id>-2` (then `-3`), `revises` the take id. Several refines with the same note arrive together when the person wrote "a change for all of them": dispatch one sketcher per take, in one message. Change only what the note asks; keep each direction's own idea. |
+| `more-directions` (`note`?) | Plan one more direction with a new idea unlike the others (the note describes that idea), post `directions-planned` for it, dispatch a sketcher. |
 | `picked` (`direction` is a take id) | Find the 1 or 2 moments where that take could still go more than one way (an empty state, what happens on click, after saving). Post `moments-planned` (`direction` = the take id) at once, then dispatch one sketcher per moment; each posts a `moment` with 2 or 3 options, each with a `label` of 1 to 3 words and a `point` under 60 characters. Picking again re-plans for the new take only if it has no moments yet. |
 | `chose` | Nothing to draw; it is part of the spec. |
 | `commit` | Stop sketching. Post `{"type":"handed-off","line":"Copying the screen to build on"}` and build (below). |
