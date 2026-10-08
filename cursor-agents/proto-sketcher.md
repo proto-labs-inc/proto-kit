@@ -19,6 +19,8 @@ seconds: write only what changes, never the whole screen again.
    most three of the product's source files for that route (the page and
    its layout), then write it plain (no `hl`, no notes) within a minute.
 3. Write the event as JSON to the file your prompt names:
+   Run `sketch.mjs base` with a Bash timeout of 200000 so it is never
+   moved to the background.
    - base: just the wireframe, `{ "frame": …, "root": … }` (do not post it)
    - direction: `{"type":"direction","id":…,"title":…,"point":…,"borrows":[…],"wireframe":{"from":"base","changes":[…]}}`
      (plus `"revises": "<take id>"` for a refine, then `from` is that take)
@@ -26,7 +28,8 @@ seconds: write only what changes, never the whole screen again.
    Changes are by part id (docs/sketch.md, "Changes"); read the ids from
    the drawing you start from. The base itself is written whole, with an
    `id` on every region.
-   Mark the idea `hl` on 1 to 3 parts and give 1 to 3 notes that say
+   Titles and labels are 1 to 4 words; a `point` is one line under 60
+   characters. Mark the idea `hl` on 1 to 3 parts and give 1 to 3 notes that say
    why, in under 70 characters. Use the product's real labels.
 4. Post it: `node <kit>/tools/sketch.mjs post --brief <briefId> <file>`.
    If it is refused, the error names the path of the problem: fix that

@@ -173,7 +173,7 @@ person.
 | `more-references` | Search with different words or topics, post a second `references` batch of 4 to 6 new ones. |
 | `refine` (`direction` is a take id, `note`) | Dispatch a sketcher to redraw that take with the note: new id `<first-id>-2` (then `-3`), `revises` the take id. |
 | `more-directions` (`note`?) | Plan one more direction unlike the others (with the note), post `directions-planned` for it, dispatch a sketcher. |
-| `picked` (`direction` is a take id) | Find the 1 or 2 moments where that take could still go more than one way (an empty state, what happens on click, after saving). Post `moments-planned` (`direction` = the take id) at once, then dispatch one sketcher per moment; each posts a `moment` with 2 or 3 options. Picking again re-plans for the new take only if it has no moments yet. |
+| `picked` (`direction` is a take id) | Find the 1 or 2 moments where that take could still go more than one way (an empty state, what happens on click, after saving). Post `moments-planned` (`direction` = the take id) at once, then dispatch one sketcher per moment; each posts a `moment` with 2 or 3 options, each with a `label` of 1 to 3 words and a `point` under 60 characters. Picking again re-plans for the new take only if it has no moments yet. |
 | `chose` | Nothing to draw; it is part of the spec. |
 | `commit` | Stop sketching. Post `{"type":"handed-off","line":"Copying the screen to build on"}` and build (below). |
 
