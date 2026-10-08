@@ -31,9 +31,18 @@ and `read_sketch` MCP tools). `<id>` below is the brief id.
   is set, a take with `drawn: false`, a picked direction without moments.
   Then go to the loop (step 3).
 
-## 1. References (target: on screen within 60 seconds)
+**Never end your turn while sketching.** The person answers in the
+studio, not in this chat: if you stop, nothing hears them. Run `wait` in
+the foreground (Bash timeout 600000), never in the background, and loop
+on it until they commit. Sketchers run in the background and post on
+their own; you do not wait for them.
 
-1. `node tools/sketch.mjs status --brief <id> "Reading your brief"`
+## 1. References (target: on screen within 30 seconds)
+
+1. `node tools/sketch.mjs status --brief <id> "Reading your brief"`, and
+   in the same message dispatch the **base wireframe** sketcher in the
+   background (step 4 below says what it draws). It must be ready before
+   the person has finished ranking.
 2. Pick search words from the brief: 2 or 3 `--recent` phrases (what it
    should feel like: "inline warning", "permissions settings", "status
    badge table") and 2 to 4 Mobbin topics
@@ -61,8 +70,8 @@ and `read_sketch` MCP tools). `<id>` below is the brief id.
    node tools/sketch.mjs post --brief <id> refs.json
    ```
    `refs.json`: `{"type":"references","items":[{"id":"better-stack-settings","source":"mobbin","app":"Better Stack","title":"Settings","url":"…","image":"…","why":"…"}, …]}`
-4. While the person ranks, start the **base wireframe** in the background:
-   dispatch one `proto:sketcher` (run in background) to draw the current
+4. The **base wireframe** (dispatched in step 1): one `proto:sketcher`,
+   in the background, draws the current
    screen (`referenceUrl`) as `~/.proto/sketches/<id>/base.json`, with no
    highlight and no notes, and an `id` on every region (header, sidebar,
    each section and card, the main column). Every direction is written as
@@ -173,8 +182,10 @@ A sketcher's brief (its prompt) holds: the brief text, the direction
 take id it revises and the note) or the moment (`id`, `direction`,
 `title`, `question`, the options' labels and points), which drawing it
 starts from (`base`, or the take's id for a moment), and this document's
-path. It writes the event, as changes, to
-`~/.proto/sketches/<id>/<event-id>.json` and posts it.
+path. It runs `node tools/sketch.mjs base --brief <id>` (or `--from <take id>`)
+first, which waits for that drawing and names its part ids, then writes
+the event, as changes, to `~/.proto/sketches/<id>/<event-id>.json` and
+posts it.
 
 ## Building from the sketch
 

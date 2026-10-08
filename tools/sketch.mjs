@@ -22,6 +22,10 @@
  *       waits for the person's next choices and prints
  *       {person: [...], lastSeq, sketch}; --after defaults to the last
  *       seq this command returned for the brief
+ *   node tools/sketch.mjs base --brief <id> [--from <take id>]
+ *       the drawing a direction (or a moment) starts from, once it exists:
+ *       waits for it (up to 3 minutes, checking every second), then
+ *       prints its part ids and its path
  *   node tools/sketch.mjs read --brief <id>
  *       the sketch as it stands (get_brief's sketch), without waiting
  *
@@ -248,6 +252,28 @@ async function wait(flags) {
   }
 }
 
+/** Waits for the drawing a sketcher starts from, then names its parts. */
+async function base(flags) {
+  const dir = dirOf(flags.brief);
+  const name = typeof flags.from === "string" ? flags.from : "base";
+  const until = Date.now() + 3 * 60_000;
+  while (!existsSync(join(dir, `${name}.json`))) {
+    if (Date.now() > until) throw new Error(`${name}.json did not appear in 3 minutes: draw from the brief without it`);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  // A file being written may not parse yet.
+  for (;;) {
+    try {
+      const drawing = wireframeIn(dir, name);
+      console.log(`${join(dir, `${name}.json`)}\nids: ${ids(drawing.root).join(", ")}`);
+      return;
+    } catch (error) {
+      if (Date.now() > until) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const flags = parseFlags(rest);
@@ -261,6 +287,8 @@ async function main() {
       return console.log(JSON.stringify(await tool("report_sketch", { briefId: flags.brief, events: [{ type: "status", line: flags._.join(" ") }] })));
     case "wait":
       return wait(flags);
+    case "base":
+      return base(flags);
     case "read": {
       const brief = await tool("get_brief", { briefId: flags.brief });
       return console.log(JSON.stringify(brief.sketch ?? null, null, 2));

@@ -10,12 +10,14 @@ seconds: write only what changes, never the whole screen again.
 
 1. Read `docs/sketch.md` in the kit (your prompt gives its path), section
    2 (the wireframe format) closely.
-2. Read the base wireframe your prompt names, if any (`base.json`, or the
-   take a moment builds on). Start from it: keep the screen as it is and
-   change only what your direction or moment is about. Drawing the base
-   itself, read at most three of the product's source files for that
-   route to get its layout and labels right, then draw it plain: no `hl`,
-   no notes.
+2. Drawing a direction or moment: run
+   `node <kit>/tools/sketch.mjs base --brief <briefId>` (add
+   `--from <take id>` for a moment). It waits until that drawing exists
+   and prints its path and part ids; never poll for it yourself. Read it
+   and change only what your direction or moment is about.
+   Drawing the base itself: you are on everyone's critical path. Read at
+   most three of the product's source files for that route (the page and
+   its layout), then write it plain (no `hl`, no notes) within a minute.
 3. Write the event as JSON to the file your prompt names:
    - base: just the wireframe, `{ "frame": …, "root": … }` (do not post it)
    - direction: `{"type":"direction","id":…,"title":…,"point":…,"borrows":[…],"wireframe":{"from":"base","changes":[…]}}`
