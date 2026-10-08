@@ -290,7 +290,7 @@ async function wait(flags) {
   let after = flags.after !== undefined ? Number(flags.after) : existsSync(seqFile) ? Number(readFileSync(seqFile, "utf8")) : 0;
   const until = Date.now() + Number(flags.minutes ?? 9) * 60_000;
   for (;;) {
-    const left = Math.max(0, Math.min(50, Math.floor((until - Date.now()) / 1000)));
+    const left = Math.max(0, Math.min(25, Math.floor((until - Date.now()) / 1000)));
     const answer = await tool("read_sketch", { briefId: flags.brief, after, waitSeconds: left });
     after = answer.lastSeq;
     writeFileSync(seqFile, String(after));
