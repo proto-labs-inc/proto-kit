@@ -26,6 +26,11 @@
  *       the drawing a direction (or a moment) starts from, once it exists:
  *       waits for it (up to 3 minutes, checking every second), then
  *       prints its part ids and its path
+ *   node tools/sketch.mjs palette --brief <id> --page <referenceUrl or a part of it> [--port 9333]
+ *       reads the product's colours off the reference page open in Proto
+ *       Chrome (paper, ink, brand accent, and its red, green and amber
+ *       when it has them) and posts them, so every wireframe of the
+ *       sketch is drawn in them; prints what it found
  *   node tools/sketch.mjs read --brief <id>
  *       the sketch as it stands (get_brief's sketch), without waiting
  *
@@ -320,6 +325,62 @@ async function base(flags) {
   }
 }
 
+/** Runs in the reference page: its colours as the browser computed them.
+ *  Paper is the page background, ink the colour most text is in, accent
+ *  the most used saturated fill of its controls (its brand), and red,
+ *  green and amber the saturated colours of those hues it uses. */
+export const PALETTE_SAMPLER = `(() => {
+  const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  // Any CSS colour (oklch, oklab, color-mix...) as rgb, through a pixel.
+  const parse = (c) => { if (!c || c === "transparent") return null; ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = "#000"; ctx.fillStyle = c; ctx.fillRect(0, 0, 1, 1); const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data; return a < 128 ? null : [r, g, b]; };
+  const hsl = ([r, g, b]) => { r /= 255; g /= 255; b /= 255; const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2; if (max === min) return [0, 0, l]; const d = max - min; const s = l > 0.5 ? d / (2 - max - min) : d / (max + min); let h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4; return [h * 60, s, l]; };
+  const key = (rgb) => "rgb(" + rgb.join(", ") + ")";
+  const count = new Map(), add = (rgb, weight, kind) => { if (!rgb || !weight) return; const k = kind + "|" + key(rgb); count.set(k, (count.get(k) || 0) + weight); };
+  for (const el of [...document.querySelectorAll("body *")].slice(0, 4000)) {
+    const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight * 2) continue;
+    const st = getComputedStyle(el); if (st.visibility === "hidden" || st.display === "none") continue;
+    const text = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("").length;
+    if (text) { add(parse(st.color), text, "ink"); add(parse(st.color), 1, "fill"); }
+    const bg = parse(st.backgroundColor);
+    if (bg) { add(bg, Math.min(r.width * r.height, 200000) / 1000, "bg"); add(bg, el.matches("button, a, [role=button], [role=tab], input[type=submit]") ? 40 : 2, "fill"); }
+    if (st.borderTopWidth !== "0px") add(parse(st.borderTopColor), 1, "fill");
+  }
+  const ranked = (kind, ok) => [...count].filter(([k]) => k.startsWith(kind + "|")).map(([k, n]) => [k.split("|")[1], n]).filter(([c]) => ok(parse(c))).sort((a, b) => b[1] - a[1]);
+  const vivid = ([, s, l]) => s > 0.3 && l > 0.2 && l < 0.8;
+  const inHue = (lo, hi) => (rgb) => { const x = hsl(rgb); const h = x[0]; return vivid(x) && (lo < hi ? h >= lo && h < hi : h >= lo || h < hi); };
+  const bodyBg = parse(getComputedStyle(document.body).backgroundColor) || parse(getComputedStyle(document.documentElement).backgroundColor);
+  const paper = bodyBg ? key(bodyBg) : ranked("bg", () => true)[0]?.[0] ?? null;
+  const light = (c) => hsl(parse(c))[2];
+  // Of the text colours in common use, the one that stands out most from the paper.
+  const inks = ranked("ink", () => true); const top = inks[0]?.[1] ?? 0;
+  const ink = paper ? inks.filter(([, n]) => n >= top * 0.25).sort((a, b) => Math.abs(light(b[0]) - light(paper)) - Math.abs(light(a[0]) - light(paper)))[0]?.[0] ?? null : inks[0]?.[0] ?? null;
+  const first = (list) => list[0]?.[0] ?? null;
+  const red = first(ranked("fill", inHue(340, 20))), green = first(ranked("fill", inHue(90, 170))), amber = first(ranked("fill", inHue(25, 60)));
+  const accent = first(ranked("fill", (rgb) => vivid(hsl(rgb)) && key(rgb) !== red && key(rgb) !== amber)) || green || red;
+  return JSON.stringify({ paper, ink, accent, red, green, amber });
+})()`;
+
+async function palette(flags) {
+  if (typeof flags.page !== "string") throw new Error("--page <the reference page address, or a part of it> is required");
+  const port = Number(flags.port ?? 9333);
+  const tabs = await (await fetch(`http://localhost:${port}/json/list`)).json().catch(() => []);
+  const tab = tabs.find((t) => t.type === "page" && t.url.includes(flags.page));
+  if (!tab) throw new Error(`no tab in Proto Chrome (port ${port}) shows ${flags.page}: the wireframes keep their own colours`);
+  const { connect, evaluate } = await import("./cdp/cdp.mjs");
+  const page = await connect(tab.webSocketDebuggerUrl);
+  let found;
+  try {
+    found = JSON.parse(await evaluate(page, PALETTE_SAMPLER));
+  } finally {
+    page.close();
+  }
+  if (!found.paper || !found.ink || !found.accent) throw new Error(`could not read enough colours from ${tab.url}: ${JSON.stringify(found)}`);
+  const palette = Object.fromEntries(Object.entries(found).filter(([, value]) => value));
+  console.log(JSON.stringify(palette));
+  console.log(JSON.stringify(await tool("report_sketch", { briefId: flags.brief, events: [{ type: "palette", palette }] })));
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const flags = parseFlags(rest);
@@ -335,6 +396,8 @@ async function main() {
       return wait(flags);
     case "base":
       return base(flags);
+    case "palette":
+      return palette(flags);
     case "read": {
       const brief = await tool("get_brief", { briefId: flags.brief });
       return console.log(JSON.stringify(brief.sketch ?? null, null, 2));

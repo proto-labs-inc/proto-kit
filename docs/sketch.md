@@ -66,7 +66,14 @@ their own; you do not wait for them.
    node tools/sketch.mjs candidates --brief <id> --recent "<words>" --recent "<words>" --mobbin <topic> --mobbin <topic> --limit 8
    ```
 
-   It prints the candidates numbered and writes a contact sheet. **Read
+   In the same message, read the product's colours off the reference
+   page so every wireframe is drawn in them (its paper, ink, brand as the
+   accent, and its red, green and amber):
+   `node tools/sketch.mjs palette --brief <id> --page <referenceUrl>`.
+   It needs the page open in Proto Chrome; when it is not, skip it and
+   the wireframes keep the studio's own colours.
+
+   `candidates` prints the candidates numbered and writes a contact sheet. **Read
    the sheet** (one picture) and keep only the ones that are actually
    relevant to this brief: the right kind of screen, a pattern the
    person could borrow. Drop gimmicks and anything off-topic even if its
