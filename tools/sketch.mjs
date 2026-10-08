@@ -164,6 +164,9 @@ export function applyChanges(base, changes) {
     return null;
   };
   const must = (id) => {
+    if (typeof id !== "string") {
+      throw new Error(`a change names a part by its id (a string), not ${JSON.stringify(id).slice(0, 60)}: write {"after": "<id>", "add": <part>}, {"replace": "<id>", "with": <part>}, {"set": "<id>", "to": {…}}`);
+    }
     const hit = find(root, id);
     if (!hit) throw new Error(`no part with id "${id}" to change; ids in the base: ${ids(root).join(", ")}`);
     return hit;
