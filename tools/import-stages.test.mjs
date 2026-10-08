@@ -57,23 +57,23 @@ test("stages must finish in order even if every component already passes", (t) =
   completeStage(f.library, f.manifest, "foundations", "retry");
   assert.equal(f.manifest.importStages[0].completedAt, "first");
 });
-test("a light-only pass blocks until explicitly recorded as a gap", (t) => {
+test("a missing light pass blocks until explicitly recorded as a gap", (t) => {
   const f = fixture(t); completeStage(f.library, f.manifest, "foundations");
-  delete f.manifest.verification.checks.button.dark.Hover;
-  assert.throws(() => completeStage(f.library, f.manifest, "core"), /Hover.*dark/);
+  delete f.manifest.verification.checks.button.light.Hover;
+  assert.throws(() => completeStage(f.library, f.manifest, "core"), /Hover.*light/);
   assert.equal(f.manifest.importStages[1].verified, 0);
   assert.deepEqual(f.manifest.importStages[1].remaining, ["button"]);
-  Object.assign(f.manifest.components[0], { status: "skipped", reason: "The dark hover differs", skipKind: "did-not-match" });
+  Object.assign(f.manifest.components[0], { status: "skipped", reason: "The light hover differs", skipKind: "did-not-match" });
   completeStage(f.library, f.manifest, "core");
   requirePreviousStages(f.library, f.manifest, "extended");
   assert.equal(f.manifest.importStages[1].verified, 0);
   assert.deepEqual(f.manifest.importStages[1].remaining, []);
-  assert.equal(f.manifest.importStages[1].gaps[0].reason, "The dark hover differs");
+  assert.equal(f.manifest.importStages[1].gaps[0].reason, "The light hover differs");
 });
 test("foundation evidence cannot be replaced with an empty or provisional palette", (t) => {
   const f = fixture(t);
-  delete f.manifest.verification.surveys.dark;
-  assert.throws(() => completeStage(f.library, f.manifest, "foundations"), /Survey dark/);
+  delete f.manifest.verification.surveys.light;
+  assert.throws(() => completeStage(f.library, f.manifest, "foundations"), /Survey light/);
   f.manifest.themes.light = []; f.manifest.themes.dark = []; f.manifest.type = [];
   assert.throws(() => completeStage(f.library, f.manifest, "foundations"), /type styles/);
 });
@@ -93,7 +93,7 @@ test("editing an earlier component invalidates it and all following checkpoints"
 test("palette changes invalidate every checkpoint; empty component stages can finish explicitly", (t) => {
   const f = fixture(t); f.manifest.components = [];
   for (const id of STAGES) completeStage(f.library, f.manifest, id);
-  f.manifest.themes.dark = [{ name: "text", value: "#fff", group: "text" }];
+  f.manifest.themes.light = [{ name: "text", value: "#fff", group: "text" }];
   refreshStages(f.library, f.manifest);
   assert.deepEqual(f.manifest.importStages.map((s) => s.status), ["active", "waiting", "waiting"]);
 });
@@ -125,4 +125,20 @@ test("failed captures without pictures can finish, but pending work still blocks
   assert.equal(saved.importStages[1].verified, 0);
   assert.equal(saved.importStages[1].gaps.length, 1);
   assert.ok(saved.completedAt);
+});
+
+test("light-only imports complete every stage without dark palettes or evidence", (t) => {
+  const f = fixture(t);
+  f.manifest.themes.dark = [];
+  delete f.manifest.verification.surveys.dark;
+  for (const checks of Object.values(f.manifest.verification.checks)) delete checks.dark;
+  f.save();
+  const run = (...args) => spawnSync(process.execPath, [join(here, "library.mjs"), ...args], { encoding: "utf8" });
+  for (const id of STAGES) {
+    const result = run("stage", f.library, id, "complete");
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const result = run("complete", f.library);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(JSON.parse(readFileSync(f.path)).completedAt);
 });

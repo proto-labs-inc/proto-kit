@@ -3,6 +3,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 export const THEMES = ["light", "dark"];
+// Temporary rollout switch. Keep dark capture/rendering support for re-enabling.
+export const DARK_MODE_IMPORT_ENABLED = false;
+export const IMPORT_THEMES = DARK_MODE_IMPORT_ENABLED ? THEMES : ["light"];
 export const ACCEPTED = ["match", "shifted", "context", "faint", "offscreen"];
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export function paletteDigest(palette) {
@@ -29,8 +32,8 @@ export function completionProblems(library, manifest, { allowEmpty = false, allo
   if (!manifest.startedAt || (!allowEmpty && !manifest.components?.length)) problems.push("Start an import and record its components first.");
   const light = (manifest.themes?.light ?? []).map((token) => token.name).sort();
   const dark = (manifest.themes?.dark ?? []).map((token) => token.name).sort();
-  if (JSON.stringify(light) !== JSON.stringify(dark)) problems.push("Light and dark palettes need the same stable token names.");
-  for (const theme of THEMES) {
+  if (IMPORT_THEMES.includes("dark") && JSON.stringify(light) !== JSON.stringify(dark)) problems.push("Light and dark palettes need the same stable token names.");
+  for (const theme of IMPORT_THEMES) {
     const survey = manifest.verification?.surveys?.[theme];
     if (!survey || survey.run !== manifest.startedAt || survey.palette !== paletteDigest(manifest.themes?.[theme] ?? [])) problems.push(`Survey ${theme} in this import and apply its palette before finishing.`);
   }
@@ -39,11 +42,11 @@ export function completionProblems(library, manifest, { allowEmpty = false, allo
       if (!component.reason || !component.skipKind) problems.push(`${component.slug}: record the skip reason and kind.`);
       continue;
     }
-    if (component.status !== "done") { problems.push(allowSkipped ? `${component.slug}: finish or explicitly skip it first.` : `${component.slug}: finish and verify it in both themes; skipped components do not complete a stage.`); continue; }
+    if (component.status !== "done") { problems.push(allowSkipped ? `${component.slug}: finish or explicitly skip it first.` : `${component.slug}: finish and verify it in the enabled import themes; skipped components do not complete a stage.`); continue; }
     try {
       const unit = JSON.parse(readFileSync(join(library, "src", "components", component.slug, "component.json"), "utf8"));
       if (!unit.states?.length) throw new Error("no states");
-      for (const theme of THEMES) {
+      for (const theme of IMPORT_THEMES) {
         const fingerprint = checkFingerprint(library, manifest, component.slug, theme);
         for (const state of unit.states) {
           const evidence = manifest.verification?.checks?.[component.slug]?.[theme]?.[state.name];

@@ -1,6 +1,6 @@
 ---
 name: import-design-system
-description: Import your product's design system into Proto. Reads a live page of your product in your own browser, and fills the library with its light and dark colours, type styles and components, each written from the product's own rendering and checked against it pixel for pixel, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
+description: Import your product's design system into Proto. Reads a live page of your product in your own browser, and fills the library with its light-mode colours, type styles and components, each written from the product's own rendering and checked against it pixel for pixel, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
 ---
 
 # Import a design system
@@ -83,15 +83,15 @@ read their source to learn them; the signatures here are complete.
 node tools/host-library.mjs <codebase>             serve the library (idempotent); prints local:, tunnel:
 node tools/library.mjs init <codebase> <codebase> <source> --page-url <url> --page-title "<title>" --favicon <file>
 node tools/publish-library.mjs <codebase> [--wait] publish; returns at once when one is running (it carries yours)
-node tools/survey.mjs <codebase> --theme <light|dark>  the visible theme in one read (≈1 s); writes palette.json
+node tools/survey.mjs <codebase> --theme light  the visible theme in one read (≈1 s); writes palette.json
 node tools/plan.mjs <codebase> '<edits>'            the draft plus your edits → run/plan.json
 node tools/import.mjs <codebase> --stage foundations  import colours, type and inventory only
 node tools/import.mjs <codebase> --stage <core|extended> --theme light  build only this stage
 node tools/library.mjs stage <codebase> <foundations|core|extended> complete  verify and finish one stage
-node tools/import.mjs <codebase> --stage <core|extended> --check-theme <light|dark>   check only this stage in the visible theme
-node tools/snapshot.mjs <codebase> <json | @file> --theme <light|dark>  write one component from its live instances
-node tools/check.mjs <codebase> <slug> --theme <light|dark> [--state <name>] [--activity "<line>"]   check it; each pass lands
-node tools/explain-diff.mjs <codebase> <slug> --theme <light|dark> [--state <name>]   why a state differs: the product's value and ours, named
+node tools/import.mjs <codebase> --stage <core|extended> --check-theme light   check only this stage in the visible theme
+node tools/snapshot.mjs <codebase> <json | @file> --theme light  write one component from its live instances
+node tools/check.mjs <codebase> <slug> --theme light [--state <name>] [--activity "<line>"]   check it; each pass lands
+node tools/explain-diff.mjs <codebase> <slug> --theme light [--state <name>]   why a state differs: the product's value and ours, named
 node tools/tail.mjs decide <codebase>                 the tail's numbers now, at once: one line to relay when a unit reports; it never waits
 node tools/library.mjs component <codebase> <slug> status done
 node tools/library.mjs component <codebase> <slug> status skipped --kind <kind> --reason "<sentence>" --screenshot <png>
@@ -205,20 +205,19 @@ components. The library shows the three steps and their verified counts.
    tabs, badges, menus, dialogs and tooltips. Extended includes tables,
    navigation, panels and specialized widgets.
 
-   Survey and apply **both** themes now. Use the product's theme control,
-   survey dark, and apply its palette with
-   `node tools/library.mjs tokens <codebase> dark @<dark-palette.json>`.
-   Apply the current light survey's palette too if needed. Both surveys must
-   belong to this import and use the same token names; never use a copied
-   light palette as evidence of a dark survey. Then run
+   Apply the current light survey's palette if needed. The survey must belong
+   to this import. Dark-mode importing is temporarily disabled: do not switch
+   to dark, survey it, or run dark checks. The implementation remains behind
+   `DARK_MODE_IMPORT_ENABLED` in `tools/import-evidence.mjs`.
+   Then run
    `node tools/library.mjs stage <codebase> foundations complete`.
    Only a successful command marks Foundations done. Publish this milestone
    and say "Foundations are done; starting core components."
 
-5. **Stage 2 — Core components.** Switch back to light on the same reference
+5. **Stage 2 — Core components.** Stay in light mode on the same reference
    view. Run `node tools/import.mjs <codebase> --stage core --theme light`.
-   Only core components build, up to twelve at a time. Switch to dark and run
-   `node tools/import.mjs <codebase> --stage core --check-theme dark`.
+   Only core components build, up to twelve at a time; the runner checks them
+   in light mode.
    Do not resurvey or rewrite palettes unless they changed: that invalidates
    earlier checks. Keep the reference page stable while checks or repairs run.
 
@@ -227,16 +226,16 @@ components. The library shows the three steps and their verified counts.
    keep them visible and continue. Do not require repairs before advancing.
    Pending, queued or actively importing components must finish their attempt
    first. If repairs are undertaken in this stage, finish or explicitly skip
-   them before advancing; recheck changed built components in both themes.
+   them before advancing; recheck changed built components in light mode.
 
    Run `node tools/library.mjs stage <codebase> core complete`.
    It requires every core component either to pass every declared state in
-   both themes or to have an explicit skip reason and kind.
+   light mode or to have an explicit skip reason and kind.
    Publish this milestone and report the verified count and any gaps before
    starting the extended library. No extended component starts before this succeeds.
 
-6. **Stage 3 — Extended library.** Repeat the same light build, dark check,
-   repairs and both-theme verification with `--stage extended`. Finish with
+6. **Stage 3 — Extended library.** Repeat the same light build, checks,
+   repairs and light-mode verification with `--stage extended`. Finish with
    `node tools/library.mjs stage <codebase> extended complete`.
    Even an empty stage gets its explicit checkpoint. Then run the Finish
    checklist: only `finish-import.mjs` reporting `outcome: "published"` means
@@ -384,7 +383,7 @@ the import in chat; a published library cannot wake an agent.
 Every line, in order, before you say the import is done:
 
 - all three stage checkpoints are done, in order; every component is either
-  built with current passing checks in both themes or explicitly skipped with
+  built with current passing checks in light mode or explicitly skipped with
   its kind and reason; pending work cannot be counted as complete;
 - `node tools/finish-import.mjs <codebase>` validates stage checkpoints,
   current surveys, palette names and checks, then completes and publishes with

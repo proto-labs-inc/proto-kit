@@ -25,6 +25,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { DARK_MODE_IMPORT_ENABLED } from "./import-evidence.mjs";
 import { componentStage } from "./import-stages.mjs";
 
 const [codebase, editsArg] = process.argv.slice(2);
@@ -37,7 +38,9 @@ const survey = join(run, "survey");
 let draftPath = join(survey, "plan.draft.json");
 try { readFileSync(draftPath); } catch {
   draftPath = join(survey, "light", "plan.draft.json");
-  try { readFileSync(draftPath); } catch { draftPath = join(survey, "dark", "plan.draft.json"); }
+  if (DARK_MODE_IMPORT_ENABLED) {
+    try { readFileSync(draftPath); } catch { draftPath = join(survey, "dark", "plan.draft.json"); }
+  }
 }
 const draft = JSON.parse(readFileSync(draftPath, "utf8"));
 let edits;
@@ -132,6 +135,7 @@ for (const component of components) {
 
 let themes = null;
 try { themes = JSON.parse(readFileSync(join(survey, "themes.json"), "utf8")); } catch {}
+if (!DARK_MODE_IMPORT_ENABLED) themes = null; // Use the light draft while dark importing is paused.
 if (themes) {
   if (Array.isArray(themes.light) && Array.isArray(themes.dark)) {
     const light = new Set(themes.light.map((token) => token.name));

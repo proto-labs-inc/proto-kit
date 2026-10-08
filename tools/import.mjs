@@ -30,7 +30,7 @@
  *   }
  * A type style without a name is named from where it is used.
  *
- * A stage checkpoint requires current checks in both themes for built components, or a recorded skip, before the next
+ * A stage checkpoint requires current checks in the enabled import themes for built components, or a recorded skip, before the next
  * stage can start. Failures remain in this stage for repair. finish-import
  * owns final completion and publication after all three checkpoints pass.
  *
@@ -45,6 +45,7 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { frameCrop, takeFrame, withLive } from "./cdp/live.mjs";
 import { classifyState, record, tailFile } from "./tail.mjs";
 
+import { IMPORT_THEMES } from "./import-evidence.mjs";
 import { componentStage, requirePreviousStages, STAGES } from "./import-stages.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -65,6 +66,10 @@ if (!codebase) {
 }
 if (!["light", "dark"].includes(options.theme)) {
   console.error("--theme is light or dark");
+  process.exit(1);
+}
+if (!IMPORT_THEMES.includes(options.theme) || (options["check-theme"] && !IMPORT_THEMES.includes(options["check-theme"]))) {
+  console.error("Dark-mode importing is temporarily disabled; use --theme light and --check-theme light.");
   process.exit(1);
 }
 if (!STAGES.includes(options.stage)) throw new Error("--stage is foundations, core or extended");
@@ -153,14 +158,14 @@ const components = (plan.components ?? []).map((c) => ({ ...c, stage: componentS
 if (options.stage === "foundations") {
   write("stages");
   const themes = plan.themes ?? (plan.palette?.length ? { [options.theme]: plan.palette } : {});
-  for (const theme of ["light", "dark"]) {
+  for (const theme of IMPORT_THEMES) {
     const palette = themes[theme];
     if (palette?.length) write("tokens", theme, JSON.stringify(palette.map(({ name, value, group, role }) => ({ name, value, group, ...(role ? { role } : {}) }))));
   }
   if (plan.type?.length) write("types", JSON.stringify(nameTypes(plan.type)));
   if (components.length) write("inventory", JSON.stringify(components.map(({ slug, name, picture, stage }) => ({ slug, name, stage, ...(picture ? { screenshot: picture } : {}) }))));
   publish();
-  console.log(JSON.stringify({ stage: "foundations", gate: { status: "awaiting-verification", line: "Foundations captured. Apply both current theme surveys, then run library.mjs stage <codebase> foundations complete. No components have started." } }));
+  console.log(JSON.stringify({ stage: "foundations", gate: { status: "awaiting-verification", line: "Foundations captured. Apply the current enabled-theme surveys, then run library.mjs stage <codebase> foundations complete. No components have started." } }));
   process.exit(0);
 }
 const manifest = JSON.parse(readFileSync(join(home, "library", "public", "manifest.json"), "utf8"));
@@ -313,7 +318,7 @@ function whereItDiffers(component, states) {
 }
 await Promise.all(Array.from({ length: Math.max(1, Number(options.lanes)) }, lane));
 
-// ---- this stage awaits both-theme verification and its checkpoint ----
+// ---- this stage awaits enabled-theme verification and its checkpoint ----
 publish();
 // The tail's own record: every component with its weight (its largest
 // state's pixels), the built ones matched already.
@@ -339,7 +344,7 @@ for (const entry of failed) {
 }
 const left = toFix.length + failed.length;
 let line = `${options.stage}: ${built.length} of ${selected.length} built in ${Math.round((Date.now() - started) / 1000)} s`;
-line += "; verify both themes and complete this stage before starting the next";
+line += "; verify the enabled import themes and complete this stage before starting the next";
 if (left > 0) line += `. ${left} left for later, each with its reason above; failed or skipped components remain visible and do not block the next stage.`;
 step(line);
 

@@ -51,6 +51,7 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { INSIDE, PICTURE_OF, inSvgPicture, localStyleImages, writePictures, writeStyleImages } from "./pictures.mjs";
 import { FORCEABLE, withForcedState } from "./verify-replica.mjs";
+import { DARK_MODE_IMPORT_ENABLED } from "./import-evidence.mjs";
 import { STURDY_SELECTOR, positional } from "./live-selector.mjs";
 
 const USAGE = "usage: node tools/snapshot.mjs <codebase> <json | @file> [--theme <light|dark>]";
@@ -1761,7 +1762,7 @@ ${lines.join("\n")}
     ({ states, defaultInst, variants } = emit());
   }
   const tokens = manifestPath ? await matchTokens(manifestPath, instances, appUrl, viewport, display, theme) : [];
-  const unit = { states, tokens: theme ? { light: tokens, dark: tokens } : tokens, shape: shapeFingerprint(defaultInst.nodes) };
+  const unit = { states, tokens: theme ? { light: tokens, dark: DARK_MODE_IMPORT_ENABLED || theme === "dark" ? tokens : [] } : tokens, shape: shapeFingerprint(defaultInst.nodes) };
   if (defaultInst.backdrop) unit.backdrop = tokenByValue.get(defaultInst.backdrop) ?? defaultInst.backdrop;
   if (spec.unverified) unit.unverified = spec.unverified;
   writeFileSync(join(folder, "component.json"), JSON.stringify(unit, null, 2) + "\n");

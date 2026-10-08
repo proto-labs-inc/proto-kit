@@ -28,21 +28,21 @@ function fixture(t) {
   const save = () => writeFileSync(path, JSON.stringify(manifest)); save();
   return { home, library, unit, manifest, save, path };
 }
-test("completion requires both current surveys and every state's passing check", (t) => {
+test("completion requires the current light survey and every state's passing check", (t) => {
   const f = fixture(t); assert.deepEqual(completionProblems(f.library, f.manifest), []);
-  delete f.manifest.verification.checks.button.dark.Hover;
-  assert.match(completionProblems(f.library, f.manifest).join(), /Hover.*dark/);
+  delete f.manifest.verification.checks.button.light.Hover;
+  assert.match(completionProblems(f.library, f.manifest).join(), /Hover.*light/);
   delete f.manifest.verification.surveys.light;
   assert.match(completionProblems(f.library, f.manifest).join(), /Survey light/);
 });
 test("component edits, palette edits, and fresh imports invalidate evidence", (t) => {
   const f = fixture(t);
   writeFileSync(join(f.unit, "Button.tsx"), "changed");
-  assert.equal(completionProblems(f.library, f.manifest).filter((p) => p.includes("passing")).length, 4);
-  f.manifest.themes.dark = [{ name: "other", value: "#000" }];
-  assert.match(completionProblems(f.library, f.manifest).join(), /same stable token names/);
+  assert.equal(completionProblems(f.library, f.manifest).filter((p) => p.includes("passing")).length, 2);
+  f.manifest.themes.light = [{ name: "other", value: "#000" }];
+  assert.match(completionProblems(f.library, f.manifest).join(), /Survey light/);
   f.manifest.startedAt = "run2";
-  assert.match(completionProblems(f.library, f.manifest).join(), /Survey dark/);
+  assert.match(completionProblems(f.library, f.manifest).join(), /Survey light/);
 });
 test("moving components block completion; explicit skips keep their reasons", (t) => {
   const f = fixture(t); f.manifest.components[0].status = "queued";
@@ -101,4 +101,20 @@ test("a fresh init resets evidence and old libraries stay readable but cannot fi
   assert.equal(result.status, 0, result.stderr);
   const current = JSON.parse(readFileSync(f.path)); assert.equal(current.verification, null);
   assert.match(completionProblems(f.library, current).join(), /Survey light/);
+});
+
+test("unused dark palettes and stale dark evidence do not block completion", (t) => {
+  const f = fixture(t);
+  f.manifest.themes.dark = [{ name: "unrelated", value: "#000" }];
+  f.manifest.verification.surveys.dark = { run: "old" };
+  f.manifest.verification.checks.button.dark = {};
+  assert.deepEqual(completionProblems(f.library, f.manifest), []);
+});
+
+test("import rejects disabled dark mode before starting work", () => {
+  for (const option of ["--theme", "--check-theme"]) {
+    const result = spawnSync(process.execPath, [join(here, "import.mjs"), "unused", option, "dark"], { encoding: "utf8" });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Dark-mode importing is temporarily disabled/);
+  }
 });

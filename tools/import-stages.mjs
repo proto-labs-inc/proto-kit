@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { completionProblems } from "./import-evidence.mjs";
+import { completionProblems, IMPORT_THEMES } from "./import-evidence.mjs";
 
 export const STAGES = ["foundations", "core", "extended"];
 export const STAGE_TITLES = { foundations: "Foundations", core: "Core components", extended: "Extended library" };
@@ -20,7 +20,7 @@ export function stageProblems(library, manifest, stage) {
   const components = stage === "foundations" ? [] : manifest.components.filter((c) => componentStage(c) === stage);
   const problems = completionProblems(library, { ...manifest, components }, { allowEmpty: true, allowSkipped: true });
   if (!manifest.type?.length) problems.push("Import the product's type styles first.");
-  for (const theme of ["light", "dark"]) {
+  for (const theme of IMPORT_THEMES) {
     if (!manifest.themes?.[theme]?.length) problems.push(`Import the product's ${theme} colours first.`);
   }
   return problems;
