@@ -20,6 +20,11 @@
  *       the topic's examples, one JSON line each: {url, kind, app, title}
  *   node tools/mobbin.mjs screens <mobbin url>
  *       {app, url, title, screens}: how many screens a flow has (a screen page has 1)
+ *   node tools/mobbin.mjs cards <topic | mobbin url>... [--limit <n per topic>]
+ *       reference cards for a sketch, ready to show: one JSON line each,
+ *       {source:"mobbin", app, title, url, image}, the image linked from
+ *       Mobbin's own CDN at a card's width (nothing is downloaded). Topics
+ *       and pages are read in parallel.
  *   node tools/mobbin.mjs save <workspace> <mobbin url> --as <name> [--screen <n>]
  *       <mobbin url>: a flow or screen page, from web search or browse
  *       writes public/references/<name>.webp (a flow's first screen, or
@@ -196,6 +201,48 @@ async function saveCommand(workspace, given, flags) {
   console.log(JSON.stringify({ app: example.app, url, image: `references/${name}.webp` }));
 }
 
+/** One example as a sketch reference card, its first screen linked at a
+ *  card's width. */
+async function card(url, fallback = {}) {
+  const page = examplePageUrl(url);
+  if (!page) return null;
+  const example = parseExamplePage(await (await get(page)).text());
+  const image = example?.screens.find(Boolean);
+  if (!image) return null;
+  const sized = new URL(image);
+  sized.searchParams.set("w", "1200");
+  return {
+    source: "mobbin",
+    app: example.app ?? fallback.app,
+    title: (fallback.title ?? example.title).replace(/ \| Mobbin$/, "").replace(/ UI element$/, ""),
+    url: page,
+    image: sized.toString(),
+  };
+}
+
+async function cardsCommand(given, flags) {
+  if (given.length === 0) throw new Error("cards needs topics (web/screens/settings-preferences) or Mobbin pages");
+  const limit = Number(flags.limit ?? 4);
+  const examples = (
+    await Promise.all(
+      given.map(async (item) => {
+        if (examplePageUrl(item)) return [{ url: item }];
+        const url = `${SITE}/explore/${item.replace(/^\/+|^explore\//g, "")}`;
+        try {
+          return parseTopicPage(await (await get(url)).text()).slice(0, limit);
+        } catch (error) {
+          console.error(`${item}: ${error.message}`);
+          return [];
+        }
+      }),
+    )
+  ).flat();
+  const cards = await Promise.all(examples.map((e) => card(e.url, e).catch((error) => (console.error(`${e.url}: ${error.message}`), null))));
+  const found = cards.filter(Boolean);
+  if (found.length === 0) throw new Error("no Mobbin examples could be read for these topics");
+  for (const c of found) console.log(JSON.stringify(c));
+}
+
 function parseFlags(argv) {
   const positional = [];
   const flags = {};
@@ -214,6 +261,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     browse: () => browseCommand(positional[0]),
     screens: () => screensCommand(positional[0]),
     save: () => saveCommand(positional[0], positional[1], flags),
+    cards: () => cardsCommand(positional, flags),
   }[command];
   if (!run) {
     console.error("usage: mobbin.mjs topics [--platform web|mobile] [--match <words>] | browse <topic> | screens <url> | save <workspace> <url> --as <name> [--screen <n>]");
