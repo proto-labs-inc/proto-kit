@@ -55,6 +55,7 @@ export type Pass = {
   theme: ThemeId;
 };
 export type Component = {
+  stage?: "core" | "extended";
   slug: string;
   name: string;
   status: ComponentStatus;

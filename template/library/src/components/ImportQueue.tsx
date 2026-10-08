@@ -1,97 +1,105 @@
-import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
 import { ArrowRightIcon, CheckIcon, ChevronDownIcon, CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { componentView, type Component, type ComponentView, type Library, type Manifest } from "@/library";
+import { componentView, type Component, type ComponentView, type Library, type Manifest, type ImportStage } from "@/library";
 import { href } from "@/route";
 import { clock, elapsed } from "@/time";
+import { usePreviewThemeControl } from "@/theme";
 
-/**
- * The import, beside the page, in a framed panel: the components in
- * sections with a fixed title and a count ("2 Reading", "4 Built"),
- * each section folding, so nothing in the rail changes its words as
- * the import moves; a component moves from one section to the next,
- * and its row travels with it. The row being read says the import's
- * latest word on it, shimmering; a skipped row says the whole reason.
- * Each row jumps to its block, and its arrow opens its page. A
- * finished import carries the time it finished above the panel.
- */
+const STEP_NAMES = { foundations: "Foundations", core: "Core components", extended: "Extended library" };
+const STEP_IDS = ["foundations", "core", "extended"] as const;
+
+/** The same three steps stay in the sidebar throughout the import. */
 export function ImportQueue({ library }: { library: Library }) {
   const { manifest } = library;
-  const stages = byStage(library);
   return (
-    <aside className="-order-1 flex flex-col gap-3 md:sticky md:top-8 md:order-none md:self-start">
+    <aside aria-label="Import progress" className="-order-1 flex flex-col gap-3 md:sticky md:top-8 md:order-none md:max-h-[calc(100vh-4rem)] md:overflow-y-auto md:self-start">
       <Finish manifest={manifest} />
-      {stages.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-xl border border-border bg-background px-3 pt-2 pb-2 shadow-xs">
-          {stages.map((stage) => (
-            <Collapsible key={stage.title} defaultOpen className="group/stage">
-              <CollapsibleTrigger
-                render={
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted"
-                  />
-                }
-              >
-                <ChevronDownIcon className="size-4 transition-transform group-data-[panel-closed]/stage:-rotate-90" />
-                <span className="tabular-nums text-foreground">{stage.rows.length}</span>
-                {stage.title}
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <ul className="m-0 mt-2 flex list-none flex-col p-0">
-                  <AnimatePresence initial={false}>
-                    {stage.rows.map(({ component, view }) => (
-                      <motion.li
-                        key={component.slug}
-                        layout
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 360, damping: 34 }}
-                        className="group/row flex flex-col gap-0.5 rounded-md px-3 py-1 text-sm transition-colors hover:bg-muted"
-                      >
-                        <Row component={component} view={view} />
-                      </motion.li>
-                    ))}
-                  </AnimatePresence>
-                </ul>
-              </CollapsibleContent>
-            </Collapsible>
-          ))}
-        </div>
-      )}
+      <ol className="m-0 flex list-none flex-col divide-y divide-border rounded-xl border border-border bg-background p-0 shadow-xs">
+        {STEP_IDS.map((id, index) => {
+          const components = manifest.components.filter((component) => componentStep(component) === id);
+          const step = manifest.importStages?.find((step) => step.id === id);
+          // Older libraries have no checkpoints. Only a completed import can
+          // certify their steps; otherwise explicitly say progress is unknown.
+          const status = step?.status ?? (manifest.completedAt ? "done" : "unknown");
+          return <Step key={id} id={id} index={index} status={status} step={step} components={components} library={library} />;
+        })}
+      </ol>
     </aside>
   );
 }
 
-type Stage = "Reading" | "Queued" | "Built" | "Skipped";
-type StageRows = { title: Stage; rows: { component: Component; view: ComponentView }[] };
-
-/** The stage a component's view is at; the section it sits in. */
-function stageOf(view: ComponentView): Stage {
-  switch (view.kind) {
-    case "working":
-      return "Reading";
-    case "pending":
-      return "Queued";
-    case "preview":
-      return "Built";
-    case "skipped":
-      return "Skipped";
-  }
+function componentStep(component: Component): "core" | "extended" {
+  if (component.stage) return component.stage;
+  const name = `${component.slug} ${component.name}`.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+  return /(^|[\s-])(button|input|select|checkbox|radio|switch|toggle|tab|tabs|badge|menu|dropdown|dialog|modal|tooltip|textarea|text-field|form-field)([\s-]|$)/.test(name) ? "core" : "extended";
 }
 
-/** The stages in the order the import moves through them, only those with a component in them. */
-function byStage(library: Library): StageRows[] {
-  const order: Stage[] = ["Reading", "Queued", "Built", "Skipped"];
-  const stages = order.map((title) => ({ title, rows: [] as StageRows["rows"] }));
-  for (const component of library.manifest.components) {
-    const view = componentView(component, library);
-    stages.find((s) => s.title === stageOf(view))?.rows.push({ component, view });
-  }
-  return stages.filter((s) => s.rows.length > 0);
+type StepProps = {
+  id: ImportStage["id"]; index: number; status: ImportStage["status"] | "unknown";
+  step?: ImportStage; components: Component[]; library: Library;
+};
+
+function Step({ id, index, status, step, components, library }: StepProps) {
+  // Follow the active step until the user chooses otherwise. Their choice
+  // survives manifest polling, and completed steps remain inspectable.
+  const [expanded, setExpanded] = useState<boolean | null>(null);
+  const done = status === "done";
+  const gaps = components.filter((component) => component.status === "skipped").length;
+  const summary = done ? (gaps ? `Done · ${gaps} failed or skipped` : "Done")
+    : status === "waiting" ? "Waiting for the previous step"
+    : status === "unknown" ? "Progress unavailable"
+    : id === "foundations" ? "Importing styles in both themes"
+    : `${step?.verified ?? 0} of ${step?.total ?? components.length} verified${gaps ? ` · ${gaps} failed or skipped` : ""}`;
+  return (
+    <li aria-current={status === "active" ? "step" : undefined}>
+      <Collapsible open={expanded ?? (status === "active" || status === "unknown")} onOpenChange={setExpanded} className="group/stage">
+        <CollapsibleTrigger render={<button type="button" />} className="flex w-full items-start gap-2.5 rounded-lg px-3 py-4 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-[-2px]">
+          <span className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-xs ${done || status === "active" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"}`}>
+            {done ? <CheckIcon className="size-3.5" aria-hidden="true" /> : index + 1}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-foreground">{STEP_NAMES[id]}</span>
+            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{summary}</span>
+          </span>
+          <ChevronDownIcon aria-hidden="true" className="mt-1 size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-closed]/stage:-rotate-90" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          {id === "foundations" ? <Foundations manifest={library.manifest} done={done} /> : (
+            <ul className="m-0 flex list-none flex-col gap-2 px-3 pb-4">
+              {components.map((component) => (
+                <li key={component.slug} className="group/row flex flex-col gap-0.5 rounded-md px-1 py-1 text-sm hover:bg-muted">
+                  <Row component={component} view={componentView(component, library)} waiting={status === "waiting" || component.status === "found"} />
+                </li>
+              ))}
+              {components.length === 0 && <li className="px-1 text-xs text-muted-foreground">{done ? "No components in this step" : "No components listed yet"}</li>}
+            </ul>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  );
+}
+
+function Foundations({ manifest, done }: { manifest: Manifest; done: boolean }) {
+  const { setTheme } = usePreviewThemeControl();
+  const rows = [
+    { title: "Type styles", count: manifest.type.length, target: "type-styles", theme: null, detail: manifest.type.map((style) => style.name).join(" · ") },
+    { title: "Light colours", count: manifest.themes.light.length, target: "colours", theme: "light" as const, detail: "Light theme" },
+    { title: "Dark colours", count: manifest.themes.dark.length, target: "colours", theme: "dark" as const, detail: "Dark theme" },
+  ];
+  return <ul className="m-0 flex list-none flex-col gap-3 px-4 pb-4">
+    {rows.map((row) => <li key={row.title} className="text-sm">
+      <button type="button" onClick={() => { if (row.theme) setTheme(row.theme); jumpTo(row.target); }} className="flex w-full items-center gap-2 text-left hover:underline">
+        {done ? <CheckIcon className={MARK} aria-hidden="true" /> : <span className="size-3.5 shrink-0 rounded-full border border-muted-foreground/40" aria-hidden="true" />}
+        <span className="flex-1">{row.title}</span><span className="text-xs tabular-nums text-muted-foreground">{row.count}</span>
+      </button>
+      <p className="m-0 ml-5.5 mt-1 text-xs leading-relaxed text-muted-foreground">{done ? "Done" : row.count ? "Imported · awaiting step verification" : "Waiting to import"}</p>
+      {row.count > 0 && <p className="m-0 ml-5.5 mt-1 text-xs leading-relaxed text-muted-foreground">{row.detail}</p>}
+    </li>)}
+  </ul>;
 }
 
 function Finish({ manifest }: { manifest: Manifest }) {
@@ -116,11 +124,11 @@ function jumpTo(slug: string) {
   document.getElementById(slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function Row({ component, view }: { component: Component; view: ComponentView }) {
+function Row({ component, view, waiting = false }: { component: Component; view: ComponentView; waiting?: boolean }) {
   return (
     <>
       <div className="flex items-center gap-2">
-        <Mark component={component} view={view} />
+        {waiting && view.kind === "working" ? <ClockIcon className={MARK} /> : <Mark component={component} view={view} />}
         <button type="button" onClick={() => jumpTo(component.slug)} className="min-w-0 flex-1 truncate text-left text-foreground">
           {component.name}
         </button>
@@ -132,7 +140,7 @@ function Row({ component, view }: { component: Component; view: ComponentView })
           <ArrowRightIcon className="size-3.5" />
         </a>
       </div>
-      <Description component={component} view={view} />
+      {waiting && view.kind === "working" ? <span className="ml-6 text-xs text-muted-foreground">Waiting to import</span> : <Description component={component} view={view} />}
     </>
   );
 }

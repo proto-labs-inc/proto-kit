@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon } from "lucide-react";
 import { ComponentBlock } from "@/components/ComponentBlock";
-import { ImportSteps } from "@/components/ImportSteps";
 import { ImportLine } from "@/components/ImportLine";
 import { ImportQueue } from "@/components/ImportQueue";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -46,8 +45,6 @@ export function Overview({ library, requestQueue }: Props) {
           </div>
           <ThemeToggle manifest={manifest} />
         </header>
-
-        {started && <ImportSteps stages={manifest.importStages} />}
 
         {!started && (
           <p className="text-sm text-muted-foreground">Nothing imported yet. The import fills this page as it reads your product.</p>
@@ -95,7 +92,7 @@ type SectionProps = {
  *  one line in it, shimmering while the import reads, until it fills. */
 function Section({ title, count, reading, reserve, gap = "gap-4", children }: SectionProps) {
   return (
-    <section className={`flex flex-col ${gap}`}>
+    <section id={title === "Type styles" ? "type-styles" : title === "Colours" ? "colours" : "components"} className={`scroll-mt-8 flex flex-col ${gap}`}>
       <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
         {title}
         <span className="tabular-nums text-muted-foreground">{count}</span>
