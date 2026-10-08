@@ -43,3 +43,20 @@ test("a take written as changes can itself be what a moment starts from", async 
   const drawing = wireframeIn(dir, "calm");
   assert.deepEqual(drawing.root.children.map((c) => c.id), ["main"]);
 });
+
+test("a sketch is never refused for a word: aliases map, blanks fill, unknown parts become named boxes", async () => {
+  const { normalizeWireframe } = await import("./sketch.mjs");
+  const out = normalizeWireframe({ frame: "desktop", root: { t: "row", children: [
+    { t: "nav", items: ["", "Home"] },
+    { t: "card", children: [{ t: "heading", text: "Members" }, { t: "button" }, { t: "avatar-stack", id: "who", hl: true }] },
+    { t: "dialog", children: [] },
+  ] } });
+  const [nav, card, dialog] = out.root.children;
+  assert.equal(nav.items[0], "");
+  assert.deepEqual([card.t, card.box], ["col", "line"]);
+  assert.deepEqual(card.children.map((c) => c.t), ["text", "button", "col"]);
+  assert.equal(card.children[0].size, "lg");
+  assert.equal(card.children[1].label, "Button");
+  assert.deepEqual([card.children[2].box, card.children[2].id, card.children[2].hl], ["dashed", "who", true]);
+  assert.deepEqual([dialog.t, dialog.kind], ["overlay", "modal"]);
+});

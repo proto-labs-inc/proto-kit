@@ -171,6 +171,12 @@ Changes: `{"replace": id, "with": part}`, `{"after" | "before": id, "add": part}
 is how a moment's options start from the picked take. A wrong id is
 refused with the ids that exist.
 
+`sketch.mjs post` maps common names to these parts before sending
+(`card` is a boxed `col`, `heading` a large `text`, `dialog` an `overlay`)
+and draws any other name as a dashed box labelled with it, so a drawing is
+never refused for a word. The base is never posted: it only exists as
+`base.json`, written once.
+
 The site checks every event and refuses a malformed one with the path of
 the problem (`event 0 at wireframe.root.children.2…`); fix that and post
 again.

@@ -215,11 +215,49 @@ function resolveWireframe(dir, wireframe) {
   return applyChanges(wireframeIn(dir, wireframe.from), wireframe.changes ?? []);
 }
 
-/** Every wireframe in an event made whole. */
+/** Every wireframe in an event made whole, in parts the site knows. */
 function resolveEvent(dir, event) {
-  if (event.wireframe) return { ...event, wireframe: resolveWireframe(dir, event.wireframe) };
-  if (event.options) return { ...event, options: event.options.map((option) => ({ ...option, wireframe: resolveWireframe(dir, option.wireframe) })) };
+  if (event.wireframe) return { ...event, wireframe: normalizeWireframe(resolveWireframe(dir, event.wireframe)) };
+  if (event.options) return { ...event, options: event.options.map((option) => ({ ...option, wireframe: normalizeWireframe(resolveWireframe(dir, option.wireframe)) })) };
   return event;
+}
+
+const PARTS = new Set(["row", "col", "overlay", "text", "button", "input", "select", "search", "toggle", "checkbox", "radio", "chip", "badge", "avatar", "icon", "divider", "spacer", "image", "chart", "table", "list", "tabs", "code", "nav"]);
+/** Names a sketcher reaches for, as the part the site draws for them. */
+const ALIASES = {
+  stack: { t: "col" }, vstack: { t: "col" }, column: { t: "col" }, section: { t: "col" }, container: { t: "col" }, group: { t: "col" }, form: { t: "col" }, page: { t: "col" },
+  hstack: { t: "row" }, header: { t: "row" }, toolbar: { t: "row" }, footer: { t: "row" },
+  card: { t: "col", box: "line" }, panel: { t: "col", box: "line" }, box: { t: "col", box: "line" }, banner: { t: "row", box: "line" }, callout: { t: "row", box: "soft" }, alert: { t: "row", box: "line" },
+  modal: { t: "overlay", kind: "modal" }, dialog: { t: "overlay", kind: "modal" }, drawer: { t: "overlay", kind: "drawer" }, popover: { t: "overlay", kind: "popover" }, toast: { t: "overlay", kind: "toast" }, sheet: { t: "overlay", kind: "sheet" },
+  heading: { t: "text", size: "lg" }, title: { t: "text", size: "lg" }, h1: { t: "text", size: "xl" }, h2: { t: "text", size: "lg" }, label: { t: "text", size: "sm" }, paragraph: { t: "text" }, caption: { t: "text", size: "xs", muted: true }, link: { t: "button", style: "ghost" },
+  textarea: { t: "input" }, dropdown: { t: "select" }, switch: { t: "toggle" }, tag: { t: "chip" }, pill: { t: "chip" }, status: { t: "badge" },
+  img: { t: "image" }, picture: { t: "image" }, graph: { t: "chart" }, sidebar: { t: "nav" }, menu: { t: "list" }, separator: { t: "divider" }, hr: { t: "divider" },
+};
+const LABELLED = new Set(["button", "chip", "badge"]);
+
+/** A wireframe in parts the site knows: aliases mapped, blanks filled,
+ *  anything else drawn as a dashed box named after it, so a sketch is
+ *  never refused for a word. */
+export function normalizeWireframe(wireframe) {
+  const fix = (node) => {
+    if (!node || typeof node !== "object") return { t: "spacer" };
+    let next = { ...node };
+    const alias = ALIASES[String(next.t ?? "").toLowerCase()];
+    if (alias) next = { ...alias, ...next, t: alias.t, ...(alias.kind && !next.kind ? { kind: alias.kind } : {}) };
+    if (!PARTS.has(next.t)) {
+      const name = String(next.t ?? "part");
+      const text = next.label ?? next.text ?? name;
+      next = { t: "col", box: "dashed", ...(next.id ? { id: next.id } : {}), ...(next.hl ? { hl: true } : {}), ...(next.note ? { note: next.note } : {}), children: next.children ?? [{ t: "text", text: String(text).slice(0, 160), size: "sm" }] };
+    }
+    if (next.t === "text" && !next.text && !next.lines) next.lines = 1;
+    if (LABELLED.has(next.t) && !next.label) next.label = next.text ?? (next.t === "button" ? "Button" : "Label");
+    for (const key of ["label", "value", "title", "note", "text", "brand"]) if (next[key] === "") delete next[key];
+    if (next.t === "overlay" && !next.kind) next.kind = "modal";
+    if ((next.t === "row" || next.t === "col" || next.t === "overlay") && !Array.isArray(next.children)) next.children = [];
+    if (Array.isArray(next.children)) next.children = next.children.map(fix);
+    return next;
+  };
+  return { frame: wireframe.frame === "mobile" ? "mobile" : "desktop", root: fix(wireframe.root) };
 }
 
 async function post(flags) {
@@ -228,6 +266,9 @@ async function post(flags) {
   const text = source === "-" ? readFileSync(0, "utf8") : readFileSync(source, "utf8");
   const parsed = JSON.parse(text);
   const dir = dirOf(flags.brief);
+  if (!Array.isArray(parsed) && parsed.root && !parsed.type) {
+    throw new Error("this is a bare drawing (the base): it is never posted. Write it to base.json and stop; the directions are posted as changes to it.");
+  }
   const events = (Array.isArray(parsed) ? parsed : [parsed]).map((event) => resolveEvent(dir, event));
   for (let i = 0; i < events.length; i += 12) {
     const answer = await tool("report_sketch", { briefId: flags.brief, events: events.slice(i, i + 12) });
