@@ -32,7 +32,10 @@ seconds: write only what changes, never the whole screen again.
    Write all text in ASD-STE100 Simplified Technical English: short
    sentences, active voice, common words. Titles and labels are 1 to 4
    words; a `point` is one line under 60 characters. Take the borrowed
-   references' ideas your prompt names into the drawing. Mark the idea `hl` on 1 to 3 parts and give 1 to 3 notes that say
+   references' ideas your prompt names into the drawing. When the note
+   or brief is about colour, set `tone` (`red`, `green`, `amber`,
+   `blue`) on that part. For another take, change only what the note
+   asks and keep the rest of the take as it was. Mark the idea `hl` on 1 to 3 parts and give 1 to 3 notes that say
    why, in under 70 characters. Use the product's real labels.
 4. Post it: `node <kit>/tools/sketch.mjs post --brief <briefId> <file>`.
    If it is refused, the error names the path of the problem: fix that
