@@ -1,6 +1,6 @@
 ---
 name: create-prototype
-description: Build a new prototype from your product's own code, optionally with its initial variant sets. Use when the user asks to create or build a new prototype or mock up a new flow or screen. Do not use for variant work in an existing prototype; use create-variant-set, add-variants, or edit-variant instead.
+description: Build a new prototype from your product's own code in a single direction. Use when the user asks to create or build a new prototype or mock up a new flow or screen. Do not use for variant work in an existing prototype; use create-variant-set, add-variants, or edit-variant instead.
 ---
 
 # Create a prototype
@@ -10,6 +10,11 @@ the brief's change built on top of it: a standalone Vite app in
 `~/.proto/<codebase>/prototypes/<slug>/`, naked except for the rig (the
 invisible package that syncs state to the URL and speaks to the Frame).
 The tools copy the page; you write only the change.
+
+Build one direction with its preview states. Do not create variant sets,
+run variant builders, or generate variant previews during new-prototype
+creation. If the brief also asks for alternatives, finish the prototype first;
+handle those alternatives separately with `create-variant-set`.
 
 ## Authorization
 
@@ -66,11 +71,9 @@ used the wrong display and disturbed the checks running beside them).
 
 | To… | Run |
 |---|---|
-| see a state, a variant, a part or the whole page | `node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>] [--part <marker> \| --page]`, then read the picture it prints |
-| see one variant in every state (a variant builder, checking its own work) | `node tools/previews.mjs <workspace> --only <set>=<id>` |
-| check a control does what it should (Resume starts the restore in every region) | `node tools/click.mjs <workspace> --variant <set>=<id> --click "<text>" [--state <id>] [--in <region>]` |
+| see a state, a part or the whole page | `node tools/look.mjs <workspace> [--state <id>] [--part <marker> \| --page]`, then read the picture it prints |
+| check a control does what it should (Resume starts the restore in every region) | `node tools/click.mjs <workspace> --click "<text>" [--state <id>] [--in <region>]` |
 | know what is broken (blank views, errors, parts out of place) | `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>` |
-| make the variant previews the site shows | `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>` |
 | pick a free slug | `list_prototypes { codebase }` |
 
 ## The runbook
@@ -153,25 +156,13 @@ used the wrong display and disturbed the checks running beside them).
    conversation and stop at that checkpoint. Record the answer as described
    under Blocked, then rerun the same command. Do not advance to serving or
    composition while the choice is unanswered.
-   **Variants start here, before anything else.** When the brief asks
-   for variants and the copy is frozen, the next thing you do once the
-   copy returns is step 8's start: pick the decision, find the element
-   in `src/frozen/page.html` by its marker (or by text and `data-pf`,
-   adding a `data-proto-id` if it has none; every region, when the
-   decision spans several), run `variant-set.mjs`,
-   wire the switch into `App.tsx` and dispatch the builders. Do not
-   start the server, read the codebase's source, write shared data or
-   add preview states first: the builders need only the frozen markup
-   and the brief, and every minute before they start is a minute added
-   to the build. Serving (step 5) and the rest of the change (step 7)
-   happen while they work.
 5. **Serve early.** The dev server the copy used has stopped; start the
    serve skill's steps 1 to 4 now (register, provision the tunnel, write
    the run spec, `supervise.mjs start`), in that order, and do not verify
    through the edge yet: the tunnel connects while you write the change.
    Registering and the heartbeat do not finish the build: its card stays
    up and every stage is still reported. `report_progress serving` comes
-   later, at step 10, and `done` at the very end.
+   later, at step 9, and `done` at the very end.
 6. **The gate, then the parts left to fix.** A frozen copy has neither:
    `gate.outcome` is `proceed` and `toFix` is empty. If `off` names a box,
    say so in one line ("The logo link sits 9 px off in the copy") and carry
@@ -206,13 +197,8 @@ used the wrong display and disturbed the checks running beside them).
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
-7. **Write the change.** The variant builders are already running
-   (the end of step 4); write the rest of the change (shared data,
-   preview states, wiring) while they work. A builder owns its variant:
-   when it reports back with its pictures checked, keep its files as
-   they are. Change a variant only for a fault check-states or the
-   previews name (step 9), and then only that fault; never rewrite
-   one to your own taste.
+7. **Write the change.** Implement the brief as one direction, including
+   its data, interactions, and preview states.
    On a frozen copy, find the elements the brief is
    about in `src/frozen/page.html` (by marker, or by text and `data-pf`;
    the parts list's rects say where each sits) and change only those:
@@ -232,8 +218,7 @@ used the wrong display and disturbed the checks running beside them).
      preview state when a reviewer should reach it).
    - The frozen page is in the theme it was captured in (`frozen.json`
      `htmlAttrs`); keep the change in that theme.
-   - Styling the change: the same rules as the variant briefs
-     (`tools/variant-brief.mjs`). Use the page's own class names from
+   - Styling the change: use the page's own class names from
      the frozen markup, exactly as written (the workspace compiles no
      Tailwind); custom properties exactly as `public/frozen/styles`
      writes them; anything the page does not show from the codebase's
@@ -258,7 +243,6 @@ used the wrong display and disturbed the checks running beside them).
      backdrop with its shading accounted for. The
      rig owns the URL (`?state=<id>`); wire the product's own controls to
      move between states. Hover and focus are CSS, not states.
-   - **Variants**: step 8.
    - Mock data reads as real (real names, real-looking numbers and
      dates); the source app's live data only when `useRealData` is true.
    - Carry both imported themes into the prototype. The rig sets
@@ -266,74 +250,27 @@ used the wrong display and disturbed the checks running beside them).
      `color-scheme` on the root before render. Bridge that contract to the
      product's existing theme mechanism and use its light and dark token
      collections; never manufacture dark colors by inversion.
-8. **Variants in parallel.** Decide one or two decisions the brief
-   supports a real choice on (layout, hierarchy, interaction pattern,
-   density); none when it supports none. For each new set, gather and inspect
-   references using `docs/variant-references.md` before choosing its directions
-   or dispatching builders. Use supplied references first and Mobbin's no-account
-   web path, never the Mobbin MCP. Save the selected references as a temporary
-   JSON array with `{app, url, image, note, variant}` entries; associate them
-   with the direction IDs after designing from the research. If research fails,
-   report the gap and use the available references (an empty array if none).
-   One command then writes the skeleton and each builder's reference brief:
-   `node tools/variant-set.mjs <workspace> <marker> --title "<set>"
-   --variants "<id>=<Title>|<note>;<id>=<Title>|<note>" --default <id>
-   --baseline current=Current --overview "<the question>" --slot <class>
-   --references <references.json>`
-   where `<marker>` is the `data-proto-id` of the part the set varies
-   and `<class>` its slot in App.tsx (`className={styles["partNN"]}`).
-   A decision that changes several parts of the page together (the top
-   bar's project switcher and the page's notice) is **one set** with
-   `--regions <marker>,<marker>` (the first is the set's key, the same as
-   `<marker>`), never two sets and never a second region wired by hand.
-   Mark any region that has no marker first (`data-proto-id="<kebab-name>"`
-   on that element in `page.html`); regions may not sit inside each other.
-   Each builder then writes all of its variant's regions in one file, with
-   the state they share (`useShared`, `src/variants/store.ts`), and the
-   output prints the exact `replace={{ … }}` for App.tsx, one switch per
-   region, each with its region's `FrozenHtml` as the baseline.
-   It writes the manifest entry (`status: "building"`), the switch
-   `src/variants/<marker>/index.tsx` on `useVariant`, one stub per
-   variant, and frees the slot's pinned height. You replace the part in
-   App.tsx with the switch, the part itself as its baseline:
-   `<MarkerVariants className={styles["partNN"]} baseline={<Part className={styles["partNN"]} />} />`.
-   Then one `proto:variant-builder` subagent per variant, all in
-   parallel, in the background, each with its brief file and direction
-   (the variant brief below); do not
-   pass a model, and never a `name` (step 6 says why). Each generated brief
-   includes the relevant screenshots and notes; builders inspect them before
-   implementing. Keep the registered references when finishing the set.
-   On a frozen copy the baseline is the frozen element itself:
-   `<Frozen replace={{ "<marker>": <XVariants baseline={<FrozenHtml marker="<marker>" />} /> }} />`
-   (`FrozenHtml` from `src/frozen/Frozen`). Variant builders write their
-   variant against the frozen markup and the page's class names, not a
-   copied part file.
-9. **Check, as tools.** When the variant units are back (the part
+8. **Check, as tools.** After writing the change, check it. The part
    fixers are the tail: `node tools/tail.mjs decide <codebase> --build
    <briefId>` prints where they stand, at once; relay its one line and
-   never wait for them, they stop on their own budget):
+   never wait for them, they stop on their own budget.
    - `pnpm typecheck` in the workspace and `node tools/verify-markers.mjs <workspace>`.
    - `node tools/check-states.mjs <workspace> --brief <briefId> --codebase <id>`:
-     every state and every variant loaded headless; blank renders,
-     console errors, a set's marker missing from its view, parts drawn
+     every preview state loaded headless; blank renders,
+     console errors, missing markers, parts drawn
      outside their parents or over siblings, and the untouched parts
      against the read (moved, resized, pixel clusters outside the
-     change). Add `--changed <marker,marker>` for parts you edited
-     outside a variant set (the sets' components are known). Fix what it
+     change). Add `--changed <marker,marker>` for the parts you edited. Fix what it
      names, run it again; two rounds, then report what remains. It sends
      the pass and matched events for the changed parts.
-   - `node tools/previews.mjs <workspace> --brief <briefId> --codebase <id>`:
-     the variant previews from real renders, into the manifest, and the
-     set's `status` cleared. It also pictures every variant in every
-     other preview state, into the build folder (its `states` list gives
-     each picture's path; they are never published). Look at the change
-     through these pictures and `look.mjs` (the table above), never
-     through screenshots of your own.
+   - Use `node tools/look.mjs <workspace> --state <id>` to inspect the
+     change in each preview state (omit `--state` for the default view).
+     Read the pictures it prints; never take screenshots of your own.
    - On a frozen copy the untouched page is the page itself: check-states'
      pixel clusters outside the change are the headless Chrome's colours
      against the Proto window's (about 0.4%), not a copy problem. Act on a
      moved or missing marker; leave pixel-only differences alone.
-10. **Serve.** Continue in the serve skill at step 5 (verify through the
+9. **Serve.** Continue in the serve skill at step 5 (verify through the
     edge, publish, report). Publishing reports its actual upload and availability
     checks, a clean screenshot of the built files, and completion. Registration
     and heartbeats do not complete the brief. Tell the user it is reachable only
@@ -404,20 +341,6 @@ A failure is `report_progress failed` with one plain sentence.
 > 9333 or 9444 from your own code). Write only in the part's folder.
 > Report what explain-diff named, what you changed, and the last
 > check's verdict and mismatch per state.
-
-## The variant brief
-
-`variant-set.mjs` writes each builder's brief to a file (its output's
-`variants[].brief`, `<build>/briefs/<marker>--<id>.md`): the structure,
-styling and codebase rules, the self-check and the report, filled in for
-that workspace. Never retype or paraphrase those rules in the prompt;
-the file is their one copy. The prompt is the file and the direction:
-
-> Your brief is `<brief path>`: read it first and follow it.
-> This variant: <what it shows and how, in a few sentences: the
-> hierarchy, the data and wording to keep, anything the page does not
-> say that must not be invented>. Preview states: <the ids, and what
-> each looks like in this variant; which control moves between them>.
 
 ## Component markers
 

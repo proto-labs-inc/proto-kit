@@ -32,7 +32,7 @@ Cursor; the core stays harness-neutral.
 
 - `setup/`: link the laptop and the source repo, write codebase.json.
 - `import-design-system/`: read the source repo and live page, fill the library.
-- `create-prototype/`: brief to workspace: states, variant sets, previews, markers.
+- `create-prototype/`: brief to workspace: one direction, preview states, markers.
 - `create-variant-set/`: add a new variant set to an existing prototype.
 - `add-variants/`: add variants to a set that already exists.
 - `edit-variant/`: change one existing variant.
