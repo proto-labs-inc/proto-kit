@@ -282,7 +282,8 @@ MIT. See [LICENSE](LICENSE).
 
 Copied prompts check the installed kit locally before downloading an update.
 The local check compares against the prompt’s release version; copy a fresh
-prompt when testing a newly published release.
+prompt when testing a newly published release. The update skill resumes the
+original request after the version check or installation succeeds.
 
 Push or merge source changes to `main`. The Publish Proto release workflow
 runs checks, generates a fresh version, and advances `release` with a normal

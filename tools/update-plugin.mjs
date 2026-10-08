@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Standalone: copied prompts download this file from GitHub release.
+// Standalone: the update skill downloads this file from GitHub release.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, mkdtempSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -58,7 +58,7 @@ export function updatePlugin(host, { run = (cmd, args) => execFileSync(cmd, args
     const actual = version(root);
     if (actual !== expected) throw new Error(`Installed ${actual}, expected ${expected}. Release may have advanced; retry.`);
     if (host === 'codex') run(process.execPath, [join(root, 'tools/codex-install.mjs')]);
-    return { status: 'verified', agent: host, version: actual, installedRoot: root, next: `Read ${join(root, 'skills/update/SKILL.md')} for any needed repair, then continue the original request. Reload the host if its tools or hooks still use the old copy.` };
+    return { status: 'verified', agent: host, version: actual, installedRoot: root, next: `Read the skill needed for the original request from ${root}, then continue that request. Reload the host if its tools or hooks still use the old copy.` };
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
 // Node resolves the module URL through symlinks, but argv keeps the launch path.
