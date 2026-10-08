@@ -10,7 +10,13 @@
  *       to <dir>/sheet.png (read it to judge relevance in one look), and
  *       prints one line per candidate: n, source, title, app, description
  *   node tools/sketch.mjs post --brief <id> <events.json | ->
- *       report_sketch: one event or an array (at most 12), shown at once
+ *       report_sketch: one event or an array (at most 12), shown at once.
+ *       A wireframe may be written as changes to another one, so a
+ *       direction only says what is new (docs/sketch.md, "Changes"):
+ *       {"from": "base", "changes": [{"replace": "<id>", "with": <part>},
+ *        {"after"|"before": "<id>", "add": <part>}, {"into": "<id>", "add": <part>, "at": <n>},
+ *        {"remove": "<id>"}, {"set": "<id>", "to": {<fields>}}]}
+ *       "from" names base.json or another drawn take or option in <dir>
  *   node tools/sketch.mjs status --brief <id> "<what you are doing>"
  *   node tools/sketch.mjs wait --brief <id> [--after <seq>] [--minutes 9]
  *       waits for the person's next choices and prints
@@ -140,12 +146,84 @@ function escape(text) {
   return String(text).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
 }
 
+/** A wireframe written as changes, made whole: the drawing it starts
+ *  from (<dir>/<from>.json, a bare wireframe or an event holding one),
+ *  with each change applied by part id. */
+export function applyChanges(base, changes) {
+  const root = structuredClone(base.root);
+  const find = (node, id, parent = null) => {
+    if (node.id === id) return { node, parent };
+    for (const child of node.children ?? []) {
+      const hit = find(child, id, node);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const must = (id) => {
+    const hit = find(root, id);
+    if (!hit) throw new Error(`no part with id "${id}" to change; ids in the base: ${ids(root).join(", ")}`);
+    return hit;
+  };
+  for (const change of changes) {
+    if (change.replace) {
+      const { node, parent } = must(change.replace);
+      if (!parent) Object.assign(root, change.with);
+      else parent.children[parent.children.indexOf(node)] = change.with;
+    } else if (change.after || change.before) {
+      const { node, parent } = must(change.after ?? change.before);
+      if (!parent) throw new Error("cannot add beside the root");
+      const at = parent.children.indexOf(node) + (change.after ? 1 : 0);
+      parent.children.splice(at, 0, change.add);
+    } else if (change.into) {
+      const { node } = must(change.into);
+      node.children ??= [];
+      node.children.splice(change.at ?? node.children.length, 0, change.add);
+    } else if (change.remove) {
+      const { node, parent } = must(change.remove);
+      if (parent) parent.children.splice(parent.children.indexOf(node), 1);
+    } else if (change.set) {
+      Object.assign(must(change.set).node, change.to);
+    } else {
+      throw new Error(`a change needs replace, after, before, into, remove or set: ${JSON.stringify(change).slice(0, 120)}`);
+    }
+  }
+  return { frame: base.frame, root };
+}
+
+function ids(node, out = []) {
+  if (node.id) out.push(node.id);
+  for (const child of node.children ?? []) ids(child, out);
+  return out;
+}
+
+function wireframeIn(dir, name) {
+  const file = join(dir, name.endsWith(".json") ? name : `${name}.json`);
+  if (!existsSync(file)) throw new Error(`from "${name}": ${file} does not exist`);
+  const data = JSON.parse(readFileSync(file, "utf8"));
+  if (data.root) return data;
+  if (data.wireframe?.root) return resolveWireframe(dir, data.wireframe);
+  throw new Error(`from "${name}": ${file} holds no wireframe`);
+}
+
+function resolveWireframe(dir, wireframe) {
+  if (!wireframe?.from) return wireframe;
+  return applyChanges(wireframeIn(dir, wireframe.from), wireframe.changes ?? []);
+}
+
+/** Every wireframe in an event made whole. */
+function resolveEvent(dir, event) {
+  if (event.wireframe) return { ...event, wireframe: resolveWireframe(dir, event.wireframe) };
+  if (event.options) return { ...event, options: event.options.map((option) => ({ ...option, wireframe: resolveWireframe(dir, option.wireframe) })) };
+  return event;
+}
+
 async function post(flags) {
   const source = flags._[0];
   if (!source) throw new Error("post needs a JSON file (or - for stdin)");
   const text = source === "-" ? readFileSync(0, "utf8") : readFileSync(source, "utf8");
   const parsed = JSON.parse(text);
-  const events = Array.isArray(parsed) ? parsed : [parsed];
+  const dir = dirOf(flags.brief);
+  const events = (Array.isArray(parsed) ? parsed : [parsed]).map((event) => resolveEvent(dir, event));
   for (let i = 0; i < events.length; i += 12) {
     const answer = await tool("report_sketch", { briefId: flags.brief, events: events.slice(i, i + 12) });
     console.log(JSON.stringify(answer));
@@ -192,7 +270,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`sketch: ${error.message}`);
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    console.error(`sketch: ${error.message}`);
+    process.exit(1);
+  });
+}

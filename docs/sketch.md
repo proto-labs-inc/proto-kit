@@ -64,8 +64,10 @@ and `read_sketch` MCP tools). `<id>` below is the brief id.
 4. While the person ranks, start the **base wireframe** in the background:
    dispatch one `proto:sketcher` (run in background) to draw the current
    screen (`referenceUrl`) as `~/.proto/sketches/<id>/base.json`, with no
-   highlight and no notes. Every direction starts from it, so they all
-   look like the same product. Then go to the loop.
+   highlight and no notes, and an `id` on every region (header, sidebar,
+   each section and card, the main column). Every direction is written as
+   changes to it, so they all look like the same product and each one is
+   quick to write. Then go to the loop.
 
 ## 2. The wireframe format
 
@@ -124,6 +126,25 @@ Example (a direction for "show which tables have Row Level Security off"):
     {"t":"table","cols":["id","customer","total","status"],"rows":6,"grow":1}]}]}}
 ```
 
+### Changes
+
+A direction or a moment option rarely needs the whole screen written
+out: write its `wireframe` as changes to the drawing it starts from, by
+part `id`, and `sketch.mjs post` makes it whole before sending:
+
+```json
+{"type":"direction","id":"fix-list","title":"Fix-it list","point":"Every problem is its own row with a one-click fix",
+ "wireframe":{"from":"base","changes":[
+   {"after":"project-header","add":{"t":"col","id":"health","box":"line","pad":2,"hl":true,"note":"Each issue carries its own fix","children":[…]}},
+   {"set":"usage","to":{"muted":true}}]}}
+```
+
+Changes: `{"replace": id, "with": part}`, `{"after" | "before": id, "add": part}`,
+`{"into": id, "add": part, "at": n}`, `{"remove": id}`, `{"set": id, "to": {fields}}`.
+`from` is `base` or the file of a take already drawn (`fix-list`), which
+is how a moment's options start from the picked take. A wrong id is
+refused with the ids that exist.
+
 The site checks every event and refuses a malformed one with the path of
 the problem (`event 0 at wireframe.root.children.2…`); fix that and post
 again.
@@ -150,10 +171,10 @@ person.
 A sketcher's brief (its prompt) holds: the brief text, the direction
 (`id`, `title`, `point`, `borrows` reference ids, and for a refine the
 take id it revises and the note) or the moment (`id`, `direction`,
-`title`, `question`, the options' labels and points), the path of
-`base.json` (or of the take a moment builds on), and this document's
-path. It writes the event to `~/.proto/sketches/<id>/<event-id>.json`
-and posts it.
+`title`, `question`, the options' labels and points), which drawing it
+starts from (`base`, or the take's id for a moment), and this document's
+path. It writes the event, as changes, to
+`~/.proto/sketches/<id>/<event-id>.json` and posts it.
 
 ## Building from the sketch
 

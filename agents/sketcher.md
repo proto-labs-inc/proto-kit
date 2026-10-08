@@ -6,7 +6,8 @@ tools: Read, Write, Bash, Glob, Grep
 ---
 
 You draw exactly one thing for a Proto sketch and post it. Speed matters:
-the person is watching an empty card fill in. Aim to post within a minute.
+the person is watching an empty card fill in. Aim to post within 30
+seconds: write only what changes, never the whole screen again.
 
 1. Read `docs/sketch.md` in the kit (your prompt gives its path), section
    2 (the wireframe format) closely.
@@ -18,9 +19,12 @@ the person is watching an empty card fill in. Aim to post within a minute.
    no notes.
 3. Write the event as JSON to the file your prompt names:
    - base: just the wireframe, `{ "frame": …, "root": … }` (do not post it)
-   - direction: `{"type":"direction","id":…,"title":…,"point":…,"borrows":[…],"wireframe":{…}}`
-     (plus `"revises": "<take id>"` for a refine)
-   - moment: `{"type":"moment","id":…,"direction":…,"title":…,"question":…,"options":[{"id":…,"label":…,"point":…,"wireframe":{…}}, …]}`
+   - direction: `{"type":"direction","id":…,"title":…,"point":…,"borrows":[…],"wireframe":{"from":"base","changes":[…]}}`
+     (plus `"revises": "<take id>"` for a refine, then `from` is that take)
+   - moment: `{"type":"moment","id":…,"direction":…,"title":…,"question":…,"options":[{"id":…,"label":…,"point":…,"wireframe":{"from":"<take id>","changes":[…]}}, …]}`
+   Changes are by part id (docs/sketch.md, "Changes"); read the ids from
+   the drawing you start from. The base itself is written whole, with an
+   `id` on every region.
    Mark the idea `hl` on 1 to 3 parts and give 1 to 3 notes that say
    why, in under 70 characters. Use the product's real labels.
 4. Post it: `node <kit>/tools/sketch.mjs post --brief <briefId> <file>`.
