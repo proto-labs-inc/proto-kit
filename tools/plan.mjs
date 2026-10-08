@@ -15,6 +15,7 @@
  *     "merge": { "button-connect-github": { "button-feedback": "Text" } },   another draft component joins this
  *                                                        one as a look (its other looks come with it, "<look> <theirs>",
  *                                                        and its held states, "<look> hover")
+ *     "stage": { "button-connect-github": "core", "table": "extended" }, // before or after renaming
  *     "add":   [ { "slug", "name", "states": [ … ] } ]      components the survey did not find
  *   }
  *
@@ -23,6 +24,8 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { componentStage } from "./import-stages.mjs";
 
 const [codebase, editsArg] = process.argv.slice(2);
 if (!codebase || !editsArg) {
@@ -107,6 +110,7 @@ const components = slugs.map((slug) => {
     component.name = name.trim();
     component.slug = (ownSlug ?? slugOf(name)).trim();
   }
+  component.stage = edits.stage?.[slug] ?? componentStage(component);
   return component;
 });
 for (const added of edits.add ?? []) {
@@ -117,6 +121,8 @@ const seen = new Set();
 for (const component of components) {
   if (seen.has(component.slug)) fail(`two components would be called "${component.slug}"; name one differently`);
   seen.add(component.slug);
+  component.stage = edits.stage?.[component.slug] ?? componentStage(component);
+  componentStage(component);
   const names = new Set();
   for (const state of component.states) {
     if (names.has(state.name)) fail(`${component.slug} has two looks called "${state.name}"`);
@@ -138,4 +144,4 @@ if (themes) {
 const plan = { ...(themes ? { themes } : { palette: draft.palette }), type: draft.type, components };
 writeFileSync(join(run, "plan.json"), JSON.stringify(plan, null, 2) + "\n");
 console.log(`plan: ${join(run, "plan.json")}, ${components.length} components`);
-for (const c of components) console.log(`  ${c.slug} (${c.name}): ${c.states.map((s) => s.name).join(", ")}`);
+for (const c of components) console.log(`  ${c.slug} (${c.name}, ${c.stage}): ${c.states.map((s) => s.name).join(", ")}`);

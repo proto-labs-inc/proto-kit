@@ -85,8 +85,10 @@ node tools/library.mjs init <codebase> <codebase> <source> --page-url <url> --pa
 node tools/publish-library.mjs <codebase> [--wait] publish; returns at once when one is running (it carries yours)
 node tools/survey.mjs <codebase> --theme <light|dark>  the visible theme in one read (≈1 s); writes palette.json
 node tools/plan.mjs <codebase> '<edits>'            the draft plus your edits → run/plan.json
-node tools/import.mjs <codebase> --theme <light|dark>  run the plan: colours, type, inventory, every component
-node tools/import.mjs <codebase> --check-theme <light|dark>   check every built component in the visible theme
+node tools/import.mjs <codebase> --stage foundations  import colours, type and inventory only
+node tools/import.mjs <codebase> --stage <core|extended> --theme light  build only this stage
+node tools/library.mjs stage <codebase> <foundations|core|extended> complete  verify and finish one stage
+node tools/import.mjs <codebase> --stage <core|extended> --check-theme <light|dark>   check only this stage in the visible theme
 node tools/snapshot.mjs <codebase> <json | @file> --theme <light|dark>  write one component from its live instances
 node tools/check.mjs <codebase> <slug> --theme <light|dark> [--state <name>] [--activity "<line>"]   check it; each pass lands
 node tools/explain-diff.mjs <codebase> <slug> --theme <light|dark> [--state <name>]   why a state differs: the product's value and ours, named
@@ -117,6 +119,19 @@ and switch it yourself. Ask only after exploration finds no usable control
 or a real access blocker. Holding a hover or focus
 look on an element (`"force"`) is done with the DevTools pseudo-class
 and let go straight after.
+
+## Preparation
+
+The import has exactly three sequential stages: **Foundations**, **Core
+components**, and **Extended library**. Finish each stage completely before
+starting the next. Every component must reach a terminal outcome: verified or explicitly
+skipped (including failed attempts with their reasons). Failed and skipped
+components do not block stage completion and stay visible as gaps. Repairs may run in parallel within the active stage, but none may
+continue into a later stage. Do not launch prototype work until the import
+requested here is finished.
+
+The following discovery and planning prepare those stages; they do not build
+components. The library shows the three steps and their verified counts.
 
 ## Order of operations
 
@@ -162,7 +177,8 @@ and let go straight after.
      "keep":  ["button-connect-github", "checkbox", "form-field-organization", …],
      "merge": { "button-connect-github": { "button-feedback": "Text" } },
      "name":  { "button-connect-github": "Button", "form-field-organization": "FormItemLayout|form-item-layout" },
-     "looks": { "checkbox": { "Default": "Checked", "Look 2": "Unchecked" } }
+     "looks": { "checkbox": { "Default": "Checked", "Look 2": "Unchecked" } },
+     "stage": { "button-connect-github": "core", "form-field-organization": "core", "navigation": "extended" }
    }'
    ```
    This is the one step that is yours; the rest is tools, and the
@@ -179,91 +195,61 @@ and let go straight after.
    - **Anything missing** goes in `"add"` as `{ "slug", "name", "states":
      [{ "name", "selector", "force"?, "of"? }] }`.
 
-4. **Run it.** `node tools/import.mjs <codebase> --theme light` (it reads the plan
-   `plan.mjs` wrote).
-   It writes the palette, the type styles and the inventory with each
-   component's picture, then writes and checks every component, twelve
-   at a time; each check lands in the library as it is made (the user
-   sees the product, the copy and the difference stream in), each
-   component that matches in every state lands as built, and the
-   library publishes as they land. A component that does not match,
-   or could not be written, stays in the library as skipped with the
-   product's picture and where it differs; intermediate progress is
-   published now; the unit that fixes it lands it as built. It prints what is
-   built and what is left to fix, with each failing state's verdict
-   and where the difference sits. Matching captured colours are written as stable
-   `--proto-token-<name>` variables rather than literals, so the same
-   generated component can resolve another theme's values.
+4. **Stage 1 — Foundations.** Run
+   `node tools/import.mjs <codebase> --stage foundations`.
+   This writes colours, type styles and the full inventory, without building
+   any component. The plan assigns each component to `core` or `extended`.
+   Common controls default to core; composites default to extended. Review
+   those assignments and use the plan's `stage` edits for product-specific
+   names. Core includes buttons, fields, selects, checkboxes, radios, switches,
+   tabs, badges, menus, dialogs and tooltips. Extended includes tables,
+   navigation, panels and specialized widgets.
 
-   Then use the theme control discovered above to switch the product
-   page to dark mode yourself, returning to the same reference view.
-   If it cannot be found, explore the account and appearance menus before
-   asking for help with a specific blocker.
-   Run `node tools/survey.mjs <codebase> --theme dark`, replace the provisional
-   dark palette with `node tools/library.mjs tokens <codebase> dark
-   @"$HOME/.proto/<codebase>/run/survey/dark/palette.json"`, and run
-   `node tools/import.mjs <codebase> --check-theme dark`. The writer and
-   `complete` require the light and dark palettes to have the same token
-   names. Fix every dark `toFix` result just like a light result; a pass
-   records its theme and the library labels it.
+   Survey and apply **both** themes now. Use the product's theme control,
+   survey dark, and apply its palette with
+   `node tools/library.mjs tokens <codebase> dark @<dark-palette.json>`.
+   Apply the current light survey's palette too if needed. Both surveys must
+   belong to this import and use the same token names; never use a copied
+   light palette as evidence of a dark survey. Then run
+   `node tools/library.mjs stage <codebase> foundations complete`.
+   Only a successful command marks Foundations done. Publish this milestone
+   and say "Foundations are done; starting core components."
 
-5. **Finish verification, then publish completion.** The runner reports
-   `gate.status: "awaiting-verification"`; it never completes the import.
-   Relay its progress line without claiming completion. After the dark check,
-   explicitly mark each still-failing built component skipped with its picture,
-   kind and a concrete reason, or repair and recheck it. Skipped components do
-   not need passing checks; built components need every declared state to pass
-   in both themes. Preserve the combined light/dark repair list for the tail.
-   Run the Finish checklist below. A missing or stale check is work to do,
-   never permission to claim success. Component or palette changes require
-   new checks; an older import may also need fresh theme surveys.
+5. **Stage 2 — Core components.** Switch back to light on the same reference
+   view. Run `node tools/import.mjs <codebase> --stage core --theme light`.
+   Only core components build, up to twelve at a time. Switch to dark and run
+   `node tools/import.mjs <codebase> --stage core --check-theme dark`.
+   Do not resurvey or rewrite palettes unless they changed: that invalidates
+   earlier checks. Keep the reference page stable while checks or repairs run.
 
-   Then, for every component in `toFix` or `failed`, dispatch one
-   `importer` sub-agent, **all in one turn, in the background**, with
-   the brief below. Never pass a model: the importer role runs on the
-   fast model by design, and the work is small. Never pass a `name`:
-   a named agent becomes a teammate in its own session (under agent
-   teams), which does not keep this session's permission mode, so
-   every command of theirs asks the user; a plain sub-agent runs in
-   this session with its mode.
+   The runner records failed builds and theme checks as skipped with a reason,
+   including when no screenshot could be captured. These are terminal gaps:
+   keep them visible and continue. Do not require repairs before advancing.
+   Pending, queued or actively importing components must finish their attempt
+   first. If repairs are undertaken in this stage, finish or explicitly skip
+   them before advancing; recheck changed built components in both themes.
 
-   **Never reload or navigate the product tab while units run** (no
-   `location.reload()`, no new address, no sign-in again in it), and
-   nothing you start (a prototype build, a script) may either. Every
-   unit reads its component's live element through the selector the
-   import recorded, and a reload can change the page under it: a
-   message shown once after sign-in is gone, every positional
-   selector after it lands one element over or on none, and every
-   unit comes back "nothing on the live page matches". If the tab
-   must change, wait until every unit has reported, and say so.
+   Run `node tools/library.mjs stage <codebase> core complete`.
+   It requires every core component either to pass every declared state in
+   both themes or to have an explicit skip reason and kind.
+   Publish this milestone and report the verified count and any gaps before
+   starting the extended library. No extended component starts before this succeeds.
 
-   Nothing waits on the units. Relay the runner's progress promptly; claim
-   completion only after finish-import reports `outcome: "published"`.
-   From then on `node tools/tail.mjs decide <codebase>` reads the
-   units' numbers as they stand and returns at once with one line
-   ("Fixing in the background: 13 of 15 matched; the rest improved 2%
-   in the last minute, about 4 more minutes to go"). Run it when a
-   unit reports or when you are asked where things stand, relay its
-   line as it stands, and check the local component queue. Never wait for
-   a unit, never poll, never ask the user
-   whether to wait; each unit stops on its own budget (three checks or
-   two minutes) and restores its component when it did not match.
-
-   As each unit reports, spot-check it (re-run `check.mjs --theme
-   <theme>` on one state) and land it: `status done`, or `status
-   skipped` again with its kind, the unit's reason and picture. Recheck every
-   state in both themes for changed components, then run `finish-import.mjs`
-   after each landing. Say one short line when a component lands this way
-   ("Badge now matches the product; the library is republished").
-
-6. **Finish**, per the checklist below, after step 5's verification;
-   every landing after it publishes again.
+6. **Stage 3 — Extended library.** Repeat the same light build, dark check,
+   repairs and both-theme verification with `--stage extended`. Finish with
+   `node tools/library.mjs stage <codebase> extended complete`.
+   Even an empty stage gets its explicit checkpoint. Then run the Finish
+   checklist: only `finish-import.mjs` reporting `outcome: "published"` means
+   the full import is finished. There is no background repair tail after
+   completion in the sequential workflow.
 
 If anything interrupts you (a question, a crash, a resumed session):
 do that, then come back here. `init` resumes an open run without
 touching what is there; `manifest.json` says what is done; run
-`import.mjs` again with a plan listing only the components not
-`done` or `skipped`.
+`import.mjs --stage <active-stage>` with a plan listing only components
+that need rebuilding. Keep the full inventory and stage assignments intact;
+stage checks always validate the complete recorded inventory. Use scoped
+`--check-theme` for missing checks instead of rebuilding matching components.
 
 ## Verdicts
 
@@ -342,7 +328,7 @@ its hover look.
 > value in the folder fixes it. Write only in the component's folder; never touch
 > `public/` or run `library.mjs`. Report as data: done or skipped, each
 > state's last verdict, what explain-diff named and what you changed,
-> and for a skip the kind (`did-not-match` or `could-not-isolate`),
+> and for a skip (which allows this stage to finish) the kind (`did-not-match` or `could-not-isolate`),
 > one sentence of at most 140 characters in the product's terms, and
 > the survey picture's path.
 
@@ -385,7 +371,8 @@ to build a skipped component, and its "Import again" a request to run
 the whole import again. `node tools/library.mjs take-queued <codebase>`
 pops one request and prints its slug (nothing printed means nothing
 queued). A component's slug: survey again, plan that component alone,
-run `import.mjs` with it, fix what is left as above, then
+run `import.mjs --stage <its-stage>` with it, fix what is left as above,
+recomplete this and any invalidated later stage checkpoints, then
 `finish-import.mjs <codebase>`. `*`: start this skill over from step 1 (`init` on a
 completed run starts fresh). Check the queue after each landing, at
 the finish. Do not start a persistent watch or keep the session alive to
@@ -396,21 +383,20 @@ the import in chat; a published library cannot wake an agent.
 
 Every line, in order, before you say the import is done:
 
-- every component in the manifest is `done` or `skipped`, none
-  `found`, `extracting` or `queued` (the runner leaves what it could
-  not finish as skipped, with the product's picture and where it
-  differs, so this holds the moment it returns);
-- `node tools/finish-import.mjs <codebase>`: validates current theme surveys,
-  matching palette names, and passing checks for every built state in both
-  themes, then completes and publishes with `--wait`. It returns
-  `outcome: "published"` only after publication succeeds. On a publication
-  failure, run it again; local completion is preserved. Never call complete
-  and publish separately or infer success from an intermediate publication;
-- one sentence to the user: the library is published and stays
-  viewable after this laptop closes, and how many components are still
-  being fixed in the background (each lands and publishes on its own);
+- all three stage checkpoints are done, in order; every component is either
+  built with current passing checks in both themes or explicitly skipped with
+  its kind and reason; pending work cannot be counted as complete;
+- `node tools/finish-import.mjs <codebase>` validates stage checkpoints,
+  current surveys, palette names and checks, then completes and publishes with
+  `--wait`. Only `outcome: "published"` confirms completion. Retry publication
+  failures with the same command; do not repeat successful imports;
+- tell the user all three steps are done and the library is published, with
+  the count and names of failed or skipped components;
 - check the local component queue once, then continue only into work the user
-  already requested (such as the prototype brief passed by setup). Otherwise finish.
+  already requested. Otherwise finish.
+
+Changes to earlier stages invalidate their completion and later checkpoints.
+Repair and recheck the changed stage before proceeding in order again.
 
 ## Activity voice
 

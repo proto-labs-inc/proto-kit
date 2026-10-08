@@ -80,7 +80,19 @@ export type Component = {
  *  is a path under public/, present only when the page has one. */
 export type Product = { name: string; pageUrl: string; pageTitle: string; favicon?: string };
 
+export type ImportStage = {
+  id: "foundations" | "core" | "extended";
+  title: string;
+  status: "waiting" | "active" | "done";
+  verified: number;
+  total: number;
+  remaining: string[];
+  gaps?: { name: string; reason: string; kind: string }[];
+  completedAt: string | null;
+};
+
 export type Manifest = {
+  importStages?: ImportStage[] | null;
   codebase: string | null;
   source: string | null;
   product: Product | null;

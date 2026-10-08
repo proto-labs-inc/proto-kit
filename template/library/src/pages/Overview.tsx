@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon } from "lucide-react";
 import { ComponentBlock } from "@/components/ComponentBlock";
+import { ImportSteps } from "@/components/ImportSteps";
 import { ImportLine } from "@/components/ImportLine";
 import { ImportQueue } from "@/components/ImportQueue";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -45,6 +46,8 @@ export function Overview({ library, requestQueue }: Props) {
           </div>
           <ThemeToggle manifest={manifest} />
         </header>
+
+        {started && <ImportSteps stages={manifest.importStages} />}
 
         {!started && (
           <p className="text-sm text-muted-foreground">Nothing imported yet. The import fills this page as it reads your product.</p>

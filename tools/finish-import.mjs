@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { completionProblems } from "./import-evidence.mjs";
 
+import { requireAllStages } from "./import-stages.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 export async function finishImport(codebase, deps = {}) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(codebase ?? "")) throw new Error("Usage: finish-import.mjs <codebase>");
@@ -19,6 +21,7 @@ export async function finishImport(codebase, deps = {}) {
   if (published.status !== 0) throw new Error("The import is complete locally, but publication failed. Run finish-import again to retry publication.");
   const manifest = JSON.parse(readFileSync(join(library, "public", "manifest.json"), "utf8"));
   if (!manifest.completedAt || completionProblems(library, manifest).length) throw new Error("The library changed while publishing. Recheck changed components and run finish-import again.");
+  requireAllStages(library, manifest);
   return { outcome: "published", codebase, completedAt: manifest.completedAt, built: manifest.components.filter((component) => component.status === "done").length, skipped: manifest.components.filter((component) => component.status === "skipped").map(({ slug, reason }) => ({ slug, reason })) };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

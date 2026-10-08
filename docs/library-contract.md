@@ -176,7 +176,7 @@ import, never rewritten from scratch mid-run.
   product's own terms (at most 140 characters, no import voice; the
   writer refuses longer) and `screenshot` shows the component cropped to
   its own rect from the live product at 2x (never a viewport shot; the
-  writer refuses a skip without it), so the block is not an absence.
+  picture is optional when capture failed). The reason stays visible either way.
   `states` and `tokens` are empty.
 - `queued`: the user pressed "Queue it" and the import has taken the request
   (`take-queued`; see queue.json). `skipKind`, `reason` and
@@ -382,7 +382,7 @@ experience:
    transition flushed. Components may move in parallel. The tokens a
    unit names land before the unit does.
 5. A component that cannot be extracted cleanly is `skipped` with a
-   `skipKind`, a `reason` and a `screenshot`: never silently dropped,
+   `skipKind`, a `reason` and a `screenshot` when available: never silently dropped,
    never faked.
 6. Publish after every landing, `done` or `skipped`: `node
    tools/publish-library.mjs <library>` builds the app and uploads
@@ -425,8 +425,33 @@ remain readable but require fresh evidence before completion.
 
 `complete` refuses until both theme surveys match the installed palettes,
 palette names agree, and every built component state has a current accepted
-check in both themes. Explicit skips retain their kind, reason and screenshot.
+check in both themes. Explicit skips retain their kind, reason and any available screenshot.
 Mutating library content clears `completedAt`; retrying completion without
 changes preserves its timestamp. `finish-import` returns `published` only
 after the publisher succeeds with `--wait`; failed publication can be retried
 without repeating successful checks.
+
+
+## Sequential import stages
+
+New imports record `importStages` in the manifest, ordered `foundations`,
+`core`, `extended`. Each entry carries `id`, `title`, `status` (`active`,
+`waiting`, `done`), `verified`, `total`, `remaining`, `gaps`, and `completedAt`.
+The writer owns the internal evidence signature. Components carry `stage`
+(`core` or `extended`); the full inventory is recorded during foundations.
+
+`import.mjs --stage foundations` imports only palettes, type styles and
+inventory. `--stage core` and `--stage extended` build only their component
+set and refuse until all earlier checkpoints are complete. `--check-theme`
+must name the component stage and checks only that stage.
+
+`library.mjs stage <library> <id> complete` verifies current evidence and
+marks one checkpoint done. Foundations require type styles and nonempty,
+current light/dark surveys and palettes with matching token names. Component
+stages require each component to pass every declared state in both themes or
+to be explicitly skipped with a reason and kind. Failed attempts are recorded
+as skips, with a screenshot when available. These gaps allow advancement but
+never count as verified; the UI shows "Done with N gaps" and their reasons.
+Pending, queued and actively importing components still block completion. Changes invalidate checkpoints and their successors. Final
+completion requires all three checkpoints; legacy manifests without stages
+retain their previous completion rules.

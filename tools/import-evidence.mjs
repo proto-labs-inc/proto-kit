@@ -24,9 +24,9 @@ export function checkFingerprint(library, manifest, slug, theme) {
   return hash.digest("hex");
 }
 
-export function completionProblems(library, manifest) {
+export function completionProblems(library, manifest, { allowEmpty = false, allowSkipped = true } = {}) {
   const problems = [];
-  if (!manifest.startedAt || !manifest.components?.length) problems.push("Start an import and record its components first.");
+  if (!manifest.startedAt || (!allowEmpty && !manifest.components?.length)) problems.push("Start an import and record its components first.");
   const light = (manifest.themes?.light ?? []).map((token) => token.name).sort();
   const dark = (manifest.themes?.dark ?? []).map((token) => token.name).sort();
   if (JSON.stringify(light) !== JSON.stringify(dark)) problems.push("Light and dark palettes need the same stable token names.");
@@ -35,11 +35,11 @@ export function completionProblems(library, manifest) {
     if (!survey || survey.run !== manifest.startedAt || survey.palette !== paletteDigest(manifest.themes?.[theme] ?? [])) problems.push(`Survey ${theme} in this import and apply its palette before finishing.`);
   }
   for (const component of manifest.components ?? []) {
-    if (component.status === "skipped") {
-      if (!component.reason || !component.skipKind || !component.screenshot) problems.push(`${component.slug}: record the skip reason, kind, and screenshot.`);
+    if (component.status === "skipped" && allowSkipped) {
+      if (!component.reason || !component.skipKind) problems.push(`${component.slug}: record the skip reason and kind.`);
       continue;
     }
-    if (component.status !== "done") { problems.push(`${component.slug}: finish or explicitly skip it first.`); continue; }
+    if (component.status !== "done") { problems.push(allowSkipped ? `${component.slug}: finish or explicitly skip it first.` : `${component.slug}: finish and verify it in both themes; skipped components do not complete a stage.`); continue; }
     try {
       const unit = JSON.parse(readFileSync(join(library, "src", "components", component.slug, "component.json"), "utf8"));
       if (!unit.states?.length) throw new Error("no states");

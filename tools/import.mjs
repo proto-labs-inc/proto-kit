@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Run an import plan in one call: the palette, the type styles and the
- * inventory land at once, then every component is written from the
+ * Run one sequential import stage per call. Foundations writes the palette,
+ * type styles and inventory only. Core and extended components are written from the
  * live page (tools/snapshot.mjs) and checked against it
  * (tools/check.mjs, each pass landing as it is made), several at a
  * time; a component that matches in every state lands as built, and
@@ -11,8 +11,8 @@
  * so intermediate progress can be published; it is listed for a unit to fix,
  * and lands as built when the unit's check passes.
  *
- * Usage: node tools/import.mjs <codebase> [<plan.json>] [--theme <light|dark>] [--lanes <n>]
- *        node tools/import.mjs <codebase> --check-theme <light|dark> [--lanes <n>]
+ * Usage: node tools/import.mjs <codebase> [<plan.json>] [--stage <foundations|core|extended>] [--theme <light|dark>] [--lanes <n>]
+ *        node tools/import.mjs <codebase> --stage <core|extended> --check-theme <light|dark> [--lanes <n>]
  *   The plan defaults to ~/.proto/<codebase>/run/plan.json (tools/plan.mjs).
  *
  * The plan is the orchestrator's decisions on top of tools/survey.mjs:
@@ -21,7 +21,7 @@
  *                 "dark":  [{ name, value, group, role? }, …] },
  *     "type": [{ name?, family, size, weight, lineHeight, letterSpacing?, textTransform?, sample, tags? }, …],
  *     "components": [{
- *       "slug": "button", "name": "Button",
+ *       "slug": "button", "name": "Button", "stage": "core",
  *       "picture": "<png>",                                   survey's crop, optional
  *       "states": [{ "name": "Default", "selector": "…" },
  *                  { "name": "Primary", "selector": "…" },
@@ -30,12 +30,9 @@
  *   }
  * A type style without a name is named from where it is used.
  *
- * The moment every component has been written and checked is the
- * import's gate: the light pass is ready here; finish-import owns completion after
- * both themes are checked. What is left is the long tail
- * (tools/tail.mjs rule 1), named with its reason for a background
- * unit; the run's tail.jsonl gets the phase record the tail's own
- * decisions are made from.
+ * A stage checkpoint requires current checks in both themes for built components, or a recorded skip, before the next
+ * stage can start. Failures remain in this stage for repair. finish-import
+ * owns final completion and publication after all three checkpoints pass.
  *
  * Prints one JSON line: { seconds, built: [slug], toFix: [{ slug, states, unfitted, reason }], failed: [{ slug, error }], gate: { line, status: "awaiting-verification" } }.
  */
@@ -48,9 +45,11 @@ import { connect, evaluate } from "./cdp/cdp.mjs";
 import { frameCrop, takeFrame, withLive } from "./cdp/live.mjs";
 import { classifyState, record, tailFile } from "./tail.mjs";
 
+import { componentStage, requirePreviousStages, STAGES } from "./import-stages.mjs";
+
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
-const options = { lanes: "12", theme: "light" };
+const options = { lanes: "12", theme: "light", stage: "foundations" };
 const positional = [];
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i += 1) {
@@ -61,13 +60,14 @@ for (let i = 0; i < args.length; i += 1) {
 }
 const [codebase, planArg] = positional;
 if (!codebase) {
-  console.error("usage: node tools/import.mjs <codebase> [<plan.json>] [--theme <light|dark>] [--lanes <n>]");
+  console.error("usage: node tools/import.mjs <codebase> [<plan.json>] [--stage <foundations|core|extended>] [--theme <light|dark>] [--lanes <n>]");
   process.exit(1);
 }
 if (!["light", "dark"].includes(options.theme)) {
   console.error("--theme is light or dark");
   process.exit(1);
 }
+if (!STAGES.includes(options.stage)) throw new Error("--stage is foundations, core or extended");
 const home = join(process.env.HOME ?? "", ".proto", codebase);
 // The plan tools/plan.mjs wrote, unless another is named.
 const plan = options["check-theme"] ? null : JSON.parse(readFileSync(planArg ?? join(home, "run", "plan.json"), "utf8"));
@@ -120,7 +120,9 @@ if (options["check-theme"]) {
   const theme = options["check-theme"];
   if (!["light", "dark"].includes(theme)) throw new Error("--check-theme is light or dark");
   const manifest = JSON.parse(readFileSync(join(home, "library", "public", "manifest.json"), "utf8"));
-  const queue = (manifest.components ?? []).filter((component) => component.module).map((component) => component.slug);
+  requirePreviousStages(join(home, "library"), manifest, options.stage);
+  if (options.stage === "foundations") throw new Error("Foundations need surveys, not component checks. Select --stage core or extended.");
+  const queue = (manifest.components ?? []).filter((component) => component.module && componentStage(component) === options.stage).map((component) => component.slug);
   const matched = [];
   const toFix = [];
   const failed = [];
@@ -130,9 +132,13 @@ if (options["check-theme"]) {
       try {
         const result = JSON.parse(checked.stdout);
         if (result.matched) matched.push(slug);
-        else toFix.push({ slug, states: result.states.filter((state) => !["match", "shifted", "context", "faint", "offscreen"].includes(state.verdict)) });
+        else {
+          toFix.push({ slug, states: result.states.filter((state) => !["match", "shifted", "context", "faint", "offscreen"].includes(state.verdict)) });
+          await leave(manifest.components.find((c) => c.slug === slug), "did-not-match", `The ${theme} appearance still differs from the product`);
+        }
       } catch {
         failed.push({ slug, error: checked.stderr.trim().split("\n").pop() });
+        await leave(manifest.components.find((c) => c.slug === slug), "could-not-isolate", `The import could not check its ${theme} appearance this run`);
       }
     }
   }
@@ -141,26 +147,35 @@ if (options["check-theme"]) {
   process.exit(0);
 }
 
-// ---- palette, type, inventory ----
-const themes = plan.themes ?? (plan.palette?.length ? { light: plan.palette, dark: plan.palette } : null);
-if (themes) {
+// Foundations are a separate invocation. Later stages never rewrite palettes
+// or type styles, which would invalidate earlier component checks.
+const components = (plan.components ?? []).map((c) => ({ ...c, stage: componentStage(c) }));
+if (options.stage === "foundations") {
+  write("stages");
+  const themes = plan.themes ?? (plan.palette?.length ? { [options.theme]: plan.palette } : {});
   for (const theme of ["light", "dark"]) {
-    const palette = themes[theme] ?? [];
-    if (palette.length) write("tokens", theme, JSON.stringify(palette.map(({ name, value, group, role }) => (role ? { name, value, group, role } : { name, value, group }))));
+    const palette = themes[theme];
+    if (palette?.length) write("tokens", theme, JSON.stringify(palette.map(({ name, value, group, role }) => ({ name, value, group, ...(role ? { role } : {}) }))));
   }
+  if (plan.type?.length) write("types", JSON.stringify(nameTypes(plan.type)));
+  if (components.length) write("inventory", JSON.stringify(components.map(({ slug, name, picture, stage }) => ({ slug, name, stage, ...(picture ? { screenshot: picture } : {}) }))));
+  publish();
+  console.log(JSON.stringify({ stage: "foundations", gate: { status: "awaiting-verification", line: "Foundations captured. Apply both current theme surveys, then run library.mjs stage <codebase> foundations complete. No components have started." } }));
+  process.exit(0);
 }
-if (plan.type?.length) write("types", JSON.stringify(nameTypes(plan.type)));
-const components = plan.components ?? [];
-if (components.length === 0) {
-  console.error("the plan lists no components");
-  process.exit(1);
+const manifest = JSON.parse(readFileSync(join(home, "library", "public", "manifest.json"), "utf8"));
+requirePreviousStages(join(home, "library"), manifest, options.stage);
+// The full inventory is fixed at the foundations stage. A partial resume plan
+// cannot silently omit unverified components or reclassify them to bypass a gate.
+const selected = components.filter((c) => c.stage === options.stage);
+for (const component of selected) {
+  const recorded = manifest.components.find((c) => c.slug === component.slug);
+  if (!recorded || componentStage(recorded) !== component.stage) throw new Error(`${component.slug}: update the foundations inventory before changing component stages.`);
 }
-write(
-  "inventory",
-  JSON.stringify(components.map(({ slug, name, picture }) => (picture ? { slug, name, screenshot: picture } : { slug, name }))),
-);
-publish();
-step(`${themes?.[options.theme]?.length ?? 0} ${options.theme} colours, ${plan.type?.length ?? 0} type styles and ${components.length} components listed`);
+if (!selected.length) {
+  console.log(JSON.stringify({ stage: options.stage, gate: { status: "awaiting-verification", line: "No components in this plan for this stage. Complete the stage checkpoint against the full inventory." } }));
+  process.exit(0);
+}
 
 // ---- the resting page, once: every resting state is cut from this frame ----
 {
@@ -186,7 +201,7 @@ const areas = new Map();
 // The heaviest first (most states to read and check), so a big
 // component starts in the first batch instead of becoming the tail; the
 // library still lists them in the plan's order.
-const queue = [...components].sort((a, b) => b.states.length - a.states.length);
+const queue = [...selected].sort((a, b) => b.states.length - a.states.length);
 async function lane() {
   for (let component = queue.shift(); component; component = queue.shift()) {
     const began = Date.now();
@@ -245,12 +260,8 @@ async function lane() {
  */
 async function leave(component, kind, reason) {
   const picture = component.picture ?? latestCapture(component.slug) ?? (await cropFromFrame(component));
-  if (!picture) {
-    step(`${component.slug}: left as found (no picture of it to show yet)`);
-    return;
-  }
   try {
-    write("component", component.slug, "status", "skipped", "--kind", kind, "--reason", reason, "--screenshot", picture);
+    write("component", component.slug, "status", "skipped", "--kind", kind, "--reason", reason, ...(picture ? ["--screenshot", picture] : []));
     publish();
   } catch (error) {
     step(`${component.slug}: could not be left as skipped (${error.message.split("\n").pop()})`);
@@ -298,11 +309,11 @@ function whereItDiffers(component, states) {
   let sentence = `Not identical to the product yet: ${spots.join("; ")}`;
   if (sentence.length > 120) sentence = `Not identical to the product yet in ${states.length} of its states (${states.map((s) => s.state.toLowerCase()).join(", ")})`;
   if (sentence.length > 120) sentence = `Not identical to the product yet in ${states.length} of its states`;
-  return `${sentence}; being fixed`;
+  return sentence;
 }
 await Promise.all(Array.from({ length: Math.max(1, Number(options.lanes)) }, lane));
 
-// ---- the gate: the library is usable now; the rest is the tail ----
+// ---- this stage awaits both-theme verification and its checkpoint ----
 publish();
 // The tail's own record: every component with its weight (its largest
 // state's pixels), the built ones matched already.
@@ -327,12 +338,12 @@ for (const entry of failed) {
   step(`${entry.slug} left for later: ${entry.error}`);
 }
 const left = toFix.length + failed.length;
-let line = `Usable now: ${built.length} of ${components.length} built in ${Math.round((Date.now() - started) / 1000)} s`;
-line += "; theme verification and finish-import still required";
-if (left > 0) line += `. ${left} left for later, each with its reason above; they are the long tail and go to background units.`;
+let line = `${options.stage}: ${built.length} of ${selected.length} built in ${Math.round((Date.now() - started) / 1000)} s`;
+line += "; verify both themes and complete this stage before starting the next";
+if (left > 0) line += `. ${left} left for later, each with its reason above; failed or skipped components remain visible and do not block the next stage.`;
 step(line);
 
-console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 1000), built, toFix, failed, gate: { line, status: "awaiting-verification" } }));
+console.log(JSON.stringify({ stage: options.stage, seconds: Math.round((Date.now() - started) / 1000), built, toFix, failed, gate: { line, status: "awaiting-verification" } }));
 
 /** Names for type styles the plan left unnamed, from the elements that use them. */
 function nameTypes(styles) {

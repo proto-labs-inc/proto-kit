@@ -37,9 +37,8 @@
  *       the product shows as a prop set, the first being the default,
  *       and the names of the manifest tokens the component uses) and
  *       records its module path, states and tokens; a token the
- *       manifest does not hold is refused. skipped needs all three:
- *       the kind, the reason (one plain sentence of at most 140
- *       characters in the product's terms) and the product crop
+ *       manifest does not hold is refused. skipped needs the kind and the reason (one plain sentence of at most 140
+ *       characters in the product's terms), plus the product crop when available
  *       (copied to components/<slug>/screenshot.png). The crop stays
  *       on the entry from then on; the kind and reason stay while
  *       queued and go when the component is read again.
@@ -71,6 +70,8 @@ import {
 import { join, resolve } from "node:path";
 import { completionProblems, paletteDigest, checkFingerprint } from "./import-evidence.mjs";
 
+import { componentStage, completeStage, refreshStages, requirePreviousStages, requireAllStages, STAGES } from "./import-stages.mjs";
+
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
   init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>] [--favicon <file>]
   token <library> <light|dark> <json>
@@ -84,6 +85,8 @@ const USAGE = `usage: node library.mjs <subcommand> <library> ...
   take-queued <library>
   survey <library> <light|dark> <capture JSON>
   checks <library> <slug> <light|dark> <results JSON>
+  stages <library>
+  stage <library> <foundations|core|extended> complete
   complete <library>`;
 const STATUSES = ["found", "extracting", "done", "skipped", "queued"];
 // Why a component was skipped, as the app groups them: it could not be
@@ -166,7 +169,7 @@ const paths = {
 };
 const now = () => new Date().toISOString();
 
-const EMPTY = { verification: null, codebase: null, source: null, product: null, startedAt: null, completedAt: null, themes: { light: [], dark: [] }, type: [], components: [] };
+const EMPTY = { verification: null, importStages: null, codebase: null, source: null, product: null, startedAt: null, completedAt: null, themes: { light: [], dark: [] }, type: [], components: [] };
 
 function readManifest() {
   try {
@@ -239,6 +242,7 @@ function change(work) {
     const manifest = readManifest();
     const result = work(manifest);
     if (["token", "tokens", "type", "types", "inventory", "component"].includes(subcommand)) manifest.completedAt = null;
+    refreshStages(libraryDir, manifest);
     writeJsonAtomic(paths.manifest, manifest);
     if (result?.activity !== undefined) appendEvent(result.activity, result.slug);
     return result;
@@ -379,13 +383,15 @@ const commands = {
     for (const item of list) {
       requireString(item.slug, "slug");
       requireString(item.name, "name");
+      componentStage(item);
       if (!/^[a-z0-9][a-z0-9-]*$/.test(item.slug)) fail(`slug "${item.slug}" must be lowercase letters, digits and dashes`);
       if (item.screenshot !== undefined && !existsSync(item.screenshot)) fail(`${item.screenshot} does not exist`);
     }
     change((manifest) => {
       for (const item of list) {
-        if (manifest.components.some((c) => c.slug === item.slug)) continue;
-        const entry = { slug: item.slug, name: item.name, status: "found", states: [], tokens: { light: [], dark: [] }, history: [] };
+        const existing = manifest.components.find((c) => c.slug === item.slug);
+        if (existing) { existing.stage = componentStage(item); continue; }
+        const entry = { slug: item.slug, name: item.name, stage: componentStage(item), status: "found", states: [], tokens: { light: [], dark: [] }, history: [] };
         mkdirSync(folderOf(item.slug), { recursive: true });
         if (item.screenshot !== undefined) {
           copyFileSync(item.screenshot, join(folderOf(item.slug), "screenshot.png"));
@@ -403,20 +409,24 @@ const commands = {
     if (status === "skipped") {
       if (!SKIP_KINDS.includes(options.kind)) fail(`skipped needs --kind, one of ${SKIP_KINDS.join(", ")}`);
       requireReason(options.reason);
-      if (!options.screenshot) fail("skipped needs --screenshot, the component cropped to its own rect from the live page at 2x (tools/cdp/crop.mjs)");
     }
     change((manifest) => {
       const entry = componentIn(manifest, slug);
+      if (manifest.importStages && ["extracting", "done"].includes(status)) {
+        try { requirePreviousStages(libraryDir, manifest, componentStage(entry)); } catch (error) { fail(error.message); }
+      }
       const folder = folderOf(slug);
       mkdirSync(folder, { recursive: true });
       entry.status = status;
       switch (status) {
         case "skipped":
-          if (!existsSync(options.screenshot)) fail(`${options.screenshot} does not exist`);
-          copyFileSync(options.screenshot, join(folder, "screenshot.png"));
+          if (options.screenshot) {
+            if (!existsSync(options.screenshot)) fail(`${options.screenshot} does not exist`);
+            copyFileSync(options.screenshot, join(folder, "screenshot.png"));
+            entry.screenshot = relative(slug, "screenshot.png");
+          }
           entry.skipKind = options.kind;
           entry.reason = options.reason;
-          entry.screenshot = relative(slug, "screenshot.png");
           unbuild(entry);
           break;
         case "queued":
@@ -529,8 +539,24 @@ const commands = {
     });
   },
 
+  stages() {
+    change((manifest) => {
+      manifest.importStages ??= STAGES.map((id) => ({ id }));
+    });
+  },
+
+  stage() {
+    const [stage, action] = positional;
+    if (action !== "complete") fail("stage needs <foundations|core|extended> complete");
+    change((manifest) => {
+      try { completeStage(libraryDir, manifest, stage); } catch (error) { fail(error.message); }
+      return { activity: `${manifest.importStages.find((s) => s.id === stage).title} done` };
+    });
+  },
+
   complete() {
     change((manifest) => {
+      try { requireAllStages(libraryDir, manifest); } catch (error) { fail(error.message); }
       const problems = completionProblems(libraryDir, manifest);
       if (problems.length) fail(problems.join("\n"));
       manifest.completedAt ??= now();
