@@ -5,6 +5,12 @@ description: Create a new variant set in an existing Proto prototype. Use when t
 
 # Create a variant set
 
+A website brief (action `add-variants`, the element in `section`) is read
+with `get_brief`; when its `inputs.references` is true, follow "References
+for variants" in `docs/sketch.md`: the person picks the references first,
+and those replace step 3's own search. Report `started` when work begins
+and `done` only after publishing.
+
 Work only in the existing prototype workspace named by the request. This is
 an incremental edit: do not scaffold a prototype, run create-prototype or the
 full serve workflow, provision or restart a tunnel, or register the prototype.

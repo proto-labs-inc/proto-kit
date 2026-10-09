@@ -10,6 +10,10 @@ verify its `add-variants` action and existing target, and preserve its ID. Repor
 `started` only when work begins, and `done` only after verification and publish.
 An explicit resume continues the same brief and target, without adding the
 same variants twice. Questions are answered in the active conversation.
+A website brief whose `inputs.references` is true starts with references:
+follow "References for variants" in `docs/sketch.md` first. When its
+`section` has no variant set yet, create one with create-variant-set
+instead of this skill.
 
 Work only in the existing prototype workspace and variant set named by the
 request. This is an incremental edit: do not scaffold a prototype, run

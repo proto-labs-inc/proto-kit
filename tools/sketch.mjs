@@ -31,6 +31,10 @@
  *       Chrome (paper, ink, brand accent, and its red, green and amber
  *       when it has them) and posts them, so every wireframe of the
  *       sketch is drawn in them; prints what it found
+ *   node tools/sketch.mjs save-reference --workspace <prototype workspace> --id <reference id> --image <image url>
+ *       saves a picked reference's image into the workspace as
+ *       public/references/<id>.<ext>, so a variant set can register it;
+ *       prints the path to put in the set's references (image)
  *   node tools/sketch.mjs read --brief <id>
  *       the sketch as it stands (get_brief's sketch), without waiting
  *
@@ -381,9 +385,29 @@ async function palette(flags) {
   console.log(JSON.stringify(await tool("report_sketch", { briefId: flags.brief, events: [{ type: "palette", palette }] })));
 }
 
+async function saveReference(flags) {
+  const { workspace, id, image } = flags;
+  if (typeof workspace !== "string" || typeof id !== "string" || typeof image !== "string") {
+    throw new Error("save-reference needs --workspace, --id and --image");
+  }
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error(`--id ${id}: use lowercase letters, digits and hyphens`);
+  if (!/^https:\/\/(bytescale\.mobbin\.com|cdn\.recent\.design)\//.test(image)) throw new Error(`--image must be a Mobbin or Recent image, not ${image}`);
+  const res = await fetch(image, { headers: { "User-Agent": "Proto (+https://prototypes.fun)" } });
+  const type = res.headers.get("content-type") ?? "";
+  if (!res.ok || !type.startsWith("image/")) throw new Error(`${image}: answered ${res.status} ${type || "no type"}`);
+  const ext = { "image/webp": "webp", "image/png": "png", "image/jpeg": "jpg" }[type.split(";")[0]] ?? "webp";
+  const dir = join(workspace, "public", "references");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${id}.${ext}`), Buffer.from(await res.arrayBuffer()));
+  const { repairReferenceServing } = await import("./repair-reference-serving.mjs");
+  repairReferenceServing(workspace);
+  console.log(JSON.stringify({ image: `references/${id}.${ext}` }));
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const flags = parseFlags(rest);
+  if (command === "save-reference") return saveReference(flags);
   if (!flags.brief) throw new Error("--brief <briefId> is required");
   switch (command) {
     case "candidates":
