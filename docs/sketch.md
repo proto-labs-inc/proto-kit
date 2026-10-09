@@ -2,7 +2,7 @@
 
 A new prototype is sketched with the person before it is built. They see
 references to react to within seconds, then a few low-fidelity wireframes
-that each make one point about their brief, then the moments inside the
+that each make one point about their brief, then the details inside the
 one they pick. When they press **Build this**, the sketch is committed and
 you build exactly that. The website draws all of it in its sketch studio
 from what you report; you never draw pixels.
@@ -38,7 +38,7 @@ and `read_sketch` MCP tools). `<id>` below is the brief id.
 - anything else: you are resuming. Read `sketch` (or
   `node tools/sketch.mjs read --brief <id>`) and do only what is owed:
   references never posted, `directionsAsked`, a direction whose `refining`
-  is set, a take with `drawn: false`, a picked direction without moments.
+  is set, a take with `drawn: false`, a picked direction without details.
   Then go to the loop (step 3).
 
 **Never end your turn while sketching.** The person answers in the
@@ -167,7 +167,7 @@ Example (a direction for "show which tables have Row Level Security off"):
 
 ### Changes
 
-A direction or a moment option rarely needs the whole screen written
+A direction or a detail option rarely needs the whole screen written
 out: write its `wireframe` as changes to the drawing it starts from, by
 part `id`, and `sketch.mjs post` makes it whole before sending:
 
@@ -181,7 +181,7 @@ part `id`, and `sketch.mjs post` makes it whole before sending:
 Changes: `{"replace": id, "with": part}`, `{"after" | "before": id, "add": part}`,
 `{"into": id, "add": part, "at": n}`, `{"remove": id}`, `{"set": id, "to": {fields}}`.
 `from` is `base` or the file of a take already drawn (`fix-list`), which
-is how a moment's options start from the picked take. A wrong id is
+is how a detail's options start from the picked take. A wrong id is
 refused with the ids that exist.
 
 `sketch.mjs post` maps common names to these parts before sending
@@ -209,7 +209,7 @@ person.
 | `more-references` | Search with different words or topics, post a second `references` batch of 4 to 6 new ones. |
 | `refine` (`direction` is a take id, `note`) | Dispatch a sketcher to redraw that take with the note: new id `<first-id>-2` (then `-3`), `revises` the take id. Change only what the note asks; keep the direction's own idea. |
 | `more-directions` (`note`?) | One more direction. **With a note, the note is its idea**: its title and point say it in the person's words ("Restore is red" becomes "Red Restore" / "Restore stands out in red") and the drawing shows exactly that, nothing else new. Without a note, invent an idea none of the shown directions try. Post `directions-planned` for it at once, then dispatch a sketcher. |
-| `picked` (`direction` is a take id) | Find the 1 or 2 moments where that take could still go more than one way (an empty state, what happens on click, after saving). Post `moments-planned` (`direction` = the take id) at once, then dispatch one sketcher per moment; each posts a `moment` with 2 or 3 options, each with a `label` of 1 to 3 words and a `point` under 60 characters. Picking again re-plans for the new take only if it has no moments yet. |
+| `picked` (`direction` is a take id) | Find the 1 or 2 details where that take could still go more than one way (an empty state, what happens on click, after saving). Post `details-planned` (`direction` = the take id) at once, then dispatch one sketcher per detail; each posts a `detail` with 2 or 3 options, each with a `label` of 1 to 3 words and a `point` under 60 characters. Picking again re-plans for the new take only if it has no details yet. |
 | `chose` | Nothing to draw; it is part of the spec. |
 | `commit` | Stop sketching. Post `{"type":"handed-off","line":"Copying the screen to build on"}` and build (below). |
 
@@ -217,9 +217,9 @@ A sketcher's brief (its prompt) holds: the brief text, what to borrow
 (each borrowed reference's title, image address, and the person's note
 on it), the direction
 (`id`, `title`, `point`, `borrows` reference ids, and for a refine the
-take id it revises and the note) or the moment (`id`, `direction`,
+take id it revises and the note) or the detail (`id`, `direction`,
 `title`, `question`, the options' labels and points), which drawing it
-starts from (`base`, or the take's id for a moment), and this document's
+starts from (`base`, or the take's id for a detail), and this document's
 path. It runs `node tools/sketch.mjs base --brief <id>` (or `--from <take id>`)
 first, which waits for that drawing and names its part ids, then writes
 the event, as changes, to `~/.proto/sketches/<id>/<event-id>.json` and
@@ -231,12 +231,12 @@ posts it.
 
 - `mode: "skip"`: build from the brief alone, as before.
 - `mode: "sketch"`: `direction` (`title`, `point`, `wireframe`, and the
-  refine note that produced it), `moments` (each with the chosen option's
+  refine note that produced it), `details` (each with the chosen option's
   `wireframe`), `references` ranked with the person's notes.
 
 The direction's wireframe is the design: its `hl` parts are the change
 to build, its notes are requirements, its labels are the copy. Each
-chosen moment option is a state of the prototype to build (a preview
+chosen detail option is a state of the prototype to build (a preview
 state, step 7). The references say what it should feel like; the
 product's own components and styles still decide how it looks. Then run
 the create-prototype runbook as written, with this briefId.
