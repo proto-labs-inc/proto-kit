@@ -10,7 +10,7 @@
  * and the line App.tsx needs.
  *
  * Usage:
- *   node tools/variant-set.mjs <workspace> <component> --title "<set title>"
+ *   node tools/variant-set.mjs <workspace> <component> --expected <revision> --title "<set title>"
  *        --variants "<id>=<Title>|<note>;<id>=<Title>|<note>" --default <id>
  *        [--baseline <id>=<Title>] [--state <state id>] [--overview "<what is being decided>"]
  *        [--slot <class>] [--regions <marker>,<marker>,...]
@@ -18,9 +18,9 @@
  *
  * --regions: one design decision that changes several parts of the page
  * (the top bar's project switcher and the page's notice) is one set with
- * several regions, never several sets. The first region is the set's key
- * (<component>: the URL's ?v.<component>=, the manifest, the website);
- * every region's switch reads that same choice. Each variant is one module
+ * several regions, never several sets. The writer-assigned <component> is
+ * the set's key (the URL's ?v.<component>=, the manifest, the website);
+ * region markers identify the original DOM elements. Every region's switch reads that same choice. Each variant is one module
  * exporting one component per region (PascalCase of its marker) and the
  * variant's shared state (createVariantStore, src/variants/store.ts), so a
  * click in one region can change the other. Each region gets its own
@@ -34,9 +34,9 @@
  * has nothing to free; the set is written the same and `slot.heightFreed`
  * is false.
  *
- * <component> is the data-proto-id of the part the set varies: every
- * variant's root carries it, so the Frame's picker, the set and the
- * copy's part are one thing. The baseline is the copy as it is today:
+ * <component> is the unique address returned by variant-manifest.mjs begin.
+ * This tool populates that empty building entry, guarded by --expected.
+ * Every variant root keeps the original region's data-proto-id. The baseline is the copy as it is today:
  * it has no file, the switch renders what App.tsx passes as `baseline`.
  *
  * App.tsx then renders the switch in the part's place, with the part
@@ -45,14 +45,14 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { writeVariantSet } from "./variant-manifest.mjs";
+import { readVariantSet, writeVariantSet } from "./variant-manifest.mjs";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { nestedMarkers, readableMarkup, elementSpan } from "./markup.mjs";
 import { variantBrief } from "./variant-brief.mjs";
 import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 
-const USAGE = 'usage: node tools/variant-set.mjs <workspace> <component> --title "<t>" --variants "id=Title|note;..." --default <id> [--baseline id=Title] [--state <id>] [--overview "<sentence>"]';
+const USAGE = 'usage: node tools/variant-set.mjs <workspace> <component> --expected <revision> --title "<t>" --variants "id=Title|note;..." --default <id> [--baseline id=Title] [--state <id>] [--overview "<sentence>"]';
 const options = {};
 const positional = [];
 const args = process.argv.slice(2);
@@ -68,9 +68,16 @@ const fail = (message) => {
   console.error(message);
   process.exit(1);
 };
-if (!workspace || !component || !options.title || !options.variants || !options.default) fail(USAGE);
+if (!workspace || !component || !options.expected || !options.title || !options.variants || !options.default) fail(USAGE);
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-if (!KEBAB.test(component)) fail(`the component is a data-proto-id, kebab-case: ${component}`);
+if (!KEBAB.test(component)) fail(`invalid set component: ${component}`);
+let started;
+try {
+  started = readVariantSet(workspace, component);
+  if (started.revision !== options.expected) fail(`${component} changed since it was read; read it again before editing`);
+  if (started.entry.variants.length) fail(`${component} already has variants; scaffold only a set without variants`);
+  if (!started.entry.id || !started.entry.regions?.length) fail("begin a new set with variant-manifest.mjs before scaffolding");
+} catch (error) { fail(error.message); }
 
 const variants = options.variants.split(";").map((spec) => {
   const [id, rest = ""] = spec.split("=");
@@ -86,7 +93,7 @@ if (options.baseline) {
 }
 if (!variants.some((v) => v.id === options.default) && baseline?.id !== options.default) fail(`--default ${options.default} is not one of the variants`);
 
-let references = [];
+let references = started.entry.references ?? [];
 if (options.references) {
   try {
     references = JSON.parse(readFileSync(options.references, "utf8"));
@@ -98,8 +105,8 @@ const pascal = (slug) => slug.replace(/(^|-)([a-z0-9])/g, (_, __, c) => c.toUppe
 const dir = join(workspace, "src", "variants", component);
 
 // ---- the regions: marked, and none inside another ----
-const regions = options.regions ? options.regions.split(",").map((r) => r.trim()).filter(Boolean) : [component];
-if (regions[0] !== component) fail(`the first region is the set's key: --regions ${component},${regions.filter((r) => r !== component).join(",")}`);
+const regions = options.regions ? options.regions.split(",").map((r) => r.trim()).filter(Boolean) : started.entry.regions;
+if (regions[0] !== started.entry.regions[0]) fail(`the first region must stay ${started.entry.regions[0]}`);
 for (const r of regions) if (!KEBAB.test(r)) fail(`a region is a data-proto-id, kebab-case: ${r}`);
 if (new Set(regions).size !== regions.length) fail("each region once");
 const frozenPath = join(workspace, "src", "frozen", "page.html");
@@ -119,8 +126,9 @@ if (frozen) {
   const nested = nestedMarkers(pageHtml, regions);
   if (nested.length) fail(`regions may not sit inside each other: "${nested[0][1]}" is inside "${nested[0][0]}" (replacing the outer one removes the inner one)`);
 }
-// Refuse duplicate creation before touching the switch, styles, or slot.
+// Populate only the registered set before touching the switch, styles, or slot.
 const entry = {
+  ...started.entry,
   component, title: options.title, status: "building",
   variants: [
     ...variants.map(v => ({ ...v, sourceFiles: [`src/variants/${component}/${v.id}.tsx`, `src/variants/${component}/${v.id}.module.css`] })),
@@ -135,7 +143,7 @@ if (baseline) entry.baseline = baseline.id;
 if (options.overview) entry.overview = { title: options.title, description: options.overview };
 try {
   if (existsSync(join(workspace, "src", "variants", component, "index.tsx"))) fail(`${component} already has a switch; creation cannot overwrite it`);
-  writeVariantSet(workspace, { operation: "create", component, entry });
+  started = writeVariantSet(workspace, { operation: "update", component, entry, expectedRevision: options.expected });
 } catch (error) { fail(error.message); }
 
 const multi = regions.length > 1;
@@ -186,12 +194,12 @@ ${regionNames
 
 /**
  * ${variant.title}: ${variant.note || "one direction for this part"}.
- * Written by a variant-builder unit; the root keeps data-proto-id="${component}"
+ * Written by a variant-builder unit; the root keeps data-proto-id="${regions[0]}"
  * so the Frame's picker and comments find this part in every variant.
  */
 export default function ${Name}({ className }: { className?: string }) {
   return (
-    <div className={[styles.root, className].filter(Boolean).join(" ")} data-proto-id="${component}">
+    <div className={[styles.root, className].filter(Boolean).join(" ")} data-proto-id="${regions[0]}">
       {"${variant.title}: not written yet"}
     </div>
   );
@@ -398,7 +406,9 @@ if (build) {
 }
 console.log(
   JSON.stringify({
+    id: started.entry.id,
     component,
+    revision: started.revision,
     switch: multi
       ? {
           module: rel("index.tsx"),

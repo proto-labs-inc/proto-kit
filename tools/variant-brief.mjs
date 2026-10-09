@@ -46,7 +46,7 @@ export function variantBrief({ workspace, component, setTitle, variant, referenc
   const structure = multi
     ? `- The file exports one component per region, by the names above, each \`({ className }: { className?: string })\` with the className on its root, and each root keeps its region's \`data-proto-id\`; every coherent piece inside carries its own kebab-case \`data-proto-id\`.
 - What the regions share while this variant is shown (a menu open, a choice made, a restore started from either region) lives in the file's \`useShared\` store: set its initial values in \`createVariantStore({ ... })\`, and in each region \`const [shared, setShared] = useShared()\`. Anything a reviewer should be able to link to is a preview state instead (\`usePreviewState\`, in the URL, shared by every region already).`
-    : `- The root keeps \`data-proto-id="${component}"\`; every coherent piece inside carries its own kebab-case \`data-proto-id\`.
+    : `- The root keeps \`data-proto-id="${regions[0].marker}"\`; every coherent piece inside carries its own kebab-case \`data-proto-id\`.
 - The component takes \`{ className?: string }\` and puts it on the root.`;
   const styling = frozen
     ? `- Style with the page's own class names, copied from the frozen markup: they carry the page's exact colours, type and spacing from \`public/frozen/styles\`. The module CSS only lays them out.

@@ -32,7 +32,9 @@ Vite reloads its config automatically. `mobbin.mjs save` also applies this repai
   your image viewer cannot open WebP, convert a copy outside the
   workspace: `sips -s format png <file> --out <tmp>/<name>.png`). Delete
   the ones you do not use.
-- Keep two to four, at least one per new direction. Add each to the
+- For a references-only first pass, keep 10 distinct, relevant inspected
+  references, without variant associations. Otherwise keep two to four, at
+  least one per new direction. Add each to the
   set's `references` as
   `{app, url, image, note, variant}`: the note says what to look at
   (for a flow, which screen: its link opens the flow at the start), the
