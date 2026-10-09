@@ -89,6 +89,14 @@ used the wrong display and disturbed the checks running beside them).
    or connected, ask whether the user wants to install or connect it; if they
    decline, read the link in a browser. Only go straight to the browser when
    neither a callable connector nor a matching installable plugin exists.
+   **Then sketch first** (`docs/sketch.md`) when `brief.inputs.sketch` is
+   true (the person chose "Sketch it first?"): show
+   the person references within a minute, wireframe the directions they
+   steer you to, and build only once they press Build this (or skip).
+   Do this before any title, slug, copy or serving: the sketch decides
+   what is built. `get_brief`'s `sketch.spec` is the committed sketch;
+   when it is already there (a resume), go straight on. A direct-chat
+   request with no briefId has no studio: build from the brief.
 2. **Title and slug.** From the brief's content: 2 to 5 words naming the
    screen or flow, never from a URL, path or issue key, never "New
    prototype", no filler like "prototype" or "concept". Kebab-case it
@@ -198,7 +206,12 @@ used the wrong display and disturbed the checks running beside them).
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
 7. **Write the change.** Implement the brief as one direction, including
-   its data, interactions, and preview states.
+   its data, interactions, and preview states. When the brief was
+   sketched, the committed `sketch.spec` is that direction
+   (`docs/sketch.md`, "Building from the sketch"): its highlighted parts
+   are the change, its notes the requirements, its labels the copy, each
+   chosen detail a preview state; build that, in the page's own
+   components and styles.
    On a frozen copy, find the elements the brief is
    about in `src/frozen/page.html` (by marker, or by text and `data-pf`;
    the parts list's rects say where each sits) and change only those:

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// One targeted manifest write, protected against duplicate creation and stale edits.
+// One targeted manifest write, with unique creation identities and guarded edits.
 import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, openSync, closeSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -22,9 +22,19 @@ export function validateVariantSets(manifest, { mode = 'working', workspace, ass
     const sets = manifest.variantSets ?? [];
     check(Array.isArray(sets), 'variantSets must be an array');
     const components = new Set();
+    const identities = new Set();
     for (const set of sets) {
         check(object(set) && idPattern.test(set.component ?? ''), 'each variant set needs a component ID');
         const label = set.component;
+        if (set.regions !== undefined) {
+            check(Array.isArray(set.regions) && set.regions.length > 0 && set.regions.every(region => typeof region === 'string' && idPattern.test(region)), `${label}: regions must contain element markers`);
+            check(new Set(set.regions).size === set.regions.length, `${label}: duplicate region`);
+        }
+        if (set.id !== undefined) {
+            check(typeof set.id === 'string' && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(set.id), `${label}: invalid set identity`);
+            check(!identities.has(set.id), `${label}: duplicate set identity`);
+            identities.add(set.id);
+        }
         check(!components.has(label), `duplicate component ${label}`);
         components.add(label);
         check(set.title === undefined || (typeof set.title === 'string' && set.title.trim()), `${label}: title is required`);
@@ -55,10 +65,15 @@ export function validateVariantSets(manifest, { mode = 'working', workspace, ass
                     fileAt(assets, variant.preview, `${label}/${variant.id} preview`);
             }
         }
-        if (set.status === 'building' && ids.size === 0)
-            check(set.default === '', `${label}: an empty building set needs an empty default`);
-        else
-            check(ids.size > 0 && ids.has(set.default), `${label}: default must name a registered variant`);
+        if (ids.size === 0) {
+            check(set.default === '', `${label}: a set without variants needs an empty default`);
+            if (set.status !== 'building') {
+                check(Array.isArray(set.references) && set.references.length > 0, `${label}: a completed set needs variants or visual references`);
+                for (const ref of set.references)
+                    check(object(ref) && ['app', 'url', 'image', 'note'].every(key => typeof ref[key] === 'string' && ref[key].trim()), `${label}: visual references need app, url, image, and note`);
+            }
+        } else
+            check(ids.has(set.default), `${label}: default must name a registered variant`);
         if (set.baseline !== undefined)
             check(ids.has(set.baseline), `${label}: baseline must name a registered variant`);
         if (set.state !== undefined)
@@ -112,10 +127,8 @@ export function writeVariantSet(workspace, { operation, component, entry, expect
         const manifest = JSON.parse(original);
         validateVariantSets(manifest);
         const sets = manifest.variantSets ?? [];
-        const index = sets.findIndex(set => set.component === component);
-        if (operation === 'create')
-            check(index === -1, `${component} already exists; creation cannot replace an existing set`);
-        else {
+        const index = operation === 'create' ? -1 : sets.findIndex(set => set.component === component);
+        if (operation !== 'create') {
             check(index !== -1, `no variant set ${component}`);
             check(expectedRevision && revisionOf(sets[index]) === expectedRevision, `${component} changed since it was read; read it again before editing`);
             if (operation === 'finish')
@@ -124,6 +137,17 @@ export function writeVariantSet(workspace, { operation, component, entry, expect
                 check(!(sets[index].variants.length && entry.variants?.length === 0), 'cannot reset an existing set to an empty loading entry');
         }
         const next = structuredClone(entry);
+        // The writer owns identity: creation mints it, edits and completion retain it.
+        if (operation === 'create') {
+            do {
+                next.id = randomUUID();
+                next.component = `set-${next.id}`;
+            } while (sets.some(set => set.id === next.id || set.component === next.component));
+            next.regions = entry.regions ?? [component];
+        } else {
+            check(entry.id === undefined || entry.id === sets[index].id, 'cannot change a variant set identity');
+            if (sets[index].id) next.id = sets[index].id;
+        }
         if (index === -1)
             sets.push(next);
         else

@@ -10,6 +10,10 @@ verify its `add-variants` action and existing target, and preserve its ID. Repor
 `started` only when work begins, and `done` only after verification and publish.
 An explicit resume continues the same brief and target, without adding the
 same variants twice. Questions are answered in the active conversation.
+A website brief whose `inputs.references` is true starts with references:
+follow "References for variants" in `docs/sketch.md` first. When its
+`section` has no variant set yet, create one with create-variant-set
+instead of this skill.
 
 Work only in the existing prototype workspace and variant set named by the
 request. This is an incremental edit: do not scaffold a prototype, run
@@ -20,6 +24,9 @@ register the prototype, or change unrelated states or variant sets.
 
 1. Read `public/prototype.json`, the target set, the current view, and the
    source files recorded for the selected reference variants.
+   A references-only set is already an existing set. For its first variants,
+   use its writer-assigned component and current revision with variant-set.mjs;
+   it preserves the registered references. Do not begin a second set.
 2. Preserve all existing variants and their relative order. Put the new
    variants at the top of the set's `variants` array.
 3. Reuse the selected variants and the set's registered references as design

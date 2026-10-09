@@ -7,6 +7,9 @@ export function readBriefInputs(brief) {
   if (typeof inputs.description !== 'string' || typeof inputs.useRealData !== 'boolean') {
     throw new Error('Invalid brief.inputs: description must be text and useRealData must be a boolean.');
   }
+  if (inputs.sketch !== undefined && typeof inputs.sketch !== 'boolean') {
+    throw new Error('Invalid brief.inputs.sketch: expected true, false or absent.');
+  }
   for (const key of ['documentUrl', 'referenceUrl', 'referenceImage', 'referenceHtml']) {
     if (inputs[key] !== null && typeof inputs[key] !== 'string') {
       throw new Error(`Invalid brief.inputs.${key}: expected text or null.`);

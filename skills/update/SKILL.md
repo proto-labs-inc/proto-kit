@@ -20,6 +20,16 @@ root is unclear, use `codex plugin list --json -m proto-kit` or
 `claude plugin list --json`; Cursor's folder install is at
 `~/.cursor/plugins/local/proto`.
 
+For Codex, first inspect `codex plugin list --json -m proto-kit`. If the
+installed, enabled Proto entry has `marketplaceSource.sourceType: "local"`,
+preserve that explicitly configured local source. Continue the original
+request with the active installed kit without running the release checker or
+GitHub updater. A local source checkout may have an older manifest version
+and no release provenance. Only switch it to GitHub when the user explicitly
+asks for a published release. Use `marketplaceSource`, not `source.source`:
+Git marketplaces also install from a local checkout. Missing release
+provenance alone never proves an installation is local.
+
 Read the required version from the copied prompt, and the branch if it names
 one: a prompt copied from a preview site says which proto-kit branch its build
 came from (for example "Required Proto kit: 0.1.0+codex.20261008150000 from
