@@ -24,8 +24,11 @@ approval boundary, including when setup was requested end to end.
 4. Capture PNG screenshots only. Do not replicate components or import the design
    system during this phase. Upload each reference with:
    `node <kit>/tools/screen-index.mjs capture <codebase> <indexId> <png>`.
+   After each screen or small batch, save the accumulated inventory with phase
+   `discovering`, keeping the returned version. On resume, reuse its completed
+   captures. Partial discovery cannot be confirmed by the website.
 5. Submit `screen_index` operation `inventory` with indexId, current version and
-   inventory entries: `{id: UUID,key,group,title,url,path,state,notes,screenshotKey,decision}`.
+   phase `review` only when discovery is ready for review, and inventory entries: `{id: UUID,key,group,title,url,path,state,notes,screenshotKey,decision}`.
    Use stable keys for screens/states, the actual browser URL and pathname, and
    a string-to-string state map understood by the future rig. Never treat the URL
    alone as a state identity. decision is include, exclude, or unresolved.
