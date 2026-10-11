@@ -39,7 +39,14 @@ async function put(url, bytes) {
     throw new Error(`Artifact upload failed (${response.status}).`);
 }
 let answer;
-if (command === "call")
+if (command === "snapshot") {
+  const [folder,briefId]=rest;
+  if(!/^[a-zA-Z0-9-]+$/.test(briefId ?? '')) throw new Error('A saved brief ID is required.');
+  const destination=join(process.env.HOME,'.proto',codebase,'screens','custom-requests',briefId);
+  const bytes=packScreen(folder);
+  if(!existsSync(destination)) unpackScreen(bytes,sha256(bytes),destination);
+  answer={path:destination};
+} else if (command === "call")
   answer = await invoke(JSON.parse(readFileSync(rest[0], "utf8")));
 else if (command === "capture") {
   const [indexId, file] = rest;

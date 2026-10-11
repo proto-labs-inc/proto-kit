@@ -101,6 +101,10 @@ it, call `screen_index` operation `custom` with the exact briefId first to get
 its indexId. Capture and upload a screenshot into that index, then call `custom`
 again with briefId, screenshotKey and state. This creates a single-screen
 approved inventory from the saved request. Claim phase `replicating` using the
-existing library, then upload and finish its source bundle as above. If catalog
+existing library, then upload and finish the verified baseline at
+`~/.proto/<codebase>/screens/custom-requests/<briefId>/` as above. Never upload a
+prototype with the requested changes as the source screen. If this is a legacy
+request without a verified baseline checkpoint, preserve the prototype and report
+that its starter cannot be saved from the modified workspace. If catalog
 upload fails, preserve the working prototype and report that saving its starter
 needs retry; do not rebuild or discard the prototype.

@@ -56,8 +56,11 @@ verified same-brief resume. Missing or contradictory state requires input.
 If get_brief returns starter_screen_id, follow index-screens' **Copy a starter**
 workflow instead of the replication steps below. Claim the same brief, copy the
 pinned editable bundle, and serve it. Never regenerate an indexed screen.
-For a custom URL, finish the normal build, then follow index-screens' Custom URLs
-workflow to save a reusable starter without delaying prototype availability.
+For a custom URL, preserve a verified baseline before writing requested changes:
+`screen-index.mjs snapshot <codebase> <workspace> <briefId>` copies only portable
+source into the saved request's screen checkpoint. After the normal build finishes,
+follow index-screens' Custom URLs workflow to upload that baseline, not the modified
+prototype. Do not delay prototype availability on catalog storage.
 
 ## Progress reporting
 
@@ -213,6 +216,11 @@ used the wrong display and disturbed the checks running beside them).
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
+Before step 7, for a custom-URL create request, verify the copied baseline's
+   visual fidelity, interactions and initial state, then run the snapshot command
+   above. Retain its reference PNG and state map alongside the build checkpoint.
+   If the baseline is not verified, do not save it as a reusable starter.
+
 7. **Write the change.** Implement the brief as one direction, including
    its data, interactions, and preview states. When the brief was
    sketched, the committed `sketch.spec` is that direction
