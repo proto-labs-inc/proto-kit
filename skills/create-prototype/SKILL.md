@@ -51,6 +51,14 @@ Then continue the same command without `--again`; do not re-create or overwrite
 completed work. The unused-slug rule below applies to new creation, not a
 verified same-brief resume. Missing or contradictory state requires input.
 
+## Indexed starters
+
+If get_brief returns starter_screen_id, follow index-screens' **Copy a starter**
+workflow instead of the replication steps below. Claim the same brief, copy the
+pinned editable bundle, and serve it. Never regenerate an indexed screen.
+For a custom URL, finish the normal build, then follow index-screens' Custom URLs
+workflow to save a reusable starter without delaying prototype availability.
+
 ## Progress reporting
 
 Follow `docs/build-progress.md` as soon as a saved request arrives. Report Connect

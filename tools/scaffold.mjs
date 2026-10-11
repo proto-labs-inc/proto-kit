@@ -39,6 +39,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { workspaceIdentity, IDENTITY_FILE } from "./dev-server.mjs";
 import { pickPort } from "./ports.mjs";
+import { requireScreenApproval } from "./screen-approval.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const USAGE = 'usage: node tools/scaffold.mjs <slug> --codebase <id> --brief <briefId> [--title "<title>"]';
@@ -61,6 +62,11 @@ const fail = (message) => {
 if (!slug || !options.codebase || !options.brief) fail(USAGE);
 if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) fail("the slug is lowercase letters, digits and dashes: it becomes the subdomain label");
 
+let screenIndex;
+if (options["screen-index"]) {
+  screenIndex = {indexId:options["screen-index"], version:Number(options["inventory-version"]), entryId:options["screen-entry"]};
+  await requireScreenApproval(options.codebase, screenIndex);
+}
 const homeDir = process.env.HOME ?? "";
 const home = join(homeDir, ".proto", options.codebase);
 const buildDir = join(home, "run", "builds", options.brief);
@@ -81,7 +87,7 @@ const tailwind = framework === "react" && usesTailwind(sourcePath, sourceDeps);
 const template = join(kit, "template", `workspace-${framework}`);
 
 // ---- the folder ----
-const workspaces = join(home, "prototypes");
+const workspaces = screenIndex ? join(home, "screens", "work", screenIndex.indexId, String(screenIndex.version)) : join(home, "prototypes");
 const workspace = join(workspaces, slug);
 const fresh = !existsSync(join(workspace, "package.json"));
 // A folder that exists belongs to this build only when this build made
@@ -199,7 +205,7 @@ if (!installed) {
 }
 
 // ---- the record the build reads ----
-const record = { slug, path: workspace, port, framework, tailwind, title };
+const record = { slug, path: workspace, port, framework, tailwind, title, ...(screenIndex ? {screenIndex} : {}) };
 writeFileSync(join(buildDir, "workspace.json"), JSON.stringify(record, null, 2) + "\n");
 console.log(JSON.stringify({ ...record, seconds: Math.round((Date.now() - started) / 100) / 10, install }));
 

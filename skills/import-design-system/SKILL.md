@@ -5,6 +5,13 @@ description: Import your product's design system into Proto. Reads a live page o
 
 # Import a design system
 
+Before preparing or importing a new design system, read the codebase's latest
+screen_index. For setup, require exact inventory confirmation, then claim phase
+library. Without approval, follow index-screens discovery and stop at review.
+Do not scaffold, host, import, or attach the library before this check. Existing
+published libraries may be used by prototype edits without refreshing screens.
+
+
 Work is requested in this conversation. Imports do not start a listener or
 wait for website commands. Keep finite checks of the library's local component
 request queue during this active import, then finish.

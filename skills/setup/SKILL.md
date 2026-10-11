@@ -13,7 +13,9 @@ description: >-
 
 # Setup
 
-Setup links the laptop and connects its codebase, then prepares the library.
+Setup links the laptop and connects its codebase, then discovers screenshots,
+pauses for website coverage confirmation, and only then prepares the library
+and reusable screens.
 It never starts a listener, binds a conversation, or waits for website commands.
 Reject old courier-delivery envelopes rather than treating them as new user requests.
 
@@ -363,27 +365,19 @@ system it extracts."**
 }
 ```
 
-### Try the published library first
+### Discover screenshots before preparing the library
 
-Immediately after the codebase is created, recovered or reused, call
-`attach_onboarding_library { codebase }`, before opening the Proto browser,
-visiting the product page, requesting sign-in or setting the product icon.
-Do not scaffold, host, publish or import a local library before this call.
+After connecting or recovering the source codebase, follow **index-screens**.
+Discover and capture screenshots before any starter-library attachment or
+local design-system work. Open the website inventory review and stop for the
+user's explicit confirmation of that inventory version. Do not continue to
+Verify or Handoff while waiting for coverage confirmation.
 
-- `attached`, `already-attached` or `existing-library`: the codebase has a
-  published library. Preserve it, clear any obsolete setup blocker with
-  `report_setup_action { codebase, action: null }`, then go straight to
-  **Verify** and **Handoff**. Skip the reference-page and product-icon steps,
-  sign-in, design-system import and local library serving for setup. A brief
-  can still require product exploration later as part of creating a prototype.
-- `not-configured`, a tool error, or an interrupted/failed attachment: continue
-  the normal setup flow below, including the reference page and product icon,
-  then **import-design-system** in the handoff. Do not stop setup or require a
-  successful attachment retry. A failed attachment is not setup completion;
-  the normal import must pass its completion gate.
-
-Only successful attachment skips the normal flow. Do not infer success from
-partial copies or a reserved build id.
+On the confirmed continuation, index-screens verifies approval, prepares the
+library (attaching a configured starter or importing the real design system),
+and copies and verifies the confirmed screens. Existing libraries are preserved.
+Reconnecting an existing codebase for an Edit prompt does not start a refresh;
+if its library exists, continue editing without changing its screen catalog.
 
 ### Report blockers to the setup surface
 
@@ -545,10 +539,9 @@ codebase id is in the document), then:
 Setup ends by continuing, not by stopping (an Edit prompt ends at
 "Editing a prototype" above instead):
 
-1. Use the result of **Try the published library first**; do not call attachment
-   again here. For `attached`, `already-attached` or `existing-library`, the
-   design system is ready. For `not-configured` or any attachment failure, run
-   **import-design-system** now and continue only after its completion gate.
+1. Read the current screen index and require its confirmed inventory version.
+   Follow index-screens through library preparation and verified replication.
+   Do not attach or import a library on an unconfirmed setup handoff.
 2. If the document carried a `brief`, hand it to **create-prototype**
    verbatim: title, description, the brief document URL, the
    reference page (`productUrl`), the reference HTML (structure

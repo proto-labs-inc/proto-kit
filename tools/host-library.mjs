@@ -61,6 +61,9 @@ const fail = (message) => {
 };
 const step = (message) => console.error(`… ${message}`);
 
+const approval = await callTool("screen_index", { operation: "library-check", codebase });
+if (approval.isError) fail(approval.content?.find(item => item.type === "text")?.text ?? "Confirm screenshots before preparing the library.");
+
 // 1. Scaffold. node_modules and dist never come from the template.
 if (!existsSync(join(library, "package.json"))) {
   if (!existsSync(join(home, "codebase.json"))) fail(`${home} has no codebase.json; run setup first`);
