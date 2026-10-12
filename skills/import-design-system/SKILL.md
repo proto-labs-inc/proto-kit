@@ -3,6 +3,11 @@ name: import-design-system
 description: Import your product's design system into Proto. Reads a live page of your product in your own browser, and fills the library with its light-mode colours, type styles and components, each written from the product's own rendering and checked against it pixel for pixel, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
 ---
 
+For a staff site preparation, `codebase.json` has `source.kind: "site"` and
+`source.liveUrl`. Use that URL as the library init source argument; there is no
+customer repository to inspect or request. Keep all generated dependencies,
+components and assets portable inside the preparation workspace.
+
 # Import a design system
 
 Before preparing or importing a new design system, read the codebase's latest
@@ -33,6 +38,8 @@ matter. Everything else is a tool call. A small import finishes in a
 couple of minutes; if you find yourself writing CSS by hand, reading
 computed styles one at a time, or composing a script, stop: the tool
 exists.
+
+**Library overview:** Start with the design-system content. Do not add a product-name heading, an "Imported ... ago" line, a source-page title or link, or any introductory header above the type styles, colours and components. Keep theme controls available without a title/status header. This applies to the library viewer, not to imported header or navigation components from the product.
 
 ## Report every stop before completion
 

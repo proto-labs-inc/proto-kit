@@ -55,12 +55,15 @@ verified same-brief resume. Missing or contradictory state requires input.
 
 If get_brief returns starter_screen_id, follow index-screens' **Copy a starter**
 workflow instead of the replication steps below. Claim the same brief, copy the
-pinned editable bundle, and serve it. Never regenerate an indexed screen.
-For a custom URL, preserve a verified baseline before writing requested changes:
-`screen-index.mjs snapshot <codebase> <workspace> <briefId>` copies only portable
-source into the saved request's screen checkpoint. After the normal build finishes,
-follow index-screens' Custom URLs workflow to upload that baseline, not the modified
-prototype. Do not delay prototype availability on catalog storage.
+pinned editable bundle and prepared build, and serve the saved dist directly.
+An unchanged copy requires no dependency installation or compilation. Never regenerate an indexed screen.
+For a custom URL, follow index-screens' Custom URLs workflow after claiming the
+brief. It invokes prepare-screen, including visual inspection at different widths
+and small responsive usability repairs, saves the verified baseline, then
+clones it into this prototype. Skip the separate page-copy steps below and
+continue at Write the change only after the clone passes its smoke check.
+Never freeze a custom URL directly into the user's prototype or snapshot a
+modified prototype as its starter.
 
 ## Progress reporting
 
@@ -216,10 +219,6 @@ used the wrong display and disturbed the checks running beside them).
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
-Before step 7, for a custom-URL create request, verify the copied baseline's
-   visual fidelity, interactions and initial state, then run the snapshot command
-   above. Retain its reference PNG and state map alongside the build checkpoint.
-   If the baseline is not verified, do not save it as a reusable starter.
 
 7. **Write the change.** Implement the brief as one direction, including
    its data, interactions, and preview states. When the brief was

@@ -1,3 +1,4 @@
+import { reportScreenBuild } from "./screen-build-report.mjs";
 /**
  * Where a build's events and images go: the site, through the
  * report_build_events and begin_build_capture MCP tools, or the build
@@ -38,7 +39,11 @@ export function createReporter({ codebase, briefId, runDir, sink = "site", trans
   };
   const outbox = join(runDir, "outbox");
   const deliver = async (events) => {
-    if (sink === "file") return toFolder(events);
+    if (sink === "file") {
+      toFolder(events);
+      await reportScreenBuild({ codebase, runDir, transport });
+      return;
+    }
     mkdirSync(outbox, { recursive: true });
 
     for (const file of readdirSync(outbox).filter(name => name.endsWith(".json")).sort()) {

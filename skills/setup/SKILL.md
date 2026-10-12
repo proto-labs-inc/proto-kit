@@ -1,27 +1,29 @@
 ---
 name: setup
 description: >-
-  Set up Proto on this laptop and connect a codebase. Starts from the setup
-  prompt copied from the Proto site, containing setup data and a one-time
-  laptop-linking code: it links this laptop, finds your codebase folder,
-  creates the codebase in Proto, opens your product page in a Proto browser
-  window, attaches a configured starter design system or imports the product's
-  real one. Work continues in the active conversation. Use when a message starts
-  "Set up Proto for", when installing Proto or connecting a new
-  codebase, or when other Proto skills find no config.json or codebase.json.
+  Connect a customer's computer and codebase, or prepare a customer's design
+  system and starter screens from a live site as Proto staff. The setup document
+  explicitly selects connect, prepare or edit. Customer connection never imports
+  or reviews screens; staff preparation needs no customer repository. Starts
+  from "Set up Proto for" and continues in the active agent conversation.
+  Also use when installing Proto or recovering its local connection records.
 ---
 
 # Setup
 
-Setup links the laptop and connects its codebase, then discovers screenshots,
-pauses for website coverage confirmation, and only then prepares the library
+Setup has two explicit purposes: customer connection and staff preparation.
+For a customer, link the laptop, connect the repository and attach existing assets
+from the staff preparation codebase assigned to their email.
+For staff, link the staff laptop and prepare from the live site with no repository.
+Never run discovery or design-system import during customer connection.
+Staff preparation pauses for website coverage confirmation before preparing the library
 and reusable screens.
 It never starts a listener, binds a conversation, or waits for website commands.
 Reject old courier-delivery envelopes rather than treating them as new user requests.
 
 Two scopes, both idempotent: the **machine** (once: config.json,
 prerequisites) and a **codebase** (once per codebase being prototyped:
-source link, starter attachment or design-system import). Re-running setup repairs; it never
+source link, prepared-asset attachment or staff design-system import). Re-running setup repairs; it never
 clobbers working state. **Setup is resumable**: every step below
 leaves its result in a file, so if it parks mid-way (waiting on an
 engineer, a login, anything), a later "continue setting up Proto"
@@ -256,6 +258,24 @@ Either way, confirm with the `whoami` tool: it reports the auth
 mode, team, and grants. A connected server whose `whoami` fails means
 the credential is stale: redo the auth step above.
 
+## Choose the purpose
+
+After the Machine steps, read `document.purpose`.
+- `prepare`: staff only. Call `get_site_preparation {codebase}` to validate access.
+  Run `node <kit>/tools/setup-codebase.mjs --codebase <id> --team <team-id> --site <productUrl>`.
+  This saves `source: {kind: "site", liveUrl}` without a customer checkout or fake path.
+  Skip Find their code. Open the reference site in the staff browser, sign in if needed,
+  then follow index-screens. Stop for staff confirmation of the exact inventory.
+  On confirmed continuation import the design system and use prepare-screen for
+  every included screen: visually inspect the source at different widths, reproduce
+  its observed responsive layouts and mobile-only controls, repair small overflow
+  defects, then visually inspect and verify the copy at matching widths.
+  Mark the index complete; the cloud attaches it to the customer when they connect.
+- `connect` (also the default for older documents): follow Codebase below, then
+  Connection completion. Do not ask for a product URL or open the reference browser.
+- `edit` or a document naming `prototype`: follow Editing a prototype, preserving
+  the existing workspace and catalog. Do not claim a new preparation or refresh screens.
+
 ## Codebase
 
 A codebase is one codebase being prototyped, keyed everywhere by a
@@ -357,6 +377,7 @@ system it extracts."**
   "name": "acme-web",                  // display name; renamable, never a path
   "team": { "id": "<id>", "name": "<name>" },  // which credential this codebase uses
   "source": {
+    "kind": "repository",
     "path": "/abs/path/to/acme-web",   // the checkout
     "remote": "git@github.com:acme/acme-web.git",
     "liveUrl": "https://…"             // where the codebase runs, if known:
@@ -365,19 +386,29 @@ system it extracts."**
 }
 ```
 
-### Discover screenshots before preparing the library
+### Connection completion
 
-After connecting or recovering the source codebase, follow **index-screens**.
-Discover and capture screenshots before any starter-library attachment or
-local design-system work. Open the website inventory review and stop for the
-user's explicit confirmation of that inventory version. Do not continue to
-Verify or Handoff while waiting for coverage confirmation.
+After connecting or recovering the customer source, call
+`attach_onboarding_preparation {codebase}` to attach the existing design system
+and verified screens from the staff preparation codebase assigned to the user's
+email. This call only attaches existing assets; it never starts preparation or
+an agent. Report the tool's actual status and message.
 
-On the confirmed continuation, index-screens verifies approval, prepares the
-library (attaching a configured starter or importing the real design system),
-and copies and verifies the confirmed screens. Existing libraries are preserved.
-Reconnecting an existing codebase for an Edit prompt does not start a refresh;
-if its library exists, continue editing without changing its screen catalog.
+- `attached` or `existing`: relay the returned message without promising assets
+  beyond what the result confirms. Clear a resolved connection blocker.
+- `not-configured`: the email has no staff preparation assignment. Tell the user:
+  "Your computer is connected. Contact the Proto team to set up the design system
+  and screens for your account."
+- Assigned assets unavailable, attachment failed, or any other incomplete result:
+  relay the returned message and tell the user to contact the Proto team for help.
+  Never describe these statuses as evidence that preparation or a background agent
+  is running. Report the blocker as described below.
+
+Verify whoami and the repository record, then stop after connection and attachment.
+Do not discover or review screens, request a product URL, import a library, start a
+refresh, or launch staff preparation from customer setup. No live library server
+or product sign-in is required. Do not continue into the reference-page, icon or
+staff preparation sections. Existing Edit prompts keep their editing workflow.
 
 ### Report blockers to the setup surface
 
@@ -413,7 +444,7 @@ After verifying the blocker is resolved, clear it with
 An answer alone is not proof of resolution. Do not clear a blocker merely
 because a heartbeat or published library exists. Apply this lifecycle again
 for every later stop, until the import's completion gate or a successful
-starter-library attachment completes the design system.
+prepared-asset attachment completes customer setup.
 Never invent a prototype brief to report a setup blocker.
 
 ### The reference page (the Proto window)
@@ -501,7 +532,7 @@ without stopping anything.
 ## Verify
 
 - `config.json` and `codebase.json` parse; `codebase.json` names the
-  team it was set up in; `source.path` exists and its
+  team it was set up in; a repository `source.path` exists and its
   `package.json`/remote match the codebase (they can legitimately
   disagree with each other, a fork or renamed checkout, which is
   why confirmation beat validation above).
@@ -536,18 +567,8 @@ codebase id is in the document), then:
 
 ## Handoff
 
-Setup ends by continuing, not by stopping (an Edit prompt ends at
-"Editing a prototype" above instead):
-
-1. Read the current screen index and require its confirmed inventory version.
-   Follow index-screens through library preparation and verified replication.
-   Do not attach or import a library on an unconfirmed setup handoff.
-2. If the document carried a `brief`, hand it to **create-prototype**
-   verbatim: title, description, the brief document URL, the
-   reference page (`productUrl`), the reference HTML (structure
-   hints only: the live page wins) and whether to use real data.
-   Registration there uses the laptop token's member as creator.
-3. Tell the user the library is published and stays viewable after this laptop
-   closes. Finish when their requested work is complete. Website build and edit
-   actions provide prompts to paste into a coding-agent conversation; no open
-   listening session is needed.
+Customer connection ends at Connection completion. Staff preparation follows
+index-screens and its confirmed continuation. A saved prototype brief continues
+through create-prototype only when explicitly supplied and its required assets
+are ready. Existing Edit prompts use Editing a prototype. No open listening
+session is needed.

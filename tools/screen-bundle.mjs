@@ -1,3 +1,4 @@
+import { validateVerification } from "./screen-verification.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
 import {
@@ -11,6 +12,7 @@ import {
   lstatSync,
 } from "node:fs";
 import { join, dirname, resolve, relative, posix } from "node:path";
+import { unpackScreenBuild } from "./screen-build.mjs";
 import { pickPort } from "./ports.mjs";
 
 const LIMIT = 128 * 1024 * 1024;
@@ -52,10 +54,18 @@ function validateFiles(files) {
   for (const file of files) {
     if (!/\.(?:[cm]?jsx?|tsx?|vue|json|css)$/.test(file.path)) continue;
     const source = Buffer.from(file.data, "base64").toString("utf8");
-    if (/["'`](?:\/Users\/|\/home\/|[A-Z]:\\)/.test(source)) throw new Error("Replace absolute laptop paths before packing the starter.");
+    if (/["'`](?:\/Users\/|\/home\/|[A-Z]:\\)/.test(source))
+      throw new Error(
+        "Replace absolute laptop paths before packing the starter.",
+      );
     for (const match of source.matchAll(/["'`](\.\.?\/[^"'`\n]+)["'`]/g)) {
-      const target = posix.normalize(posix.join(posix.dirname(file.path), match[1]));
-      if(target === ".." || target.startsWith("../")) throw new Error("Vendor references outside the starter before packing it.");
+      const target = posix.normalize(
+        posix.join(posix.dirname(file.path), match[1]),
+      );
+      if (target === ".." || target.startsWith("../"))
+        throw new Error(
+          "Vendor references outside the starter before packing it.",
+        );
     }
   }
   for (const required of [
@@ -151,8 +161,9 @@ export function unpackScreen(bytes, checksum, destination) {
 export async function cloneScreen(
   bytes,
   screen,
-  { destination, slug, codebase, briefId, port },
+  { destination, slug, codebase, briefId, port, buildBytes },
 ) {
+  validateVerification(screen.metadata?.verification, screen);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug) || !briefId)
     throw new Error("A new slug and exact brief ID are required.");
   if (existsSync(destination)) {
@@ -172,13 +183,32 @@ export async function cloneScreen(
   const selectedPort = port ?? (await pickPort({ from: 5173, to: 5999 }));
   const staging = `${destination}.clone-${randomBytes(6).toString("hex")}`;
   try {
+    const prepared = screen.metadata?.preparedBuild;
+    if (
+      !buildBytes ||
+      !prepared ||
+      prepared.sourceChecksum !== screen.bundle_checksum
+    )
+      throw new Error(
+        "This starter needs a prepared build. Run screen-index.mjs prepare for this screen first.",
+      );
     unpackScreen(bytes, screen.bundle_checksum, staging);
+    unpackScreenBuild(
+      buildBytes,
+      prepared.checksum,
+      screen.bundle_checksum,
+      join(staging, "dist"),
+    );
     const manifestPath = join(staging, "public/prototype.json");
     const manifest = JSON.parse(readFileSync(manifestPath));
     manifest.name = screen.title;
     manifest.port = selectedPort;
     manifest.variantSets = [];
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    writeFileSync(
+      join(staging, "dist/prototype.json"),
+      JSON.stringify(manifest, null, 2),
+    );
     const pkg = JSON.parse(readFileSync(join(staging, "package.json")));
     pkg.name = slug;
     // Vite's CLI flag overrides any port frozen in the bundled config.
@@ -192,24 +222,42 @@ export async function cloneScreen(
       join(staging, "public/__proto-workspace.json"),
       JSON.stringify(identity, null, 2),
     );
+    writeFileSync(
+      join(staging, "dist/__proto-workspace.json"),
+      JSON.stringify(identity, null, 2),
+    );
     // Initial state is applied before the app and rig boot, so reload and Frame agree.
     const state = JSON.stringify(screen.initial_state).replace(/</g, "\\u003c");
     const initial = `<script>{const query=new URLSearchParams(location.search);if([...query.keys()].every(key=>key==='__protoTheme')){const state=${state};for(const [key,value] of Object.entries(state))query.set(key,value);if(query.size)history.replaceState(null,'',location.pathname+'?'+query+location.hash);}}</script>`;
-    const htmlPath = join(staging, "index.html");
-    writeFileSync(
-      htmlPath,
-      readFileSync(htmlPath, "utf8").replace(
-        /<head(?:\s[^>]*)?>/i,
-        (head) => `${head}${initial}`,
-      ),
-    );
+    for (const htmlPath of [
+      join(staging, "index.html"),
+      join(staging, "dist/index.html"),
+    ]) {
+      writeFileSync(
+        htmlPath,
+        readFileSync(htmlPath, "utf8").replace(
+          /<head(?:\s[^>]*)?>/i,
+          (head) => `${head}${initial}`,
+        ),
+      );
+    }
     writeFileSync(
       join(staging, ".proto-starter.json"),
-      JSON.stringify({ screenId: screen.id, briefId }),
+      JSON.stringify({
+        screenId: screen.id,
+        briefId,
+        preparedBuild: prepared.checksum,
+      }),
     );
     mkdirSync(dirname(destination), { recursive: true });
     renameSync(staging, destination);
-    return { path: destination, port: selectedPort, resumed: false };
+    return {
+      path: destination,
+      port: selectedPort,
+      resumed: false,
+      serving: "prepared",
+      dist: join(destination, "dist"),
+    };
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }

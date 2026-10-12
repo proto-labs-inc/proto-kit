@@ -1,3 +1,5 @@
+import { widthsFor } from "./screen-verification.mjs";
+import { packScreenBuild, unpackScreenBuild } from "./screen-build.mjs";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -97,7 +99,37 @@ test("fresh and cached copies have independent editable files and fresh identiti
     bundle_checksum: sha256(bytes),
     initial_state: { dialog: "invite" },
   };
+  mkdirSync(join(source, "dist"));
+  writeFileSync(
+    join(source, "dist/index.html"),
+    readFileSync(join(source, "index.html")),
+  );
+  writeFileSync(
+    join(source, "dist/prototype.json"),
+    readFileSync(join(source, "public/prototype.json")),
+  );
+  const buildBytes = packScreenBuild(
+    join(source, "dist"),
+    screen.bundle_checksum,
+  );
+  screen.metadata = {
+    preparedBuild: {
+      checksum: sha256(buildBytes),
+      sourceChecksum: screen.bundle_checksum,
+    },
+  };
+  screen.index_id = "b7247cd5-15d8-47a0-a508-dd0e259108a6";
+  screen.source_url = "https://source.invalid/users";
+  screen.metadata.verification = {
+    version: 3, sourceChecksum: screen.bundle_checksum, buildChecksum: screen.metadata.preparedBuild.checksum,
+    inventory: { sourceUrl: screen.source_url, capturedAt: new Date().toISOString(), controls: [], states: ["default"], breakpoints: [] },
+    scenarios: widthsFor({ breakpoints: [] }).flatMap(width => ["visual","responsive","state","isolation"].map(category => ({
+      id: `${category}-${width}`, category, target: "default", viewport: {width,height:900}, ...(category === "responsive" ? { resizedFrom: width < 1024 ? 1440 : 390 } : {}), outcome: "passed", problems: [],
+      evidence: [`screen-indexes/${screen.index_id}/${"a".repeat(64)}.png`],
+    }))),
+  };
   const one = {
+    buildBytes,
     destination: join(root, "one"),
     slug: "one",
     codebase: "example",
@@ -105,6 +137,7 @@ test("fresh and cached copies have independent editable files and fresh identiti
     port: 5181,
   };
   const two = {
+    buildBytes,
     destination: join(root, "two"),
     slug: "two",
     codebase: "example",
@@ -113,6 +146,22 @@ test("fresh and cached copies have independent editable files and fresh identiti
   };
   await cloneScreen(bytes, screen, one);
   await cloneScreen(Buffer.from(bytes), screen, two);
+  assert.equal(existsSync(join(one.destination, "node_modules")), false);
+  assert.equal(
+    readFileSync(join(one.destination, "dist/prototype.json"), "utf8"),
+    readFileSync(join(one.destination, "public/prototype.json"), "utf8"),
+  );
+  assert.equal(
+    readFileSync(join(one.destination, "dist/__proto-workspace.json"), "utf8"),
+    readFileSync(
+      join(one.destination, "public/__proto-workspace.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    readFileSync(join(one.destination, "dist/index.html"), "utf8"),
+    readFileSync(join(one.destination, "index.html"), "utf8"),
+  );
   const identity = (options) =>
     JSON.parse(
       readFileSync(join(options.destination, "public/__proto-workspace.json")),
@@ -125,14 +174,31 @@ test("fresh and cached copies have independent editable files and fresh identiti
   );
   const original = readFileSync(join(two.destination, "index.html"), "utf8");
   assert.match(original, /"dialog":"invite"/);
-    const boot = original.match(/<script>(.*?)<\/script>/)[1];
-    let address;
-    const location={search:"?__protoTheme=dark",pathname:"/",hash:""};
-    runInNewContext(boot,{location,URLSearchParams,history:{replaceState(_state,_title,url){address=url;}}});
-    assert.equal(address,"/?__protoTheme=dark&dialog=invite");
-    address=undefined;location.search="?dialog=closed";
-    runInNewContext(boot,{location,URLSearchParams,history:{replaceState(_state,_title,url){address=url;}}});
-    assert.equal(address,undefined);
+  const boot = original.match(/<script>(.*?)<\/script>/)[1];
+  let address;
+  const location = { search: "?__protoTheme=dark", pathname: "/", hash: "" };
+  runInNewContext(boot, {
+    location,
+    URLSearchParams,
+    history: {
+      replaceState(_state, _title, url) {
+        address = url;
+      },
+    },
+  });
+  assert.equal(address, "/?__protoTheme=dark&dialog=invite");
+  address = undefined;
+  location.search = "?dialog=closed";
+  runInNewContext(boot, {
+    location,
+    URLSearchParams,
+    history: {
+      replaceState(_state, _title, url) {
+        address = url;
+      },
+    },
+  });
+  assert.equal(address, undefined);
   writeFileSync(join(one.destination, "index.html"), "edited");
   assert.equal(
     readFileSync(join(two.destination, "index.html"), "utf8"),
@@ -152,4 +218,51 @@ test("fresh and cached copies have independent editable files and fresh identiti
       .variantSets,
     [],
   );
+});
+
+test("prepared builds reject corrupt bytes, another source, unsafe paths, and leaking identity", (t) => {
+  const { root, source } = fixture(t);
+  const dist = join(source, "dist");
+  mkdirSync(dist);
+  writeFileSync(join(dist, "index.html"), "<html><head></head></html>");
+  writeFileSync(join(dist, "prototype.json"), "{}");
+  writeFileSync(join(dist, "__proto-workspace.json"), "secret");
+  writeFileSync(join(dist, ".env"), "secret");
+  writeFileSync(join(dist, "app.js.map"), "source paths");
+  const sourceChecksum = sha256(packScreen(source));
+  const bytes = packScreenBuild(dist, sourceChecksum);
+  const archive = JSON.parse(gunzipSync(bytes));
+  assert.equal(archive.files.length, 2);
+  const dest = join(root, "extracted");
+  assert.throws(
+    () => unpackScreenBuild(bytes, "0".repeat(64), sourceChecksum, dest),
+    /checksum/,
+  );
+  assert.throws(
+    () => unpackScreenBuild(bytes, sha256(bytes), "0".repeat(64), dest),
+    /source/,
+  );
+  for (const path of [
+    "../escape",
+    "/escape",
+    "a/../../escape",
+    "C:/escape",
+    "a\\escape",
+    "__proto-workspace.json",
+  ]) {
+    const malicious = gzipSync(
+      JSON.stringify({
+        ...archive,
+        files: [...archive.files, { path, data: "YQ==" }],
+      }),
+    );
+    assert.throws(
+      () =>
+        unpackScreenBuild(malicious, sha256(malicious), sourceChecksum, dest),
+      /Unsafe/,
+    );
+    assert.equal(existsSync(dest), false);
+  }
+  unpackScreenBuild(bytes, sha256(bytes), sourceChecksum, dest);
+  assert.equal(readFileSync(join(dest, "prototype.json"), "utf8"), "{}");
 });

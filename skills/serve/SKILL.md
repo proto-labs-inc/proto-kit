@@ -71,6 +71,12 @@ presented when the action reaches that boundary.
    }
    ```
 
+   For an unchanged indexed starter with a prepared `dist/`, the dev process
+   command is `["node", "<kit>/tools/serve.mjs", "<workspace>/dist", "<port>"]`.
+   This starts without installed dependencies. After editing the source, install
+   from its lockfile and switch this command to the normal dev server; never keep
+   serving the stale prepared dist after edits.
+
    `PROTO_TUNNEL=1` makes vite accept the public hostname and use wss
    HMR: without it the tunnel serves a blocked-host error. `chmod
    600 spec.json`; it holds the connector token.
@@ -119,7 +125,9 @@ presented when the action reaches that boundary.
    the message: the live view is what failed, and the sentence says
    what still works.
 
-6. **Publish** a permanent snapshot. Build the workspace with its
+6. **Publish** a permanent snapshot. For an unchanged indexed starter, upload
+   the cloned `dist/` directly; skip dependency installation and compilation.
+   For a new or edited page, build the workspace with its
    own build script (`pnpm build`; the templates configure relative
    asset paths, which a published build needs because it lives under
    a path). Then upload the output folder: `node tools/publish.mjs

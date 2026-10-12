@@ -15,7 +15,7 @@ export const buildFolder = (codebase, briefId) => join(protoHome(), codebase, "r
 
 /** The codebase id a workspace path belongs to, or null when it is not under ~/.proto. */
 export function codebaseOfWorkspace(workspace) {
-  const match = /[\\/]\.proto[\\/]([^\\/]+)[\\/]prototypes[\\/]/.exec(resolve(workspace) + "/");
+  const match = /[\\/]\.proto[\\/]([^\\/]+)[\\/](?:prototypes|screens)[\\/]/.exec(resolve(workspace) + "/");
   return match ? match[1] : null;
 }
 

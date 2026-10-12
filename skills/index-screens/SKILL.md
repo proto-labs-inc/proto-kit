@@ -11,14 +11,15 @@ approval boundary, including when setup was requested end to end.
 
 ## Discovery, before the design system
 
-1. Verify `whoami` and the codebase's team. Connect the source through setup if
-   needed. Do not attach, scaffold, import, host, or publish a design system yet.
+1. Verify `whoami` and the codebase's team. For staff preparation, validate
+   `get_site_preparation` and the local `source.kind: "site"` record. No repository
+   is required. Customer connection never invokes this discovery workflow. Do not attach, scaffold, import, host, or publish a design system yet.
 2. Call `screen_index {operation:"latest",codebase}`. Resume an unfinished run.
    For first setup or an explicit refresh, create a UUID requestId, save it to
    `~/.proto/<codebase>/screens/index-request.json`, and call operation `begin`.
    Retain the returned indexId. Never replace an interrupted run.
-3. Open the signed-in product using the host's browser skill. Inspect source
-   routes and primary navigation. Discover meaningful tabs, dialogs, menus,
+3. Open the signed-in product using the host's browser skill. Inspect live navigation and reachable URLs. For a repository-based explicit
+   refresh, source routes may supplement the live site. Discover meaningful tabs, dialogs, menus,
    empty/populated states. Do not perform destructive product actions to obtain
    a state. Record inaccessible screens as unresolved with notes, not as covered.
 4. Capture PNG screenshots only. Do not replicate components or import the design
@@ -44,38 +45,23 @@ approval boundary, including when setup was requested end to end.
    Require confirmed_version === inventory_version === the requested version.
    If they differ, send the user back to review and stop. The backend refuses
    unapproved transitions; never work around a refusal with local commands.
-2. If the saved phase is `complete`, report completion and stop. If it is
+2. If the saved phase is `complete`, inspect each ready revision’s verification.
+   Use prepare-screen’s Existing starters workflow to reverify missing or outdated
+   reports. Do not transition a completed index back to replication. Report completion
+   only when every included entry is currently selectable; repairs require a refresh.
+   If the saved phase is
    `replicating`, skip directly to the remaining replicas. Otherwise claim
-   operation `phase` with phase `library`. Only now call
-   `attach_onboarding_library`. Preserve a ready library; otherwise follow
+   operation `phase` with phase `library`. Preserve a ready library; otherwise follow
    import-design-system through its verification/publish gate, using the approved
    screenshots to guide coverage. An existing codebase reuses its library.
-3. Claim phase `replicating`. For each included entry, reuse an already-ready
-   revision from this run (`read.screens`, status ready). Otherwise build an isolated standalone Vite replica
-   from the product's source and real design system. Use a local run key
-   `<indexId>-<version>-<entryId>` as the build-stream brief argument, always with
-   `--no-send`. Read, curate and name the page through build-stream. Then run
-   `scaffold.mjs <entry-id> --codebase <codebase> --brief <run-key> --screen-index <indexId> --inventory-version <version> --screen-entry <entryId>`.
-   This verifies cloud approval before writing an isolated workspace under
-   `~/.proto/<codebase>/screens/work/<indexId>/<version>/<entryId>/`.
-   Run `replicate.mjs <run-key> --codebase <codebase> --no-send`, then the normal
-   checking tools. Replicate rechecks approval before working. Do not register
-   templates as user prototypes or create variant sets.
-4. Vendor the required library snapshot and local packages inside the starter.
-   Include assets, realistic fixtures, lockfile, package.json, index.html and
-   public/prototype.json. Resolve imports into the bundle; never depend on an
-   absolute laptop path or the mutable sibling library. Exclude secrets, actual
-   session state, browser credentials and node_modules. Interactions use isolated
-   fixtures rather than modifying the live product. Related states can share a
-   bundle, but every entry must have a verified initial URL state.
-5. Report copying/checking/failure with operation `progress`. Check screenshots
-   against the reference, exercise included interactions, and round-trip rig
-   state through URLs. Do not upload an unverified replica as ready.
-6. `node <kit>/tools/screen-index.mjs upload <codebase> <indexId> <version> <entryId> <workspace>`
-   returns screenId. Call `finish` with screenId and visual/interactions/state
-   verification booleans only after all three checks pass. Retry the same entry
-   after interruption; a ready revision is immutable.
-7. Mark phase complete only when every included entry is ready. Preserve partial
+3. Claim phase `replicating`. For each included entry, invoke the shared
+   prepare-screen skill with codebase, indexId, version and entryId. It owns
+   reference inspection, copying, local behavior, responsive verification and
+   artifact completion. For every initial screen, visually inspect source and copy
+   at matching widths, reproduce mobile-only UI, and repair small overflow defects
+   as part of the baseline. Reuse only revisions passing current verification.
+   Report per-entry progress; preserve partial completion and resume checkpoints.
+4. Mark phase complete only when every included entry is ready. Preserve partial
    completion and report individual failures. Do not say setup is complete while
    approved screens remain unfinished. Later refreshes repeat discovery/review.
 
@@ -89,25 +75,38 @@ For a saved brief with starter_screen_id, this replaces replication entirely:
 2. Run `node <kit>/tools/screen-index.mjs clone <codebase> <starter_screen_id> <slug> <briefId>`.
    This verifies a cached or downloaded bundle, creates an independent workspace,
    writes fresh identity and port, and sets the initial state before app boot.
-   It refuses unrelated existing workspaces and resumes only the same request.
-3. Install from the included lockfile using the normal package manager/cache.
-   Do not discover, replicate, or regenerate the starter. Register the prototype,
-   smoke-test startup and initial state, then use serve to supervise and publish.
+   It also verifies and copies the prepared build into `dist/`, giving source and
+   dist the same fresh identity, manifest and initial state. It refuses unrelated
+   existing workspaces and resumes only the same request without overwriting edits.
+3. For an unchanged copy, do not install dependencies or compile. Serve the
+   cloned `dist/` with `node <kit>/tools/serve.mjs <workspace>/dist <port>`, then
+   publish it directly with `publish.mjs`. Register the prototype, smoke-test
+   startup and initial state, and follow serve for supervision and publishing.
+   Install locked dependencies and use the editable source only when the request
+   includes actual edits; then rebuild and switch the supervised server to dev.
+   Do not discover, replicate, or regenerate the starter.
    Report progress and completion on the original brief. Retain its starter ID.
 
 ## Custom URLs
 
-A website brief without starter_screen_id requests replication of that one URL.
-Use create-prototype normally with the existing library. The user authorized only
-that screen; wider indexing must go through screenshot review. After verifying
-it, call `screen_index` operation `custom` with the exact briefId first to get
-its indexId. Capture and upload a screenshot into that index, then call `custom`
-again with briefId, screenshotKey and state. This creates a single-screen
-approved inventory from the saved request. Claim phase `replicating` using the
-existing library, then upload and finish the verified baseline at
-`~/.proto/<codebase>/screens/custom-requests/<briefId>/` as above. Never upload a
-prototype with the requested changes as the source screen. If this is a legacy
-request without a verified baseline checkpoint, preserve the prototype and report
-that its starter cannot be saved from the modified workspace. If catalog
-upload fails, preserve the working prototype and report that saving its starter
-needs retry; do not rebuild or discard the prototype.
+A website brief without starter_screen_id authorizes preparation of its one
+reference URL. After claiming the brief (started/building/serving), call
+`screen_index {operation:"custom",briefId}` to obtain the index. Capture its
+reference PNG, then call custom again with briefId, screenshotKey and initial
+state to confirm the single-screen inventory. Claim replicating using the existing
+library. Invoke the same prepare-screen workflow used for initial setup screens,
+including visual inspection at matching widths and small responsive usability
+repairs even for an unchanged-copy request. Wait for a verified screenId.
+Clone it with `screen-index.mjs clone <codebase> <screenId> <slug> <briefId>`
+before applying any requested prototype changes. Resume by reading the same
+custom index, never by snapshotting a modified prototype. A legacy request with
+an existing modified workspace and no baseline is blocked pending a separately
+prepared baseline; do not overwrite it or archive its changes as the starter.
+
+## Prepare existing starters
+
+For an existing ready screen that predates prepared builds, run
+`node <kit>/tools/screen-index.mjs prepare <codebase> <screenId>`. It downloads and
+verifies the exact immutable source, builds it once in isolation and attaches the
+compiled artifact to that same screen ID. An already-prepared screen is reused.
+Never create a replacement screen or reconstruct the product to backfill a build.

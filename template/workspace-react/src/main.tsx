@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ProtoRig } from "@proto-labs-inc/rig";
 import type { Manifest } from "@proto-labs-inc/wire";
-import manifest from "../public/prototype.json";
 import "./styles.css";
 
 const root = document.getElementById("root")!;
@@ -15,7 +14,7 @@ const root = document.getElementById("root")!;
 if (import.meta.env.DEV && window.location.hash.startsWith("#/render/")) {
   import("./render").then(({ renderPart }) => renderPart(root));
 } else {
-  import("./App").then(({ App }) => {
+  Promise.all([import("./App"), fetch(`${import.meta.env.BASE_URL}prototype.json`).then((response) => response.json())]).then(([{ App }, manifest]) => {
     createRoot(root).render(
       <StrictMode>
         <ProtoRig manifest={manifest as Manifest}>
