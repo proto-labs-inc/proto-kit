@@ -51,6 +51,20 @@ Then continue the same command without `--again`; do not re-create or overwrite
 completed work. The unused-slug rule below applies to new creation, not a
 verified same-brief resume. Missing or contradictory state requires input.
 
+## Indexed starters
+
+If get_brief returns starter_screen_id, follow index-screens' **Copy a starter**
+workflow instead of the replication steps below. Claim the same brief, copy the
+pinned editable bundle and prepared build, and serve the saved dist directly.
+An unchanged copy requires no dependency installation or compilation. Never regenerate an indexed screen.
+For a custom URL, follow index-screens' Custom URLs workflow after claiming the
+brief. It invokes prepare-screen, including visual inspection at different widths
+and small responsive usability repairs, saves the verified baseline, then
+clones it into this prototype. Skip the separate page-copy steps below and
+continue at Write the change only after the clone passes its smoke check.
+Never freeze a custom URL directly into the user's prototype or snapshot a
+modified prototype as its starter.
+
 ## Progress reporting
 
 Follow `docs/build-progress.md` as soon as a saved request arrives. Report Connect
@@ -205,6 +219,7 @@ used the wrong display and disturbed the checks running beside them).
    here with this session's mode. Carry on with step 7 while they run;
    when a fixer reports a part matched, say one short line ("The
    resizer now matches the page") and nothing more.
+
 7. **Write the change.** Implement the brief as one direction, including
    its data, interactions, and preview states. When the brief was
    sketched, the committed `sketch.spec` is that direction

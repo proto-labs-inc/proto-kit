@@ -152,6 +152,7 @@ switch (command) {
     } finally {
       page.close();
     }
+    writeFileSync(join(runDir, "reference.png"), readFileSync(frame.png));
     const image = await uploadCapture(readFileSync(frame.png));
     writeFileSync(treePath, JSON.stringify(read.tree, null, 2));
     writeFileSync(readPath, JSON.stringify(read.read));

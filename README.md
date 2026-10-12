@@ -30,7 +30,10 @@ Cursor; the core stays harness-neutral.
 
 ### skills/
 
-- `setup/`: link the laptop and the source repo, write codebase.json.
+- `setup/`: link the laptop and source repo, write codebase.json, and attach the
+  existing staff-prepared design system and verified screens assigned to the
+  customer's email. Report the attachment result; missing assignments or unavailable
+  assets need Proto team help. Customer connection never starts preparation.
 - `import-design-system/`: read the source repo and live page, fill the library.
 - `create-prototype/`: brief to workspace: one direction, preview states, markers.
 - `create-variant-set/`: add a new variant set to an existing prototype.

@@ -198,7 +198,8 @@ async function copyCheck(marks, opened) {
     else if (Math.abs(w - read.w) > 1 || Math.abs(h - read.h) > 1) resized.push(entry);
   }
   let pixels = null;
-  const frame = framePaths(build.codebase);
+  const savedReference = join(build.dir, "reference.png");
+  const frame = existsSync(savedReference) ? { png: savedReference } : framePaths(build.codebase);
   if (existsSync(frame.png)) {
     const mine = join(outDir, "default.png");
     const diff = join(outDir, "default-diff.png");

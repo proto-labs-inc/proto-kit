@@ -42,6 +42,21 @@ export async function setupCodebase(options, deps = {}) {
     const url = new URL(options["live-url"]);
     if (!["https:", "http:"].includes(url.protocol)) throw new Error("The product URL must use HTTP or HTTPS.");
   }
+  if (options.site || previous?.source?.kind === "site") {
+    if (!id || options.source || options.remote) throw new Error("Site preparation needs its existing codebase ID and no repository source.");
+    const result = await call("get_site_preparation", { codebase: id }, { app: config.app, secret: credential.secret });
+    if (result?.isError) throw new Error("Staff site preparation was refused.");
+    const row = JSON.parse(result.content[0].text);
+    if (row.codebase !== id || row.team_id !== credential.team.id || !row.product_url) throw new Error("Unexpected site preparation or team.");
+    const url = new URL(row.product_url);
+    if (!["http:", "https:"].includes(url.protocol)) throw new Error("Invalid preparation URL.");
+    if (options.site && new URL(options.site).href !== url.href) throw new Error("The URL differs from the assigned preparation.");
+    if (previous?.source?.path) throw new Error("Cannot replace a repository connection with a site preparation.");
+    const record = { schemaVersion: 1, codebase: id, name: row.name, team: credential.team,
+      source: { kind: "site", liveUrl: url.href }, createdAt: previous?.createdAt ?? new Date().toISOString() };
+    save(join(home, id, "codebase.json"), record);
+    return { outcome: previous ? "reused" : "prepared", codebase: id, record };
+  }
   const directoryExists = (path) => {
     try { return statSync(path).isDirectory(); } catch { return false; }
   };
@@ -76,7 +91,7 @@ export async function setupCodebase(options, deps = {}) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(row.codebase ?? "") || (id && id !== row.codebase) || row.team_id !== credential.team.id || !row.name) throw new Error("Proto returned an unexpected codebase or team. Reconcile the registration before retrying.");
   const record = {
     ...previous, schemaVersion: 1, codebase: row.codebase, name: row.name, team: credential.team,
-    source: { ...previous?.source, path: sourcePath, remote, ...(options["live-url"] ? { liveUrl: options["live-url"] } : {}) },
+    source: { ...previous?.source, kind: "repository", path: sourcePath, remote, ...(options["live-url"] ? { liveUrl: options["live-url"] } : {}) },
     createdAt: previous?.createdAt ?? new Date().toISOString(),
   };
   try { save(join(home, row.codebase, "codebase.json"), record); }
@@ -90,7 +105,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const args = process.argv.slice(2);
     for (let i = 0; i < args.length; i += 2) {
       const key = args[i].slice(2);
-      if (!args[i].startsWith("--") || !["codebase", "source", "remote", "team", "live-url"].includes(key) || !args[i + 1] || args[i + 1].startsWith("--") || options[key]) throw new Error("Usage: setup-codebase.mjs [--codebase id] [--source folder] [--remote url] [--team id] [--live-url url]");
+      if (!args[i].startsWith("--") || !["codebase", "source", "remote", "team", "live-url", "site"].includes(key) || !args[i + 1] || args[i + 1].startsWith("--") || options[key]) throw new Error("Usage: setup-codebase.mjs [--codebase id] [--source folder] [--remote url] [--team id] [--live-url url]");
       options[key] = args[i + 1];
     }
     console.log(JSON.stringify(await setupCodebase(options)));

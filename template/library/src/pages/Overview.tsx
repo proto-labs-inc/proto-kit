@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon } from "lucide-react";
 import { ComponentBlock } from "@/components/ComponentBlock";
-import { ImportLine } from "@/components/ImportLine";
 import { ImportQueue } from "@/components/ImportQueue";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { TokenSwatches } from "@/components/TokenSwatches";
 import { TypeSpecimens } from "@/components/TypeSpecimens";
-import { componentView, headingStyle, importInProgress, tokensFor, type Component, type RequestQueue, type Library } from "@/library";
+import { componentView, importInProgress, tokensFor, type Component, type RequestQueue, type Library } from "@/library";
 import { galleryUrl } from "@/route";
 import { usePreviewTheme } from "@/theme";
 
@@ -18,33 +17,16 @@ type Props = { library: Library; requestQueue: RequestQueue };
 // of. The three sections are on the page from the start, so nothing is
 // inserted above what the user is reading. The import itself lives in
 // the rail on the right.
-//
-// The header is the product's: its name, set in its own heading face
-// once the import has read one, and under it the one sentence that says
-// where this came from and when (ImportLine). The site's page around
-// this frame says only where it is served from.
 export function Overview({ library, requestQueue }: Props) {
   const { manifest } = library;
   const theme = usePreviewTheme();
   const tokens = tokensFor(manifest, theme);
   const started = manifest.startedAt !== null;
   const justAdded = useArrivals(library);
-  const heading = headingStyle(manifest);
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10 md:grid md:grid-cols-[1fr_16rem] md:gap-x-12">
       <div className="flex min-w-0 flex-col gap-14">
-        <header className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-2">
-            <h1
-              className="m-0 text-4xl font-semibold tracking-tight"
-              style={heading ? { fontFamily: `"${heading.family}", var(--font-sans)`, fontWeight: heading.weight } : undefined}
-            >
-              {manifest.product?.name ?? "Design system"}
-            </h1>
-            {started && <ImportLine library={library} requestQueue={requestQueue} />}
-          </div>
-          <ThemeToggle manifest={manifest} />
-        </header>
+        <ThemeToggle manifest={manifest} />
 
         {!started && (
           <p className="text-sm text-muted-foreground">Nothing imported yet. The import fills this page as it reads your product.</p>

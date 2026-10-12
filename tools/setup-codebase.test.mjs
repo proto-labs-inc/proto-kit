@@ -66,3 +66,22 @@ test("an atomic-write failure preserves the existing destination", (t) => {
   assert.throws(() => atomicRecord(destination, { updated: true }));
   assert.equal(readFileSync(join(destination, "keep"), "utf8"), "original");
 });
+
+test("staff preparation records a site source without a customer repository", async (t) => {
+  const f = fixture(t);
+  f.deps.call = async (name, input) => {
+    f.calls.push([name, input]);
+    return { content: [{ text: JSON.stringify({ codebase: "abc12345", name: "Product", team_id: "team1", product_url: "https://example.test/app" }) }] };
+  };
+  const result = await setupCodebase({ codebase: "abc12345", site: "https://example.test/app", team: "team1" }, f.deps);
+  assert.deepEqual(result.record.source, { kind: "site", liveUrl: "https://example.test/app" });
+  assert.equal(f.calls[0][0], "get_site_preparation");
+  const resumed = await setupCodebase({ codebase: "abc12345" }, f.deps);
+  assert.equal(resumed.outcome, "reused");
+  await assert.rejects(setupCodebase({ codebase: "abc12345", site: "https://other.test" }, f.deps), /differs/);
+});
+test("site preparation refuses nonstaff and cannot replace a repository", async (t) => {
+  const f = fixture(t);
+  f.deps.call = async () => ({ isError: true });
+  await assert.rejects(setupCodebase({ codebase: "abc12345", site: "https://example.test" }, f.deps), /refused/);
+});

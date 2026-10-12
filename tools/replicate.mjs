@@ -42,6 +42,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireScreenApproval } from "./screen-approval.mjs";
 import { workflowEvent } from "./workflow-report.mjs";
 import { createReporter } from "./build-report.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
@@ -115,6 +116,10 @@ const tree = need("tree.json", "run build-stream.mjs read first");
 const read = need("read.json", "run build-stream.mjs read first");
 const curation = tree.curation ?? need("curation.json", "run build-stream.mjs curate, review it, then name");
 const workspace = need("workspace.json", "run scaffold.mjs first");
+if (workspace.screenIndex) {
+  await requireScreenApproval(codebase, workspace.screenIndex);
+  options.noSend = true;
+}
 const library = join(home, "library");
 const appUrl = `http://localhost:${workspace.port}`;
 const liveMatch = liveMatchOf(tree.url);
