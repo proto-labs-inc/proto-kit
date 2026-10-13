@@ -179,19 +179,61 @@ export function layoutProblems(window) {
   return [...new Set(errors)];
 }
 
+/** A scenario replaces the plan profile; an empty object restores normal motion. */
+export function captureProfileFor(plan = {}, scenario = {}) {
+  let profile = plan.capture;
+  if (scenario.capture !== undefined) profile = scenario.capture;
+  if (profile === undefined) profile = {};
+  if (!profile || typeof profile !== "object" || Array.isArray(profile))
+    throw new Error("Capture profile must be an object");
+  for (const key of Object.keys(profile))
+    if (!["reducedMotion", "animationTimeMs"].includes(key))
+      throw new Error("Unknown capture profile option: " + key);
+  if (profile.reducedMotion !== undefined && !["reduce", "no-preference"].includes(profile.reducedMotion))
+    throw new Error("Capture reducedMotion must be reduce or no-preference");
+  if (profile.animationTimeMs !== undefined && (!Number.isFinite(profile.animationTimeMs) || profile.animationTimeMs < 0))
+    throw new Error("Capture animationTimeMs must be a finite nonnegative number");
+  return { ...profile };
+}
+
+/** Apply before navigation so source scripts see the native media preference. */
+export async function applyCaptureMedia(page, profile) {
+  if (profile.reducedMotion !== undefined)
+    await page.send("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-reduced-motion", value: profile.reducedMotion }],
+    });
+}
+
+/** Runs in either source or copied document, only for a declared sampled snapshot. */
+export function sampleAnimations(document, timeMs) {
+  const animations = document.getAnimations();
+  for (const animation of animations) {
+    animation.pause();
+    animation.currentTime = timeMs;
+  }
+  return animations.length;
+}
+
 export async function runScenario(
   url,
   scenario,
   out,
   viewport,
   screenshotReference,
+  captureMetadata = {},
 ) {
+  const capture = captureProfileFor({}, scenario);
+  captureMetadata.profile = capture;
   const responsive = scenario.category === "responsive";
   const origin = { ...viewport, width: resizeOrigin(viewport.width) };
   const opened = await headlessPage("about:blank", responsive ? origin : viewport);
   const page = opened.page;
   const problems = [];
   try {
+    await applyCaptureMedia(page, capture);
+    // Match the visible source session: visibility-gated animation and rAF
+    // must keep advancing even while another browser window has focus.
+    await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await page.send("Runtime.enable");
     await page.send("Network.enable");
     await page.send("Page.enable");
@@ -300,6 +342,17 @@ export async function runScenario(
         `document.fonts.ready.then(()=>new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve))))`,
       ),
     );
+    captureMetadata.reducedMotion = await evaluate(page, inFrame(
+      "window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduce' : 'no-preference'",
+    ));
+    if (capture.animationTimeMs !== undefined) {
+      captureMetadata.sampledAnimations = await evaluate(page, inFrame(
+        `(${sampleAnimations.toString()})(document, ${capture.animationTimeMs})`,
+      ));
+      await evaluate(page, inFrame(
+        "new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve)))",
+      ));
+    }
     const geometry = await evaluate(
       page,
       inFrame(
@@ -357,6 +410,8 @@ export async function verifyBuild(folder, plan, screen, output) {
   if (!plan?.inventory || !Array.isArray(plan.scenarios))
     throw new Error("Supply the reference inventory and executable scenarios");
   validateResponsivePlan(plan);
+  captureProfileFor(plan);
+  for (const scenario of plan.scenarios) captureProfileFor(plan, scenario);
   const manifest = JSON.parse(
     readFileSync(join(folder, "prototype.json"), "utf8"),
   );
@@ -398,18 +453,21 @@ export async function verifyBuild(folder, plan, screen, output) {
         if (!/^[a-zA-Z0-9_-]+$/.test(id))
           throw new Error("Scenario IDs must be safe filenames");
         const evidence = join(output, id + ".png");
+        const capture = {};
         const problems = await runScenario(
           server.url,
-          scenario,
+          { ...scenario, capture: captureProfileFor(plan, scenario) },
           evidence,
           viewport,
           scenario.references?.[width],
+          capture,
         );
         scenarios.push({
           id,
           category: scenario.category,
           target: scenario.target,
           viewport,
+          capture,
           ...(scenario.category === "responsive" ? { resizedFrom: resizeOrigin(width) } : {}),
           outcome: problems.length ? "failed" : "passed",
           problems,
