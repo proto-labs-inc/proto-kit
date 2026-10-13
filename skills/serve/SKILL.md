@@ -232,3 +232,11 @@ teardown, only when the user asks to remove the prototype: the
 `delete_tunnel` MCP tool with the same target provisioning took
 (`{ kind: "prototype", codebase, slug }`), which also clears the
 stored address, then delete the run dir.
+
+## Rig compatibility when copying starters
+
+Cloning preserves the verified starter artifacts. If the independent copy pins
+an older rig than this kit, `screen-bundle.mjs` updates its rig dependencies,
+installs them and rebuilds that copy before its normal smoke check. This is the
+exception to the unchanged-copy no-install/no-build fast path. Copies already
+on the current rig keep the prepared build fast path.

@@ -1,3 +1,4 @@
+import { upgradeRig } from "./update-rig.mjs";
 import { validateVerification } from "./screen-verification.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
@@ -249,6 +250,9 @@ export async function cloneScreen(
         preparedBuild: prepared.checksum,
       }),
     );
+    // Old prepared builds embed the old rig. Upgrade the independent copy,
+    // leaving the verified starter artifacts untouched. Current builds stay fast.
+    upgradeRig(staging);
     mkdirSync(dirname(destination), { recursive: true });
     renameSync(staging, destination);
     return {
