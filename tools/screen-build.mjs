@@ -1,3 +1,4 @@
+import { SCREEN_ARTIFACT_LIMIT, SCREEN_EXPANDED_LIMIT, isBase64 } from "./screen-archive.mjs";
 /** The compiled half of a starter, bound to the immutable editable bundle. */
 import { createHash, randomBytes } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
@@ -11,7 +12,7 @@ import {
   rmSync,
 } from "node:fs";
 import { join, dirname, relative, resolve } from "node:path";
-const LIMIT = 128 * 1024 * 1024;
+const LIMIT = SCREEN_EXPANDED_LIMIT;
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const excluded = (name) =>
   name.startsWith(".") ||
@@ -37,10 +38,7 @@ function validate(build, sourceChecksum) {
       file.path.includes(":") ||
       file.path.split("/").some((part) => !part || excluded(part)) ||
       names.has(file.path) ||
-      typeof file.data !== "string" ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
-        file.data,
-      )
+      !isBase64(file.data)
     )
       throw new Error("Unsafe prepared build entry.");
     names.add(file.path);
@@ -82,8 +80,8 @@ export function packScreenBuild(folder, sourceChecksum) {
   const build = { format: "proto-screen-build-v1", sourceChecksum, files };
   validate(build, sourceChecksum);
   const bytes = gzipSync(JSON.stringify(build));
-  if (bytes.length > 32 * 1024 * 1024)
-    throw new Error("Compressed prepared build exceeds 32 MB.");
+  if (bytes.length > SCREEN_ARTIFACT_LIMIT)
+    throw new Error("Compressed prepared build exceeds 64 MB.");
   return bytes;
 }
 export function unpackScreenBuild(
