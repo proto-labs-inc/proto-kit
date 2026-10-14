@@ -328,14 +328,14 @@ if (progress) {
     workflowEvent(progressBuild.dir, "publish", "Published the prototype", "completed"),
   ]);
   await progress.flush();
-  const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" });
+  const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" }, targetFor(readConfig(), { codebase }));
   if (completed?.isError) throw new Error(completed.content?.[0]?.text ?? "Completion report failed");
 }
 } catch (error) {
   if (progress) {
     progress.send([workflowEvent(progressBuild.dir, "publish", error.message.slice(0, 200), "failed"), activityEvent(publishing, "publish-result", "failed", "Publishing failed", error.message.slice(0, 1000))]);
     await progress.flush().catch(() => {});
-    await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }).catch(() => {});
+    await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }, targetFor(readConfig(), { codebase })).catch(() => {});
   }
   throw error;
 }
