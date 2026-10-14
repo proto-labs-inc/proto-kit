@@ -40,7 +40,7 @@ export function upgradeRig(workspace, { run = spawnSync } = {}) {
   writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
   const args = manager === "pnpm" ? ["install", "--no-frozen-lockfile"] : ["install"];
   for (const command of [args, ["run", "build"]]) {
-    const result = run(manager, command, { cwd: workspace, encoding: "utf8" });
+    const result = run(manager, command, { cwd: workspace, encoding: "utf8", env: { ...process.env, CI: "true" } });
     if (result.status !== 0) {
       writeFileSync(path, original);
       if (previousLock) writeFileSync(lockPath, previousLock);

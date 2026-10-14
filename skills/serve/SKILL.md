@@ -27,6 +27,10 @@ presented when the action reaches that boundary.
 
 ## Start
 
+For an existing prototype, run `node <kit>/tools/update-rig.mjs <workspace>`
+before serving or publishing. This upgrades and rebuilds outdated rigs; current
+versions are unchanged. Stop on an upgrade failure.
+
 1. **Register the prototype** first: `register_prototype { codebase,
    slug, title }`. The laptop token identifies the member and team. It
    upserts on (codebase, slug), so re-registering after a title change
