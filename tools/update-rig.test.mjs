@@ -7,12 +7,12 @@ import { updateRigDependencies, upgradeRig } from "./update-rig.mjs";
 
 test("upgrades pinned and vendored rigs without downgrading newer packages", () => {
   const pkg = { dependencies: { "@proto-labs-inc/rig": "0.1.0", "@proto-labs-inc/wire": "0.2.0", react: "19" } };
-  assert.deepEqual(updateRigDependencies(pkg), { "@proto-labs-inc/rig": "0.1.1" });
+  assert.deepEqual(updateRigDependencies(pkg), { "@proto-labs-inc/rig": "0.2.0" });
   assert.equal(pkg.dependencies["@proto-labs-inc/wire"], "0.2.0");
   assert.equal(pkg.dependencies.react, "19");
   assert.deepEqual(updateRigDependencies(pkg), {});
   const vue = { devDependencies: { "@proto-labs-inc/rig-vue": "file:vendor/rig.tgz", "@proto-labs-inc/wire": "0.1.0" } };
-  assert.deepEqual(updateRigDependencies(vue), { "@proto-labs-inc/rig-vue": "0.1.1", "@proto-labs-inc/wire": "0.1.1" });
+  assert.deepEqual(updateRigDependencies(vue), { "@proto-labs-inc/rig-vue": "0.2.0", "@proto-labs-inc/wire": "0.2.0" });
 });
 
 test("old prepared copies install and rebuild; current copies need no commands", (t) => {
@@ -26,7 +26,7 @@ test("old prepared copies install and rebuild; current copies need no commands",
   assert.deepEqual(calls, [["pnpm", "install", "--no-frozen-lockfile"], ["pnpm", "run", "build"]]);
   assert.equal(upgradeRig(workspace, { run }).status, "current");
   assert.equal(calls.length, 2);
-  assert.equal(JSON.parse(readFileSync(join(workspace, "package.json"))).dependencies["@proto-labs-inc/rig"], "0.1.1");
+  assert.equal(JSON.parse(readFileSync(join(workspace, "package.json"))).dependencies["@proto-labs-inc/rig"], "0.2.0");
 });
 
 test("failed installs restore the manifest and lockfile so a retry still upgrades", (t) => {
