@@ -9,6 +9,8 @@
  * template matching the source repo's framework (vue in its package.json
  * → template/workspace-vue, else template/workspace-react), then:
  *   - names it: package.json name, index.html title, prototype.json name;
+ *   - pins the Proto app this laptop is linked to as prototype.json's
+ *     frameOrigin, the only Frame the rig loads selection tools from;
  *   - picks a port free on this laptop (both loopback addresses) that no
  *     record under ~/.proto claims, any codebase's, and writes it into
  *     vite.config.ts and prototype.json, which must agree;
@@ -38,6 +40,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSyn
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { workspaceIdentity, IDENTITY_FILE } from "./dev-server.mjs";
+import { frameOrigin } from "./frame-origin.mjs";
 import { pickPort } from "./ports.mjs";
 import { requireScreenApproval } from "./screen-approval.mjs";
 
@@ -113,7 +116,7 @@ editJson(join(workspace, "package.json"), (pkg) => ({ ...pkg, name: slug }));
 if (!workspaceIdentity(workspace)) {
   writeFileSync(join(workspace, "public", IDENTITY_FILE), JSON.stringify({ codebase: options.codebase, slug, token: randomBytes(12).toString("hex") }, null, 2) + "\n");
 }
-editJson(join(workspace, "public", "prototype.json"), (manifest) => ({ ...manifest, name: slug, port }));
+editJson(join(workspace, "public", "prototype.json"), (manifest) => ({ ...manifest, name: slug, port, ...frameOrigin(manifest) }));
 edit(join(workspace, "index.html"), (html) => html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`));
 edit(join(workspace, "vite.config.ts"), (source) => source.replace(/port: \d+,/, `port: ${port},`));
 
