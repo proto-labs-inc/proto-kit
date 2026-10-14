@@ -1,3 +1,4 @@
+import { upgradeRig } from "./update-rig.mjs";
 import { SCREEN_ARTIFACT_LIMIT, SCREEN_EXPANDED_LIMIT, isBase64 } from "./screen-archive.mjs";
 import { validateVerification } from "./screen-verification.mjs";
 import { createHash, randomBytes } from "node:crypto";
@@ -247,6 +248,9 @@ export async function cloneScreen(
         preparedBuild: prepared.checksum,
       }),
     );
+    // Old prepared builds embed the old rig. Upgrade the independent copy,
+    // leaving the verified starter artifacts untouched. Current builds stay fast.
+    upgradeRig(staging);
     mkdirSync(dirname(destination), { recursive: true });
     renameSync(staging, destination);
     return {
