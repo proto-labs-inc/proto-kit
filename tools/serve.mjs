@@ -24,6 +24,9 @@ const TYPES = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
   ".mjs": "text/javascript; charset=utf-8",
   ".woff2": "font/woff2",
 };
