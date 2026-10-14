@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { isBase64, SCREEN_ARTIFACT_LIMIT } from "./screen-archive.mjs";
 import { widthsFor } from "./screen-verification.mjs";
 import { packScreenBuild, unpackScreenBuild } from "./screen-build.mjs";
 import { runInNewContext } from "node:vm";
@@ -265,4 +267,32 @@ test("prepared builds reject corrupt bytes, another source, unsafe paths, and le
   }
   unpackScreenBuild(bytes, sha256(bytes), sourceChecksum, dest);
   assert.equal(readFileSync(join(dest, "prototype.json"), "utf8"), "{}");
+});
+
+
+test("large original media round-trips in source and compiled archives", (t) => {
+  const { root, source } = fixture(t);
+  const media = randomBytes(33 * 1024 * 1024);
+  writeFileSync(join(source, "public/video.mp4"), media);
+  const bytes = packScreen(source);
+  assert.ok(bytes.length > 32 * 1024 * 1024);
+  assert.ok(bytes.length < SCREEN_ARTIFACT_LIMIT);
+  const copiedSource = join(root, "large-source");
+  unpackScreen(bytes, sha256(bytes), copiedSource);
+  assert.deepEqual(readFileSync(join(copiedSource, "public/video.mp4")), media);
+  const dist = join(source, "dist");
+  mkdirSync(dist);
+  writeFileSync(join(dist, "index.html"), "<html></html>");
+  writeFileSync(join(dist, "prototype.json"), "{}");
+  writeFileSync(join(dist, "video.mp4"), media);
+  const built = packScreenBuild(dist, sha256(bytes));
+  assert.ok(built.length > 32 * 1024 * 1024);
+  const copiedBuild = join(root, "large-build");
+  unpackScreenBuild(built, sha256(built), sha256(bytes), copiedBuild);
+  assert.deepEqual(readFileSync(join(copiedBuild, "video.mp4")), media);
+});
+
+test("base64 validator rejects bad lengths, misplaced padding and alphabet", () => {
+  for (const value of ["", "YQ==", "YWI=", "YWJj", "YWJjZA=="]) assert.equal(isBase64(value), true);
+  for (const value of [null, "A", "A===", "A=AA", "AA?=", "AAAA\n", "===="]) assert.equal(isBase64(value), false);
 });

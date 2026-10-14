@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serveBuild, runScenario, smokeBuild, validateResponsivePlan } from "./verify-screen.mjs";
+import { serveBuild, runScenario, smokeBuild, validateResponsivePlan, captureProfileFor, applyCaptureMedia, sampleAnimations } from "./verify-screen.mjs";
 import { validateVerification, widthsFor } from "./screen-verification.mjs";
 
 test("verification rejects absent evidence, stale artifacts and missing keyboard coverage", () => {
@@ -235,4 +235,64 @@ test("container scenarios resize the container independently of the viewport", {
     {kind:'resize-container',selector:'#cards',width:250},
   ],assertion:display('block')},join(folder,'container.png'),{width:390,height:600});
   assert.deepEqual(problems,[]);
+});
+
+
+test("capture profiles are explicit, inherited and validated without changing normal captures", async () => {
+  const plan = { capture: { reducedMotion: "reduce", animationTimeMs: 3000.003 } };
+  assert.deepEqual(captureProfileFor(), {});
+  assert.deepEqual(captureProfileFor(plan), plan.capture);
+  assert.deepEqual(captureProfileFor(plan, { capture: {} }), {});
+  assert.deepEqual(captureProfileFor(plan, { capture: { animationTimeMs: 0 } }), { animationTimeMs: 0 });
+  for (const value of [-1, Infinity, NaN, "1000", null])
+    assert.throws(() => captureProfileFor({ capture: { animationTimeMs: value } }), /finite nonnegative/);
+  for (const capture of [null, [], true])
+    assert.throws(() => captureProfileFor({ capture }), /must be an object/);
+  assert.throws(() => captureProfileFor({ capture: { reducedMotion: "always" } }), /reduce or no-preference/);
+  assert.throws(() => captureProfileFor({ capture: { animationTime: 1000 } }), /Unknown/);
+  const calls = [];
+  const page = { send: async (...args) => calls.push(args) };
+  await applyCaptureMedia(page, {});
+  assert.deepEqual(calls, []);
+  await applyCaptureMedia(page, captureProfileFor(plan));
+  assert.deepEqual(calls, [["Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  }]]);
+});
+
+test("snapshot sampling pauses every animation before seeking to its declared frame", () => {
+  const calls = [];
+  const animation = name => ({
+    pause() { calls.push([name, "pause"]); },
+    set currentTime(value) { calls.push([name, "time", value]); },
+  });
+  const document = { getAnimations: () => [animation("entrance"), animation("continuous")] };
+  assert.equal(sampleAnimations(document, 3000.003), 2);
+  assert.deepEqual(calls, [
+    ["entrance", "pause"], ["entrance", "time", 3000.003],
+    ["continuous", "pause"], ["continuous", "time", 3000.003],
+  ]);
+});
+
+test("browser capture media applies before source scripts and records the sampled profile", { skip: process.env.PROTO_BROWSER_TEST !== "1" }, async t => {
+  const folder = mkdtempSync(join(tmpdir(), "proto-motion-test-"));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  writeFileSync(join(folder, "index.html"), `<html><head><link rel="icon" href="data:,"><style>
+  #moving{width:20px;height:20px;background:red;animation:slide 10s linear infinite}@keyframes slide{to{transform:translateX(100px)}}
+  </style></head><body><div id="moving">Motion</div><script>
+  window.bootMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  parent.postMessage({type:'hello'},'*');</script></body></html>`);
+  const server = await serveBuild(folder); t.after(() => server.close());
+  const metadata = {};
+  const capture = { reducedMotion: "reduce", animationTimeMs: 2000 };
+  const problems = await runScenario(server.url, {
+    category: "smoke", capture, assertion: "window.bootMotion===true",
+  }, join(folder, "sample.png"), { width: 390, height: 600 }, undefined, metadata);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(metadata, { profile: capture, reducedMotion: "reduce", sampledAnimations: 1 });
+  const normal = await runScenario(server.url, {
+    category: "smoke", capture: { reducedMotion: "no-preference" },
+    assertion: "window.bootMotion===false && document.getAnimations()[0].playState==='running'",
+  }, join(folder, "normal.png"), { width: 390, height: 600 });
+  assert.deepEqual(normal, []);
 });
