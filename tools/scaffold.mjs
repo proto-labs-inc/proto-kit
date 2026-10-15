@@ -38,6 +38,7 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { reportScreenBuild } from "./screen-build-report.mjs";
 import { fileURLToPath } from "node:url";
 import { workspaceIdentity, IDENTITY_FILE } from "./dev-server.mjs";
 import { frameOrigin } from "./frame-origin.mjs";
@@ -210,6 +211,12 @@ if (!installed) {
 // ---- the record the build reads ----
 const record = { slug, path: workspace, port, framework, tailwind, title, ...(screenIndex ? {screenIndex} : {}) };
 writeFileSync(join(buildDir, "workspace.json"), JSON.stringify(record, null, 2) + "\n");
+// A screen's copy log can start before its workspace exists (the page is
+// read first). Now that the record names the screen, send what is waiting.
+if (screenIndex) {
+  await reportScreenBuild({ codebase: options.codebase, runDir: buildDir })
+    .catch((error) => console.error(`Screen progress waiting in ${buildDir}: ${error.message}`));
+}
 console.log(JSON.stringify({ ...record, seconds: Math.round((Date.now() - started) / 100) / 10, install }));
 
 function usesTailwind(path, deps) {

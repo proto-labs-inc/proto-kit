@@ -41,7 +41,12 @@ export function createReporter({ codebase, briefId, runDir, sink = "site", trans
   const deliver = async (events) => {
     if (sink === "file") {
       toFolder(events);
-      await reportScreenBuild({ codebase, runDir, transport });
+      try {
+        await reportScreenBuild({ codebase, runDir, transport });
+      } catch (error) {
+        console.error(`Screen progress waiting in ${runDir}: ${error.message}`);
+        throw error;
+      }
       return;
     }
     mkdirSync(outbox, { recursive: true });
