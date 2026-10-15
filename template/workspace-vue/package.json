@@ -8,7 +8,7 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@proto-labs-inc/rig-vue": "0.2.0",
+    "@proto-labs-inc/rig-vue": "0.2.1",
     "@proto-labs-inc/wire": "0.2.0",
     "modern-screenshot": "^4.7.0",
     "vue": "^3.5.13"
