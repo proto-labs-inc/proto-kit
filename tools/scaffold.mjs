@@ -9,6 +9,8 @@
  * template matching the source repo's framework (vue in its package.json
  * → template/workspace-vue, else template/workspace-react), then:
  *   - names it: package.json name, index.html title, prototype.json name;
+ *   - pins the Proto app this laptop is linked to as prototype.json's
+ *     frameOrigin, the only Frame the rig loads selection tools from;
  *   - picks a port free on this laptop (both loopback addresses) that no
  *     record under ~/.proto claims, any codebase's, and writes it into
  *     vite.config.ts and prototype.json, which must agree;

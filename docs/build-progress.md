@@ -67,3 +67,23 @@ uploads it, and verifies availability through finish_publish before reporting do
 Do not send a phase ready event or use a heartbeat as completion. If publishing
 fails, keep the request unfinished and report the failure. The gallery continues
 to show the current request when its modal is closed.
+
+## Proto Run activity consumer
+
+The app's small Proto Run game opens immediately when a prompt is copied,
+without claiming agent work has started. It also consumes the existing operation signals. It
+adds no tool calls, heartbeat, or completion protocol to the kit:
+
+- Creation and section builds: `report_progress` with `started`, `building`
+  or `serving` means working and opens the game. Once opened, the game stays
+  visible and playable until dismissed, including after `needs-input`, `failed` or `done`. An unclaimed saved prompt is not working.
+- Variants: an actual manifest set with `status: "building"` means working;
+  removing that status on completion ends it. A references-only pass also
+  removes the status when finished. Do not use a server heartbeat as work.
+- Library imports: a nonempty `startedAt` with no `completedAt` is an open
+  import. The app additionally respects `report_setup_action` blockers.
+
+Only the current page's prototype or codebase contributes activity. The game
+never sends work to the kit or changes how an agent answers a question. Keep
+reporting real completion and blockers through the existing tools. Missing
+operation signals must not be replaced with guesses based on a live server.

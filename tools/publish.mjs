@@ -34,7 +34,7 @@ import { workflowEvent, activityEvent } from "./workflow-report.mjs";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { createReporter } from "./build-report.mjs";
 import { capturePublishedPreview } from "./publish-preview.mjs";
-import { callTool, readConfig } from "./mcp-call.mjs";
+import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 import { validatePublishedManifest } from "./variant-manifest.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
 
@@ -257,7 +257,7 @@ let rigVersion = null;
 if (kind === "prototype") rigVersion = resolvedRigVersion(workspace);
 let progressBuild = kind === "prototype" ? buildOfWorkspace(workspace) : null;
 if (progressBuild) {
-  const response = await callTool("get_brief", { briefId: progressBuild.briefId });
+  const response = await callTool("get_brief", { briefId: progressBuild.briefId }, targetFor(readConfig(), { codebase }));
   const brief = unwrap(response);
   if (response?.isError || !brief.status) throw new Error("Could not verify the saved request before publishing");
   // Re-publishing an existing prototype never reopens its completed request.
@@ -328,14 +328,14 @@ if (progress) {
     workflowEvent(progressBuild.dir, "publish", "Published the prototype", "completed"),
   ]);
   await progress.flush();
-  const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" });
+  const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" }, targetFor(readConfig(), { codebase }));
   if (completed?.isError) throw new Error(completed.content?.[0]?.text ?? "Completion report failed");
 }
 } catch (error) {
   if (progress) {
     progress.send([workflowEvent(progressBuild.dir, "publish", error.message.slice(0, 200), "failed"), activityEvent(publishing, "publish-result", "failed", "Publishing failed", error.message.slice(0, 1000))]);
     await progress.flush().catch(() => {});
-    await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }).catch(() => {});
+    await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }, targetFor(readConfig(), { codebase })).catch(() => {});
   }
   throw error;
 }
@@ -351,6 +351,18 @@ function resolvedRigVersion(workspace) {
     const corePackage = createRequire(adapterPackage).resolve("@proto-labs-inc/rig-core/package.json");
     return JSON.parse(readFileSync(corePackage, "utf8")).version;
   } catch {
+    // A starter copied unchanged ships its saved build without installing:
+    // its lockfile names the rig it was built with.
+    const locked = lockedRigCoreVersion(workspace);
+    if (locked) return locked;
     fail(`@proto-labs-inc/rig-core does not resolve from ${workspace}; run pnpm install there first`);
   }
+}
+
+/** The rig-core version a workspace's pnpm lockfile pins, or null. */
+function lockedRigCoreVersion(workspace) {
+  const lock = join(workspace, "pnpm-lock.yaml");
+  if (!existsSync(lock)) return null;
+  const versions = new Set([...readFileSync(lock, "utf8").matchAll(/^\s+'?@proto-labs-inc\/rig-core@(\d+\.\d+\.\d+)/gm)].map((m) => m[1]));
+  return versions.size === 1 ? [...versions][0] : null;
 }

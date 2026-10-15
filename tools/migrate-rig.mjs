@@ -27,6 +27,7 @@
  * Usage: node migrate-rig.mjs [<codebase>…] [--check]
  *   --check   say what would change, change nothing
  */
+import { updateRigDependencies } from "./update-rig.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -120,7 +121,7 @@ function sourceFiles(dir) {
 /**
  * What one workspace needs, read without writing anything: the
  * dependencies to add, the source files to rename, the new tsconfig and
- * vite config. `needed` is false for a workspace already on npm.
+ * vite config. `needed` is false only when its npm rig is current.
  */
 export function planWorkspace(workspace, kit) {
   const packagePath = join(workspace, "package.json");
@@ -128,7 +129,8 @@ export function planWorkspace(workspace, kit) {
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const framework = "vue" in deps ? "vue" : "react";
   const wanted = rigDependencies(kit, framework);
-  const missing = Object.fromEntries(Object.entries(wanted).filter(([name]) => !(name in deps)));
+  const upgrades = updateRigDependencies(structuredClone(pkg));
+  const missing = { ...upgrades, ...Object.fromEntries(Object.entries(wanted).filter(([name]) => !(name in deps))) };
 
   const src = join(workspace, "src");
   const renames = existsSync(src)
@@ -153,7 +155,12 @@ export function planWorkspace(workspace, kit) {
 export function applyPlan(workspace, plan) {
   const originalPackage = readFileSync(plan.packagePath, "utf8");
   if (Object.keys(plan.missing).length > 0) {
-    const pkg = { ...plan.pkg, dependencies: { ...plan.pkg.dependencies, ...plan.missing } };
+    const pkg = structuredClone(plan.pkg);
+    for (const [name, version] of Object.entries(plan.missing)) {
+      const section = name in (pkg.devDependencies ?? {}) && !(name in (pkg.dependencies ?? {})) ? "devDependencies" : "dependencies";
+      pkg[section] ??= {};
+      pkg[section][name] = version;
+    }
     writeFileSync(plan.packagePath, JSON.stringify(pkg, null, 2) + "\n");
   }
   const install = spawnSync("pnpm", ["install", "--prefer-offline", "--no-frozen-lockfile"], { cwd: workspace, encoding: "utf8" });
@@ -215,7 +222,7 @@ function main() {
       else lines.push(`${label}: ${describe(plan, did)}.${unknown}`);
     }
   }
-  if (lines.length === 0) console.log("Every prototype already takes the rig from npm; nothing needed moving.");
+  if (lines.length === 0) console.log("Every prototype already uses the current rig; nothing needed updating.");
   for (const line of lines) console.log(line);
   if (check && lines.length > 0) console.log("\nNothing was written (--check).");
 }

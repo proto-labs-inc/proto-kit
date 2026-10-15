@@ -47,6 +47,7 @@ function fixture(t) {
     JSON.stringify({
       name: "Original",
       port: 5180,
+      frameOrigin: "https://proto.example",
       variantSets: [{ id: "old" }],
     }),
   );

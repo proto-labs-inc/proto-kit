@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renameImports, withoutRigPaths, withoutSourceRig } from "./migrate-rig.mjs";
+import { renameImports, withoutRigPaths, withoutSourceRig, planWorkspace } from "./migrate-rig.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -102,4 +102,18 @@ test("tsconfig keeps its own paths and loses the rig's", () => {
   assert.deepEqual(withoutRigPaths(tsconfig), { compilerOptions: { strict: true, paths: { "@/*": ["./src/*"] } } });
   assert.deepEqual(withoutRigPaths({ compilerOptions: { paths: { "@proto/rig": ["/x"] } } }), { compilerOptions: {} });
   assert.equal(withoutRigPaths({ compilerOptions: { strict: true } }), null);
+});
+
+
+test("already installed npm rigs still receive version upgrades", (t) => {
+  const workspace = mkdtempSync("/tmp/rig-migration-");
+  t.after(() => rmSync(workspace, { recursive: true, force: true }));
+  const pkg = { dependencies: { "@proto-labs-inc/rig": "0.1.0", "@proto-labs-inc/wire": "0.1.0" } };
+  writeFileSync(join(workspace, "package.json"), JSON.stringify(pkg));
+  const plan = planWorkspace(workspace, kit);
+  assert.equal(plan.needed, true);
+  assert.deepEqual(plan.missing, { "@proto-labs-inc/rig": "0.2.1", "@proto-labs-inc/wire": "0.2.0" });
+  assert.deepEqual(plan.pkg, pkg);
+  writeFileSync(join(workspace, "package.json"), JSON.stringify({ dependencies: plan.missing }));
+  assert.equal(planWorkspace(workspace, kit).needed, false);
 });
