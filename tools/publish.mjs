@@ -351,6 +351,18 @@ function resolvedRigVersion(workspace) {
     const corePackage = createRequire(adapterPackage).resolve("@proto-labs-inc/rig-core/package.json");
     return JSON.parse(readFileSync(corePackage, "utf8")).version;
   } catch {
+    // A starter copied unchanged ships its saved build without installing:
+    // its lockfile names the rig it was built with.
+    const locked = lockedRigCoreVersion(workspace);
+    if (locked) return locked;
     fail(`@proto-labs-inc/rig-core does not resolve from ${workspace}; run pnpm install there first`);
   }
+}
+
+/** The rig-core version a workspace's pnpm lockfile pins, or null. */
+function lockedRigCoreVersion(workspace) {
+  const lock = join(workspace, "pnpm-lock.yaml");
+  if (!existsSync(lock)) return null;
+  const versions = new Set([...readFileSync(lock, "utf8").matchAll(/^\s+'?@proto-labs-inc\/rig-core@(\d+\.\d+\.\d+)/gm)].map((m) => m[1]));
+  return versions.size === 1 ? [...versions][0] : null;
 }
