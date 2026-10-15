@@ -38,6 +38,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSyn
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { workspaceIdentity, IDENTITY_FILE } from "./dev-server.mjs";
+import { readConfig } from "./mcp-call.mjs";
 import { pickPort } from "./ports.mjs";
 import { requireScreenApproval } from "./screen-approval.mjs";
 
@@ -113,7 +114,7 @@ editJson(join(workspace, "package.json"), (pkg) => ({ ...pkg, name: slug }));
 if (!workspaceIdentity(workspace)) {
   writeFileSync(join(workspace, "public", IDENTITY_FILE), JSON.stringify({ codebase: options.codebase, slug, token: randomBytes(12).toString("hex") }, null, 2) + "\n");
 }
-editJson(join(workspace, "public", "prototype.json"), (manifest) => ({ ...manifest, name: slug, port }));
+editJson(join(workspace, "public", "prototype.json"), (manifest) => ({ ...manifest, name: slug, port, frameOrigin: new URL(readConfig().app).origin }));
 edit(join(workspace, "index.html"), (html) => html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`));
 edit(join(workspace, "vite.config.ts"), (source) => source.replace(/port: \d+,/, `port: ${port},`));
 

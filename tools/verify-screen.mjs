@@ -1,3 +1,4 @@
+import { hasCompleteAbsenceEvidence } from "./container-applicability.mjs";
 /** Execute reference-authored scenarios against an archived compiled build, never the dev server. */
 import { createServer } from "node:http";
 import {
@@ -90,10 +91,12 @@ async function step(page, action) {
       throw new Error("Missing assertion");
     await until(page, inFrame(action.expression));
   } else if (action.kind === "click") {
+    await evaluate(page, inFrame(`(()=>{const e=document.querySelector(${JSON.stringify(action.selector)});if(!e)throw Error('Missing control');if(!e.checkVisibility({checkVisibilityCSS:true,checkOpacity:true}))throw Error('Control is not visible');e.scrollIntoView({block:'center',inline:'center',behavior:'instant'})})()`));
+    await evaluate(page, inFrame("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))"));
     const rect = await evaluate(
       page,
       inFrame(
-        `(()=>{const e=document.querySelector(${JSON.stringify(action.selector)});if(!e)throw Error('Missing control');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`,
+        `(()=>{const e=document.querySelector(${JSON.stringify(action.selector)});if(!e)throw Error('Missing control');const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`,
       ),
     );
     await page.send("Input.dispatchMouseEvent", {
@@ -109,6 +112,15 @@ async function step(page, action) {
       ...rect,
     });
   } else if (action.kind === "key") {
+    if (action.until !== undefined) {
+      if (action.key !== "Tab" || typeof action.until !== "string" || !action.until.trim())
+        throw new Error("Keyboard target needs Tab and a selector");
+      for (let pressed = 0; pressed < 150; pressed++) {
+        if (await evaluate(page, inFrame(`document.activeElement?.matches(${JSON.stringify(action.until)})`))) return;
+        await step(page, {kind:"key",key:"Tab",shift:action.shift});
+      }
+      throw new Error("Control is not reachable by keyboard: " + action.until);
+    }
     const codes = {
       Tab: 9,
       Enter: 13,
@@ -149,6 +161,7 @@ export function layoutProblems(window) {
   if (document.documentElement.scrollWidth > innerWidth + 1)
     errors.push("Horizontal page overflow");
   for (const element of document.querySelectorAll('button,a[href],input,select,textarea,[role="button"],[role="dialog"],[role="menu"]')) {
+    if (element.closest('[inert],[aria-hidden="true"]')) continue;
     if (!element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true })) continue;
     const rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height) continue;
@@ -156,7 +169,21 @@ export function layoutProblems(window) {
     let scrollX = false;
     for (let parent = element.parentElement; parent; parent = parent.parentElement) {
       const style = window.getComputedStyle(parent);
-      const bounds = parent.getBoundingClientRect();
+      let bounds = parent.getBoundingClientRect();
+      // Root overflow locks the viewport, not the scrolled body's layout box.
+      // A viewport-fixed portal therefore remains visible after its trigger scrolls.
+      if (parent === document.body || parent === document.documentElement) {
+        let fixed = false;
+        let contained = false;
+        for (let node = element; node && node !== parent; node = node.parentElement) {
+          const nodeStyle = window.getComputedStyle(node);
+          if (fixed && ((nodeStyle.transform && nodeStyle.transform !== "none") ||
+              (nodeStyle.filter && nodeStyle.filter !== "none") ||
+              /layout|paint|strict|content/.test(nodeStyle.contain || ""))) contained = true;
+          if (nodeStyle.position === "fixed") fixed = true;
+        }
+        if (fixed && !contained) bounds = {left:0,top:0,right:innerWidth,bottom:innerHeight};
+      }
       if (["auto", "scroll"].includes(style.overflowX)) scrollX = true;
       if (["hidden", "clip"].includes(style.overflowX) &&
           (rect.left < bounds.left - 1 || rect.right > bounds.right + 1) && !scrollX)
@@ -179,19 +206,90 @@ export function layoutProblems(window) {
   return [...new Set(errors)];
 }
 
+/** A scenario replaces the plan profile; an empty object restores normal motion. */
+export function captureProfileFor(plan = {}, scenario = {}) {
+  let profile = plan.capture;
+  if (scenario.capture !== undefined) profile = scenario.capture;
+  if (profile === undefined) profile = {};
+  if (!profile || typeof profile !== "object" || Array.isArray(profile))
+    throw new Error("Capture profile must be an object");
+  for (const key of Object.keys(profile))
+    if (!["reducedMotion", "animationTimeMs", "videoTimeMs"].includes(key))
+      throw new Error("Unknown capture profile option: " + key);
+  if (profile.reducedMotion !== undefined && !["reduce", "no-preference"].includes(profile.reducedMotion))
+    throw new Error("Capture reducedMotion must be reduce or no-preference");
+  if (profile.animationTimeMs !== undefined && (!Number.isFinite(profile.animationTimeMs) || profile.animationTimeMs < 0))
+    throw new Error("Capture animationTimeMs must be a finite nonnegative number");
+  if (profile.videoTimeMs !== undefined && (!Number.isFinite(profile.videoTimeMs) || profile.videoTimeMs < 0))
+    throw new Error("Capture videoTimeMs must be a finite nonnegative number");
+  return { ...profile };
+}
+
+/** Apply before navigation so source scripts see the native media preference. */
+export async function applyCaptureMedia(page, profile) {
+  if (profile.reducedMotion !== undefined)
+    await page.send("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-reduced-motion", value: profile.reducedMotion }],
+    });
+}
+
+/** Runs in either source or copied document, only for a declared sampled snapshot. */
+export function sampleAnimations(document, timeMs) {
+  const animations = document.getAnimations();
+  for (const animation of animations) {
+    animation.pause();
+    animation.currentTime = timeMs;
+  }
+  return animations.length;
+}
+
+/** Sample original video frames identically in source and copy; no raster replacement. */
+export async function sampleVideos(document, timeMs) {
+  const videos = [...document.querySelectorAll("video")];
+  for (const video of videos) {
+    if (!video.currentSrc && !video.src) continue;
+    const waitFor = (event, ready) => new Promise((resolve, reject) => {
+      if (ready()) { resolve(); return; }
+      const cleanup = () => { clearTimeout(timer); video.removeEventListener(event, done); video.removeEventListener("error", fail); };
+      const done = () => { cleanup(); resolve(); };
+      const fail = () => { cleanup(); reject(new Error("Video capture could not load or seek")); };
+      const timer = setTimeout(fail, 10000);
+      video.addEventListener(event, done, {once:true});
+      video.addEventListener("error", fail, {once:true});
+    });
+    await waitFor("loadeddata", () => video.readyState >= 2);
+    video.pause();
+    const target = timeMs / 1000;
+    if (Number.isFinite(video.duration) && target > video.duration)
+      throw new Error("Video capture time exceeds duration");
+    if (Math.abs(video.currentTime - target) > 0.0001) {
+      video.currentTime = target;
+      await waitFor("seeked", () => !video.seeking);
+    }
+  }
+  return videos.length;
+}
+
 export async function runScenario(
   url,
   scenario,
   out,
   viewport,
   screenshotReference,
+  captureMetadata = {},
 ) {
+  const capture = captureProfileFor({}, scenario);
+  captureMetadata.profile = capture;
   const responsive = scenario.category === "responsive";
   const origin = { ...viewport, width: resizeOrigin(viewport.width) };
   const opened = await headlessPage("about:blank", responsive ? origin : viewport);
   const page = opened.page;
   const problems = [];
   try {
+    await applyCaptureMedia(page, capture);
+    // Match the visible source session: visibility-gated animation and rAF
+    // must keep advancing even while another browser window has focus.
+    await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await page.send("Runtime.enable");
     await page.send("Network.enable");
     await page.send("Page.enable");
@@ -206,11 +304,12 @@ export async function runScenario(
     page.on("Runtime.exceptionThrown", (e) =>
       problems.push(e.exceptionDetails?.text || "Runtime error"),
     );
-    page.on("Network.loadingFailed", (e) =>
-      problems.push(
-        e.blockedReason ? `Blocked request: ${e.blockedReason}` : e.errorText,
-      ),
-    );
+    page.on("Network.loadingFailed", (e) => {
+      // Resizing a srcset can cancel an obsolete candidate. The selected image
+      // is checked below; blocked requests and actual load failures still fail.
+      if (e.type === "Image" && e.canceled && !e.blockedReason) return;
+      problems.push(e.blockedReason ? `Blocked request: ${e.blockedReason}` : e.errorText);
+    });
     page.on("Network.webSocketCreated", () =>
       problems.push("Live WebSocket connection is not allowed"),
     );
@@ -271,7 +370,13 @@ export async function runScenario(
       await evaluate(page, inFrame(`new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve)))`));
     };
     if (responsive) await resize(viewport.width);
-    for (const action of scenario.steps || []) await step(page, action);
+    await evaluate(page, inFrame("document.fonts.ready"));
+    const settleMotion = () => until(page, inFrame("document.getAnimations().every(a => !Number.isFinite(a.effect?.getComputedTiming().endTime) || a.playState !== 'running')"));
+    await settleMotion();
+    for (const action of scenario.steps || []) {
+      await step(page, action);
+      await settleMotion();
+    }
     await step(page, { kind: "assert", expression: scenario.assertion });
     if (responsive) {
       // Keep the same document and state: reloads conceal mount-only layout logic.
@@ -294,12 +399,35 @@ export async function runScenario(
       await until(page, `window.messages?.some(m=>m.type==='hello')`);
       await step(page, { kind: "assert", expression: scenario.assertion });
     }
+    await settleMotion();
     await evaluate(
       page,
       inFrame(
         `document.fonts.ready.then(()=>new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve))))`,
       ),
     );
+    await until(page, inFrame(`Array.from(document.images).every(image => {
+      const rect=image.getBoundingClientRect();
+      const visible=image.checkVisibility() && rect.bottom>0 && rect.top<innerHeight && rect.right>0 && rect.left<innerWidth;
+      return !visible || image.complete;
+    })`));
+    const failedImages = await evaluate(page, inFrame(`Array.from(document.images).filter(image => image.complete && image.currentSrc && image.naturalWidth===0).map(image => image.getAttribute('alt') || image.getAttribute('src'))`));
+    problems.push(...failedImages.map(src => "Image failed to decode: " + src));
+    captureMetadata.reducedMotion = await evaluate(page, inFrame(
+      "window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduce' : 'no-preference'",
+    ));
+    if (capture.animationTimeMs !== undefined) {
+      captureMetadata.sampledAnimations = await evaluate(page, inFrame(
+        `(${sampleAnimations.toString()})(document, ${capture.animationTimeMs})`,
+      ));
+      await evaluate(page, inFrame(
+        "new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve)))",
+      ));
+    }
+    if (capture.videoTimeMs !== undefined) {
+      captureMetadata.sampledVideos = await evaluate(page, inFrame(`(${sampleVideos.toString()})(document, ${capture.videoTimeMs})`));
+      await evaluate(page, inFrame("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))"));
+    }
     const geometry = await evaluate(
       page,
       inFrame(
@@ -348,6 +476,7 @@ export function validateResponsivePlan(plan) {
     if (!plan.responsiveCssReview?.[finding]?.trim())
       throw new Error("Inspect and document unresolved CSS: " + finding);
   for (const query of css.containerQueries || []) {
+    if (hasCompleteAbsenceEvidence(plan, query)) continue;
     const scenarios = plan.scenarios.filter(s => s.category === "responsive" && s.containerQuery === query.condition);
     if (!scenarios.some(s => s.steps?.some(step => step.kind === "resize-container")))
       throw new Error("Add explicit container-size scenarios for " + query.condition);
@@ -357,6 +486,8 @@ export async function verifyBuild(folder, plan, screen, output) {
   if (!plan?.inventory || !Array.isArray(plan.scenarios))
     throw new Error("Supply the reference inventory and executable scenarios");
   validateResponsivePlan(plan);
+  captureProfileFor(plan);
+  for (const scenario of plan.scenarios) captureProfileFor(plan, scenario);
   const manifest = JSON.parse(
     readFileSync(join(folder, "prototype.json"), "utf8"),
   );
@@ -398,18 +529,21 @@ export async function verifyBuild(folder, plan, screen, output) {
         if (!/^[a-zA-Z0-9_-]+$/.test(id))
           throw new Error("Scenario IDs must be safe filenames");
         const evidence = join(output, id + ".png");
+        const capture = {};
         const problems = await runScenario(
           server.url,
-          scenario,
+          { ...scenario, capture: captureProfileFor(plan, scenario) },
           evidence,
           viewport,
           scenario.references?.[width],
+          capture,
         );
         scenarios.push({
           id,
           category: scenario.category,
           target: scenario.target,
           viewport,
+          capture,
           ...(scenario.category === "responsive" ? { resizedFrom: resizeOrigin(width) } : {}),
           outcome: problems.length ? "failed" : "passed",
           problems,

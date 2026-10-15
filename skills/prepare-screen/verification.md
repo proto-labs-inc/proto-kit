@@ -10,7 +10,19 @@ JavaScript-driven transitions. For each warning or unresolved condition in the C
 report, record the inspected behavior and coverage in `responsiveCssReview`, keyed
 by its exact message. Unreviewed findings block verification.
 
-Each discovered container condition needs responsive scenarios with `containerQuery`
+Container rules may be unused shared CSS. Before exempting one, collect live
+observations with `node <kit>/tools/container-applicability.mjs <exact-live-url>
+<responsive-css.json> <state> <observations.json> [cdp-port]` after opening each
+source state at each required width. Keep the source state visible and settled;
+do not rename a default-state observation as another state. Include the resulting
+array as `containerObservations` in the plan. The verifier exempts only rules with
+zero selector matches across every inventory state and width, captured after the
+CSS report for its exact source URL. Dynamic, unsupported or empty selectors,
+missing observations, changed rules and any matching observation still require
+container tests. Preserve the compiled CSS report unchanged. Never hand-author
+absence evidence or treat absence in the initial state as absence everywhere.
+
+Each remaining container condition needs responsive scenarios with `containerQuery`
 set to that exact condition. Include `resize-container` steps targeting its real
 container just below, at and above the threshold, asserting the source's expected
 layout after each resize. Reference PNGs must depict the final constrained layout.
@@ -42,6 +54,33 @@ undo the usability repair just to match its bug, or fabricate passing evidence.
 Responsive screenshots must match those same live-page references after
 resizing, even if the authored assertion passes. Read differences and correct the source.
 
+For animated sources, an optional plan-level `capture` profile may declare
+`{ "reducedMotion": "reduce", "animationTimeMs": 3000.003 }`. A scenario's
+`capture` replaces the plan profile; use `{}` for an ordinary capture. Omit
+`reducedMotion` to preserve the browser preference, or set `"no-preference"`
+explicitly. The runner applies this native media preference before navigation so
+source scripts take their own reduced-motion branch. It does not inject replacement
+styles or alter the compiled product.
+
+`animationTimeMs` must be finite and nonnegative. Immediately before the screenshot,
+after all interaction, URL-state and resize assertions, the runner pauses every
+animation from `document.getAnimations()` and sets its `currentTime` to this value.
+This samples CSS and Web Animations only; it does not stop JavaScript timers, canvas
+loops or videos. Choose a time from the source's real animation timing, accounting
+for delayed entrances and reduced-motion duration overrides. A sampled screenshot
+does not prove motion behavior: separately exercise the source and copy with normal
+motion and verify their transitions and controls.
+
+Capture new live-source references using the identical media preference before
+navigation and the identical animation sampling immediately before the screenshot.
+Preserve the original unsampled references and document the chosen profile in the
+screen notes. Do not hide elements, replace source images with copy images, mask
+regions or relax the 1% gate. Each report records the effective requested profile,
+the observed media preference, and the sampled animation count. With no profile,
+no motion emulation or animation sampling is performed. All scenarios emulate
+focused-page visibility, matching a visible source capture and allowing native
+visibility-gated loops and requestAnimationFrame callbacks to run.
+
 Actions:
 - `{ "kind": "resize-container", "selector": ".cards-container", "width": 400 }`
 - `{ "kind": "click", "selector": "button[aria-label=Options]" }`
@@ -59,3 +98,15 @@ assets, runtime errors, rig hello, overflow and clipped controls, and blocks all
 external network requests. Reports and screenshots are saved to the screen cache;
 passing evidence is uploaded to private storage and bound to both checksums.
 Missing scenarios are failures even if every supplied scenario passes.
+
+For looping video, `capture.videoTimeMs` samples the original media at a declared
+finite nonnegative timestamp. Use the exported `sampleVideos(document, timeMs)`
+in the source browser immediately before capturing the reference, and use the
+same profile for the copy. Keep original unsampled captures and separately test
+normal playback and controls. This pauses/seeks native media only; never replace
+frames, modify faces, hide media or use a copy screenshot as its reference.
+
+For responsive tab orders, `{ "kind": "key", "key": "Tab", "until":
+"button[aria-label=Options]" }` presses actual Tab keys until that control is
+focused (bounded at 150 presses). Follow with Enter or Space and assert its
+visible outcome. It never sets focus programmatically and fails if unreachable.

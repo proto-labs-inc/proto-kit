@@ -1,3 +1,4 @@
+import { SCREEN_ARTIFACT_LIMIT, SCREEN_EXPANDED_LIMIT, isBase64 } from "./screen-archive.mjs";
 import { validateVerification } from "./screen-verification.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
@@ -15,7 +16,7 @@ import { join, dirname, resolve, relative, posix } from "node:path";
 import { unpackScreenBuild } from "./screen-build.mjs";
 import { pickPort } from "./ports.mjs";
 
-const LIMIT = 128 * 1024 * 1024;
+const LIMIT = SCREEN_EXPANDED_LIMIT;
 const EXCLUDED =
   /^(node_modules|\.git|\.next|dist|\.env(?:\..*)?|\.npmrc|\.DS_Store|__proto-workspace\.json|\.proto-starter\.json|build\.json|tunnel\.json)$/;
 export const sha256 = (bytes) =>
@@ -40,10 +41,7 @@ function validateFiles(files) {
     if (
       !safePath(file.path) ||
       names.has(file.path) ||
-      typeof file.data !== "string" ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
-        file.data,
-      )
+      !isBase64(file.data)
     )
       throw new Error("Unsafe source bundle entry.");
     names.add(file.path);
@@ -133,8 +131,8 @@ export function packScreen(folder) {
   walk(root);
   validateFiles(files);
   const bytes = gzipSync(JSON.stringify({ format: "proto-screen-v1", files }));
-  if (bytes.length > 32 * 1024 * 1024)
-    throw new Error("Compressed source bundle exceeds 32 MB.");
+  if (bytes.length > SCREEN_ARTIFACT_LIMIT)
+    throw new Error("Compressed source bundle exceeds 64 MB.");
   return bytes;
 }
 export function unpackScreen(bytes, checksum, destination) {

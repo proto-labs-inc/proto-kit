@@ -37,11 +37,19 @@ export function containerRules(texts) {
   const queries = [];
   const warnings = [];
   const visited = new Set();
+  const selectorsIn = (rules) => {
+    const selectors = [];
+    for (const rule of rules) {
+      if (rule.selectorText) selectors.push(rule.selectorText);
+      if (rule.cssRules) selectors.push(...selectorsIn(rule.cssRules));
+    }
+    return selectors;
+  };
   const walk = (rules, source) => {
     for (const rule of rules) {
       if (rule.constructor.name === "CSSContainerRule") {
         queries.push({ name: rule.containerName || "", condition: rule.conditionText,
-          source, selectors: [...rule.cssRules].map(child => child.selectorText).filter(Boolean) });
+          source, selectors: selectorsIn(rule.cssRules) });
       }
       if (rule.styleSheet) sheet(rule.styleSheet, source);
       if (rule.cssRules) walk(rule.cssRules, source);

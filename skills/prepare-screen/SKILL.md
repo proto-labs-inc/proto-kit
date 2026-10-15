@@ -102,6 +102,18 @@ For destinations not included in this screen, show a local state reading
 "This screen isn’t included in this prototype" with a working return action.
 Do not create a user's prototype or register a serving tunnel for the baseline.
 
+## Keep independent work moving
+
+A failed verification preflight blocks final acceptance, not visual repairs,
+interaction tests, keyboard tests or other screens. Record the exact failure and
+continue all independent authorized work. Use the executable scenario runner for
+checks that can run while a plan or tool issue is being repaired. Preserve failures
+and evidence; never lower a gate or mark ready to clear a blocker. Report progress
+through screen_index and state which checks remain incomplete. Ask the user only
+for a decision, access or permission that is actually missing, not to approve a
+tool defect. Before stopping, review outstanding work and explain why each
+remaining action depends on the blocker.
+
 ## Verify and save
 
 Read [verification.md](verification.md) for the executable scenario format.

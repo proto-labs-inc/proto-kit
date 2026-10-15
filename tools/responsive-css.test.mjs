@@ -24,7 +24,7 @@ test("browser reads nested Tailwind-style CSS, adopted sheets and container quer
   const opened = await headlessPage("about:blank", {width:1200,height:900});
   try {
     await evaluate(opened.page, `(()=>{
-      document.documentElement.innerHTML='<head><style>html{font-size:20px}@layer utilities { @media (width >= 53rem) { .custom {display:grid} } } @media (max-width:767.98px) { .custom {display:block} } @container cards (width > 400px) { .card {display:flex} }</style></head><body><div class="custom">Example</div></body>';
+      document.documentElement.innerHTML='<head><style>html{font-size:20px}@layer utilities { @media (width >= 53rem) { .custom {display:grid} } } @media (max-width:767.98px) { .custom {display:block} } @container cards (width > 400px) { .card {display:flex} @media (min-width:1px) { .nested {display:grid} } }</style></head><body><div class="custom">Example</div></body>';
       const sheet=new CSSStyleSheet();sheet.replaceSync('@media (min-width:1101px){.custom{color:red}}');document.adoptedStyleSheets=[sheet];
     })()`);
     const report = await discoverResponsiveCss(opened.page);
@@ -33,6 +33,7 @@ test("browser reads nested Tailwind-style CSS, adopted sheets and container quer
     assert.ok(report.breakpoints.includes(1101), JSON.stringify(report));
     assert.equal(report.containerQueries.length,1);
     assert.equal(report.containerQueries[0].name,"cards");
+    assert.deepEqual(report.containerQueries[0].selectors,[".card", ".nested"]);
     assert.ok(report.containerQueries[0].condition.includes("400px"));
     assert.ok(!report.breakpoints.includes(400));
     assert.deepEqual(report.warnings,[]);
