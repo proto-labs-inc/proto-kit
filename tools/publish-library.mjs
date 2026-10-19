@@ -40,6 +40,9 @@ const fail = (message) => {
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
+const receiptIndex = args.indexOf("--receipt");
+const receipt = receiptIndex >= 0 ? args[receiptIndex + 1] : null;
+if (receiptIndex >= 0 && (!receipt || receipt.startsWith("--"))) fail("--receipt needs a file path");
 const argument = args.find((a) => !a.startsWith("--"));
 if (!argument) fail("usage: node publish-library.mjs <library> [--wait] [--dry-run]");
 
@@ -110,6 +113,7 @@ do {
   packHistory(join(libraryDir, "dist"));
   const publishArgs = [join(HERE, "publish.mjs"), "--kind", "library", "--codebase", codebase, "--dir", join(libraryDir, "dist")];
   if (dryRun) publishArgs.push("--dry-run");
+  if (receipt) publishArgs.push("--receipt", resolve(receipt));
   const publish = spawnSync(process.execPath, publishArgs, { stdio: ["ignore", "inherit", "inherit"] });
   if (publish.status !== 0) process.exit(publish.status ?? 1);
 } while (existsSync(pending));

@@ -27,7 +27,7 @@
  * ~/.proto/config.json identifies the member and team. --dry-run prints the upload plan without
  * touching the cloud.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve, relative, extname, sep } from "node:path";
 import { workflowEvent, activityEvent } from "./workflow-report.mjs";
@@ -41,7 +41,7 @@ import { IDENTITY_FILE } from "./dev-server.mjs";
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
 const KINDS = ["prototype", "library"];
-const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug"];
+const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "receipt"];
 const fail = (message) => {
   console.error(message);
   process.exit(1);
@@ -318,6 +318,7 @@ const finished = unwrap(
 if (!finished.publishedUrl) {
   throw new Error(`Could not verify publishing: ${finished.error ?? "the app did not confirm availability"}`);
 }
+if (options.receipt) writeFileSync(resolve(options.receipt), JSON.stringify({ codebase, buildId, publishedUrl: finished.publishedUrl }) + "\n");
 console.log(`published: ${finished.publishedUrl}`);
 if (kind === "library") console.log(`the app loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}manifest.json`);
 else console.log(`the Frame loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}prototype.json`);
