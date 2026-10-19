@@ -3,7 +3,8 @@ name: setup
 description: >-
   Connect a customer's computer and codebase, or prepare a customer's design
   system and starter screens from a live site as Proto staff. The setup document
-  explicitly selects connect, prepare or edit. Customer connection imports a design system when no staff preparation is assigned, without reviewing screens; staff preparation needs no customer repository. Starts
+  explicitly selects connect, prepare or edit. Customer connection never imports
+  or reviews screens; staff preparation needs no customer repository. Starts
   from "Set up Proto for" and continues in the active agent conversation.
   Also use when installing Proto or recovering its local connection records.
 ---
@@ -14,7 +15,7 @@ Setup has two explicit purposes: customer connection and staff preparation.
 For a customer, link the laptop, connect the repository and attach existing assets
 from the staff preparation codebase assigned to their email.
 For staff, link the staff laptop and prepare from the live site with no repository.
-When the cloud selects self-service, import only the design system in this conversation. Never discover or prepare starter screens during self-service setup.
+Never run discovery or design-system import during customer connection.
 Staff preparation pauses for website coverage confirmation before preparing the library
 and reusable screens.
 It never starts a listener, binds a conversation, or waits for website commands.
@@ -271,7 +272,7 @@ After the Machine steps, read `document.purpose`.
   defects, then visually inspect and verify the copy at matching widths.
   Mark the index complete; the cloud attaches it to the customer when they connect.
 - `connect` (also the default for older documents): follow Codebase below, then
-  Connection completion, which resolves the persisted staff-preparation or self-service path.
+  Connection completion. Do not ask for a product URL or open the reference browser.
 - `edit` or a document naming `prototype`: follow Editing a prototype, preserving
   the existing workspace and catalog. Do not claim a new preparation or refresh screens.
 
@@ -387,33 +388,27 @@ system it extracts."**
 
 ### Connection completion
 
-After connecting or recovering the customer source, verify whoami and the repository
-record, then call `attach_onboarding_preparation {codebase}`. This resolves and persists
-one setup path for the codebase. It never starts an agent.
+After connecting or recovering the customer source, call
+`attach_onboarding_preparation {codebase}` to attach the existing design system
+and verified screens from the staff preparation codebase assigned to the user's
+email. This call only attaches existing assets; it never starts preparation or
+an agent. Report the tool's actual status and message.
 
-- `attached` or `existing`: report the returned message and clear resolved blockers.
-- `self-service` with `importStatus: complete`: the design system is ready. Stop setup.
-- `self-service` otherwise: continue the design-system-only workflow below.
-- Any pending or failed staff result: report its actual message and preserve the
-  staff path. Never fall back to import because attachment is unavailable or failed.
+- `attached` or `existing`: relay the returned message without promising assets
+  beyond what the result confirms. Clear a resolved connection blocker.
+- `not-configured`: the email has no staff preparation assignment. Tell the user:
+  "Your computer is connected. Contact the Proto team to set up the design system
+  and screens for your account."
+- Assigned assets unavailable, attachment failed, or any other incomplete result:
+  relay the returned message and tell the user to contact the Proto team for help.
+  Never describe these statuses as evidence that preparation or a background agent
+  is running. Report the blocker as described below.
 
-### Self-service design system
-
-1. Report actual work starting with `node <kit>/tools/setup-import.mjs <codebase> importing`.
-2. Follow The reference page below. Reuse the document's productUrl or the saved
-   source.liveUrl; ask in this conversation only if neither is available. Handle
-   sign-in through the existing blocker lifecycle. Save the chosen live URL and icon.
-3. Follow import-design-system, resuming its existing local checkpoints. Do not run
-   index-screens, discover screens, review an inventory, or prepare starters.
-4. Finish with `node <kit>/tools/finish-import.mjs <codebase>`. It verifies the import,
-   publishes it, and reports the exact completion build to Proto. Partial publications
-   never complete setup. If completion reporting fails, rerun this tool; it retains
-   its publication receipt and retries without rebuilding an unchanged library.
-5. Report an unrecoverable technical failure using
-   `node <kit>/tools/setup-import.mjs <codebase> failed '<actual error and next step>'`.
-   User input and sign-in still use report_setup_action, not a fabricated failure.
-6. When complete, point the user back to Proto to create their first prototype from
-   a URL. A saved explicitly supplied brief may continue through create-prototype.
+Verify whoami and the repository record, then stop after connection and attachment.
+Do not discover or review screens, request a product URL, import a library, start a
+refresh, or launch staff preparation from customer setup. No live library server
+or product sign-in is required. Do not continue into the reference-page, icon or
+staff preparation sections. Existing Edit prompts keep their editing workflow.
 
 ### Report blockers to the setup surface
 
@@ -467,8 +462,8 @@ browser. Set that up once per machine, here:
    otherwise use the root above this skill's `skills/` directory). Its profile lives at
    `~/.proto/chrome`, so logins persist across sessions and reboots;
    the login is one-time.
-2. The document's `productUrl`, or the saved `source.liveUrl`, is the product page to parse; with
-   neither, ask the user for the URL of a page in their product. Run
+2. The document's `productUrl` is the product page to parse; with
+   none, ask the user for the URL of a page in their product. Run
    `node tools/cdp/product-page.mjs '<productUrl>'` after starting the
    Proto window. It reuses an open page of that product, navigates a
    blank tab when no product page is open, and creates a background tab

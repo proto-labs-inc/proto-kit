@@ -67,24 +67,12 @@ test("finish publishes only after validation, waits, and retries a failed public
     calls.push([tool, args]);
     if (tool === "library.mjs") return spawnSync(process.execPath, [join(here, tool), ...args], { encoding: "utf8" });
     assert.equal(args.at(-1), "--wait");
-    if (!failPublish) writeFileSync(args[args.indexOf("--receipt") + 1], JSON.stringify({ codebase: "abc12345", buildId: "20261019T120000Z-abcd" }));
     return { status: failPublish ? 1 : 0 };
   };
   await assert.rejects(finishImport("abc12345", { home: f.home, run }), /complete locally.*publication failed/);
   const completedAt = JSON.parse(readFileSync(f.path)).completedAt; assert.ok(completedAt);
   failPublish = false;
-  let failReport = true;
-  const reports = [];
-  const callTool = async (name, input) => {
-    reports.push({ name, input });
-    return failReport ? { isError: true, content: [{ text: "Storage unavailable" }] } : { content: [{ text: "{}" }] };
-  };
-  await assert.rejects(finishImport("abc12345", { home: f.home, run, callTool }), /completion reporting failed/);
-  const publications = calls.filter(([tool]) => tool === "publish-library.mjs").length;
-  failReport = false;
-  const result = await finishImport("abc12345", { home: f.home, run, callTool });
-  assert.equal(calls.filter(([tool]) => tool === "publish-library.mjs").length, publications, "report retry reuses the successful publication");
-  assert.equal(reports.at(-1).input.report.buildId, "20261019T120000Z-abcd");
+  const result = await finishImport("abc12345", { home: f.home, run });
   assert.equal(result.outcome, "published"); assert.equal(result.built, 1); assert.equal(result.completedAt, completedAt);
   f.manifest.components[0].status = "found"; f.save(); calls.length = 0;
   await assert.rejects(finishImport("abc12345", { home: f.home, run }), /finish or explicitly skip/);
