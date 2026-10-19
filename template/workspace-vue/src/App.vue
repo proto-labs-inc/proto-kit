@@ -1,4 +1,8 @@
 <!--
+  Optional numeric settings: declare controlGroups in public/prototype.json,
+  then consume useControls(groupId). The Frame renders their sliders and
+  saves settings snapshots. Keep random scene state separate. See docs/controls.md.
+
   Starter page. Replace everything inside .app with the real prototype —
   keeping the three rules it demonstrates:
 

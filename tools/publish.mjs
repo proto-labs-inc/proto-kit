@@ -173,10 +173,10 @@ const problems = [];
 if (kind === "prototype" && !manifest.some((f) => f.path === "prototype.json"))
   problems.push("the build has no prototype.json (the workspace's public/ folder should carry it)");
 if (manifest.length > 200) problems.push(`${manifest.length} files; the limit is 200`);
-if (totalBytes > 40 * 1024 * 1024) problems.push(`${(totalBytes / 1048576).toFixed(1)} MB total; the limit is 40 MB`);
+if (totalBytes > 256 * 1024 * 1024) problems.push(`${(totalBytes / 1048576).toFixed(1)} MB total; the limit is 256 MB`);
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 for (const f of manifest) {
-  if (f.size > 8 * 1024 * 1024) problems.push(`${f.path} is ${(f.size / 1048576).toFixed(1)} MB; the per-file limit is 8 MB`);
+  if (f.size > 64 * 1024 * 1024) problems.push(`${f.path} is ${(f.size / 1048576).toFixed(1)} MB; the per-file limit is 64 MB`);
   if (!f.path.split("/").every((seg) => SEGMENT.test(seg)))
     problems.push(`${f.path} has a path segment the published host refuses (each part of a path must start with a letter or digit, then letters, digits, dot, dash or underscore)`);
 }
