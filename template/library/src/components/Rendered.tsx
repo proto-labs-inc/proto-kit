@@ -1,5 +1,4 @@
 import { Component as ReactComponent, Suspense, lazy, type ComponentType, type ErrorInfo, type ReactNode } from "react";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import type { ComponentState } from "@/library";
 import { MODULES } from "@/modules";
 
@@ -34,7 +33,7 @@ export function Rendered({ name, module, state }: Props) {
   if (!Imported) return <Missing what={`${module} is not in the app`} />;
   return (
     <Boundary key={`${module}:${state.name}`} name={name}>
-      <Suspense fallback={<span data-loading={module}><Shimmer className="text-sm">{`Loading ${name}`}</Shimmer></span>}>
+      <Suspense fallback={<span data-loading={module}><span className="text-sm">{`Loading ${name}`}</span></span>}>
         <Imported {...state.props} />
       </Suspense>
     </Boundary>

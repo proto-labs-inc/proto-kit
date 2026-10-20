@@ -3,8 +3,7 @@ name: setup
 description: >-
   Connect a customer's computer and codebase, or prepare a customer's design
   system and starter screens from a live site as Proto staff. The setup document
-  explicitly selects connect, prepare or edit. Customer connection never imports
-  or reviews screens; staff preparation needs no customer repository. Starts
+  explicitly selects connect, prepare or edit. Customer connection imports a design system when no staff assets are assigned, without reviewing screens; staff preparation needs no customer repository. Starts
   from "Set up Proto for" and continues in the active agent conversation.
   Also use when installing Proto or recovering its local connection records.
 ---
@@ -15,7 +14,7 @@ Setup has two explicit purposes: customer connection and staff preparation.
 For a customer, link the laptop, connect the repository and attach existing assets
 from the staff preparation codebase assigned to their email.
 For staff, link the staff laptop and prepare from the live site with no repository.
-Never run discovery or design-system import during customer connection.
+Self-service customer setup imports only the design system. Never discover or prepare screens during self-service setup.
 Staff preparation pauses for website coverage confirmation before preparing the library
 and reusable screens.
 It never starts a listener, binds a conversation, or waits for website commands.
@@ -272,7 +271,7 @@ After the Machine steps, read `document.purpose`.
   defects, then visually inspect and verify the copy at matching widths.
   Mark the index complete; the cloud attaches it to the customer when they connect.
 - `connect` (also the default for older documents): follow Codebase below, then
-  Connection completion. Do not ask for a product URL or open the reference browser.
+  Connection completion, which selects staff attachment or self-service import.
 - `edit` or a document naming `prototype`: follow Editing a prototype, preserving
   the existing workspace and catalog. Do not claim a new preparation or refresh screens.
 
@@ -388,29 +387,35 @@ system it extracts."**
 
 ### Connection completion
 
-After connecting or recovering the customer source, call
-`attach_onboarding_preparation {codebase}` to attach the existing design system
-and verified screens from the staff preparation codebase assigned to the user's
-email. This call only attaches existing assets; it never starts preparation or
-an agent. Report the tool's actual status and message.
+After connecting or recovering the customer source, verify whoami and the repository
+record, then call `attach_onboarding_preparation {codebase}`.
 
-- `attached` or `existing`: relay the returned message without promising assets
-  beyond what the result confirms. Clear a resolved connection blocker.
-- `not-configured`: the email has no staff preparation assignment. Tell the user:
-  "Your computer is connected. Contact the Proto team to set up the design system
-  and screens for your account."
-- Assigned assets unavailable, attachment failed, or any other incomplete result:
-  relay the returned message and tell the user to contact the Proto team for help.
-  Never describe these statuses as evidence that preparation or a background agent
-  is running. Report the blocker as described below.
+- `attached` or `existing`: report the actual result and clear resolved blockers.
+- `self-service`: follow the design-system-only workflow below in this conversation.
+- Pending or failed staff results: report the actual message, preserve the assignment,
+  and stop setup. A tool error never authorizes self-service fallback.
 
-Verify whoami and the repository record, then stop after connection and attachment.
-Do not discover or review screens, request a product URL, import a library, start a
-refresh, or launch staff preparation from customer setup. No live library server
-or product sign-in is required. Do not continue into the reference-page, icon or
-staff preparation sections. Existing Edit prompts keep their editing workflow.
+### Self-service design system
+
+Follow The reference page and The product's icon below. Reuse productUrl from the
+setup document or source.liveUrl from codebase.json; ask in this conversation if
+neither exists. Handle sign-in with report_setup_action and clear resolved blockers.
+
+Follow import-design-system, resuming existing local checkpoints. Do not run
+index-screens, discover screens, review an inventory or prepare starter screens.
+Finish with `node <kit>/tools/finish-import.mjs <codebase>`: its existing verification
+and publication gates write completedAt into the published library manifest.
+Partial publications do not complete setup. The website reads that manifest and
+existing library heartbeat; no extra completion-report tool is needed.
+On failure, preserve local work, report the actual error and resume the same import.
+Use report_setup_action only for actual user decisions, sign-in or access blockers.
+After completion, clear resolved blockers and return to Proto to create the first
+prototype from a URL. Continue a saved brief only when explicitly supplied.
 
 ### Report blockers to the setup surface
+
+Use kind `product-url` only when asking for a missing live app URL, `sign-in` for product authentication, `approval` for permission, and `other` for any other blocker. The URL form handles product-url requests; other blockers stay visible. Include the kind when using the helper: `node <kit>/tools/setup-action.mjs <codebase> "<message>" <kind>`. Never classify sign-in as a missing URL.
+
 
 **Before stopping for any reason while setup or the design-system import is
 incomplete, report the blocker to Proto.** This applies throughout setup and
@@ -421,14 +426,14 @@ Do not end the turn with unfinished work and only a chat explanation.
 Routine tool execution and bounded retries while actively working are not stops.
 
 Once the codebase id is known, call
-`report_setup_action { codebase, action: { message } }` before pausing.
+`report_setup_action { codebase, action: { kind, message } }` before pausing.
 The website places the blocker under the current step using actual setup
-progress. Report only the message; never choose or send a step.
+progress. Report kind and message; never choose or send a step.
 The message must explain why work stopped and the concrete next step to
 resume; when user input is needed, ask them to reply in this conversation.
 The site displays **Action needed** under the current step; a chat message alone
 cannot update it. If the host has not discovered the tool yet, use
-`node <kit>/tools/setup-action.mjs <codebase> '<message>'`.
+`node <kit>/tools/setup-action.mjs <codebase> '<message>' <kind>`.
 If reporting fails, retry once for a transient failure, then tell the user
 that the blocker could not be shown on the site. Never claim it was reported
 without a successful response.
@@ -458,8 +463,8 @@ browser. Set that up once per machine, here:
    otherwise use the root above this skill's `skills/` directory). Its profile lives at
    `~/.proto/chrome`, so logins persist across sessions and reboots;
    the login is one-time.
-2. The document's `productUrl` is the product page to parse; with
-   none, ask the user for the URL of a page in their product. Run
+2. The document's `productUrl`, or saved `source.liveUrl`, is the product page to parse; with
+   neither, ask the user for the URL of a page in their product. Run
    `node tools/cdp/product-page.mjs '<productUrl>'` after starting the
    Proto window. It reuses an open page of that product, navigates a
    blank tab when no product page is open, and creates a background tab

@@ -1,6 +1,5 @@
 import { CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { skipHeading, type Component, type ComponentView, type RequestQueue } from "@/library";
 import type { SendOutcome } from "@/queue-client";
 
@@ -29,7 +28,7 @@ export function NotBuilt({ component, view, ask, onAsk, onWithdraw }: Props) {
     case "working":
       return (
         <Strip icon={<LoaderCircleIcon className={`${ICON} animate-spin`} />}>
-          <Shimmer as="p" className="m-0 text-sm">{view.activity}</Shimmer>
+          <p className="m-0 text-sm">{view.activity}</p>
         </Strip>
       );
     case "pending":

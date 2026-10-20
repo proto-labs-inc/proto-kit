@@ -43,10 +43,13 @@ exists.
 
 ## Report every stop before completion
 
+Use kind `product-url` only when asking for a missing live app URL, `sign-in` for product authentication, `approval` for permission, and `other` for any other blocker. The URL form handles product-url requests; other blockers stay visible. Include the kind when using the helper: `node <kit>/tools/setup-action.mjs <codebase> "<message>" <kind>`. Never classify sign-in as a missing URL.
+
+
 Before stopping for any reason before the completion gate below passes,
-call `report_setup_action { codebase, action: { message } }`.
+call `report_setup_action { codebase, action: { kind, message } }`.
 The website derives the current step from setup progress and places the
-blocker there automatically. Report only the message; never send a step.
+blocker there automatically. Report kind and message; never send a step.
 This includes questions, sign-in, missing access or files, approvals, tool or
 service failures, exhausted recovery attempts, and user-requested pauses.
 Explain the blocker and the concrete next step in `message`; when user input
@@ -55,7 +58,7 @@ not show **Action needed** on the site. Routine tool execution and bounded
 retries while actively working are not stops.
 
 If the tool is not available, run
-`node <kit>/tools/setup-action.mjs <codebase> '<message>'`.
+`node <kit>/tools/setup-action.mjs <codebase> '<message>' <kind>`.
 Retry a transient reporting failure once; if reporting still fails, tell the
 user the site could not be updated. Do not claim success without confirmation.
 If no codebase id exists yet, preserve progress and explain the blocker in

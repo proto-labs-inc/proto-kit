@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
 import { activityFor, identical, type Component, type Library, type Pass } from "@/library";
 import { Crisp } from "./ProductCrop";
@@ -90,7 +89,7 @@ export function Checks({ component, library, moving }: Props) {
       <CollapsibleContent>
         <div className="mt-3 flex flex-col gap-10 rounded-xl bg-muted/50 p-5">
           <Passes component={component} moving={moving} />
-          <Activity component={component} library={library} moving={moving} />
+          <Activity component={component} library={library} />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -182,14 +181,14 @@ function Passes({ component, moving }: { component: Component; moving: boolean }
 }
 
 function NoPasses({ component, moving }: { component: Component; moving: boolean }) {
-  if (moving) return <Shimmer className="text-sm">Waiting for the first check</Shimmer>;
+  if (moving) return <span className="text-sm">Waiting for the first check</span>;
   let why = `The import recorded no check of ${component.name} against the product.`;
   if (component.unverified) why = component.unverified;
   if (component.status === "skipped" && component.reason) why = component.reason;
   return <p className="m-0 text-sm text-muted-foreground">{why}</p>;
 }
 
-function Activity({ component, library, moving }: { component: Component; library: Library; moving: boolean }) {
+function Activity({ component, library }: { component: Component; library: Library }) {
   const lines = activityFor(component, library);
   return (
     <Task>
@@ -197,11 +196,10 @@ function Activity({ component, library, moving }: { component: Component; librar
       <TaskContent>
         {lines.length === 0 && <TaskItem>Nothing yet.</TaskItem>}
         {lines.map((event, i) => {
-          const last = i === lines.length - 1;
           return (
             <TaskItem key={`${event.at}-${i}`} className="flex gap-3">
               <span className="tabular-nums text-muted-foreground/60">{clock(event.at)}</span>
-              {last && moving ? <Shimmer as="span">{event.activity}</Shimmer> : <span>{event.activity}</span>}
+              <span>{event.activity}</span>
             </TaskItem>
           );
         })}

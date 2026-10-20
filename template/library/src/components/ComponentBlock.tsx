@@ -31,8 +31,8 @@ type Ask = "idle" | "asking" | SendOutcome;
  * its own module in its default state. One the import has not built
  * yet shows the product's own picture of it in a dashed frame, with
  * "Build it" on hover and the strip that says why under the frame, not
- * inside it. While the import reads a component a light passes over
- * its frame and the latest check shows as it lands; once built, the
+ * inside it. While the import reads a component,
+ * the latest check shows as it lands; once built, the
  * picture develops into the real thing.
  */
 export function ComponentBlock({ component, library, view, requestQueue, justAdded }: Props) {
@@ -85,7 +85,6 @@ export function ComponentBlock({ component, library, view, requestQueue, justAdd
         <Develop key={bodyKey(view)}>
           <Body component={component} view={view} />
         </Develop>
-        {view.kind === "working" && <Light />}
         {view.kind === "skipped" && ask !== "unreachable" && (
           <Button
             size="sm"
@@ -148,18 +147,4 @@ function Body({ component, view }: { component: Component; view: ComponentView }
     case "skipped":
       return <ProductCrop name={component.name} screenshot={view.screenshot} />;
   }
-}
-
-/** A light passing over the frame while the import reads the component. */
-function Light() {
-  return (
-    <motion.span
-      aria-hidden
-      className="pointer-events-none absolute inset-y-0 w-1/3"
-      style={{ background: "linear-gradient(90deg, transparent, color-mix(in oklab, var(--foreground) 12%, transparent), transparent)" }}
-      initial={{ left: "-35%" }}
-      animate={{ left: "110%" }}
-      transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}
-    />
-  );
 }
