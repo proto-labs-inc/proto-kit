@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { ClockIcon, RotateCwIcon } from "lucide-react";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { EVERYTHING, type SendOutcome } from "@/queue-client";
 import { importRequested, type RequestQueue, type Library, type Manifest } from "@/library";
 import { servingCopy } from "@/route";
@@ -20,11 +19,11 @@ export function ImportLine({ library, requestQueue }: Props) {
   );
 }
 
-/** "Importing" while it runs (the word itself moves), else how long ago it finished. */
+/** "Importing" while it runs (with static status text), else how long ago it finished. */
 function When({ manifest }: { manifest: Manifest }) {
   if (manifest.completedAt === null) {
     return (
-      <Shimmer as="span" className="text-foreground">Importing</Shimmer>
+      <span className="text-foreground">Importing</span>
     );
   }
   return <span>Imported {ago(manifest.completedAt)}</span>;

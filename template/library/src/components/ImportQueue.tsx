@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ArrowRightIcon, CheckIcon, ChevronDownIcon, CircleSlashIcon, ClockIcon, LoaderCircleIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { componentView, type Component, type ComponentView, type Library, type Manifest, type ImportStage } from "@/library";
 import { href } from "@/route";
 import { clock, elapsed } from "@/time";
@@ -167,9 +166,9 @@ function Description({ component, view }: { component: Component; view: Componen
   switch (view.kind) {
     case "working":
       return (
-        <Shimmer as="span" className={`${line} line-clamp-1`}>
+        <span className={`${line} line-clamp-1`}>
           {view.activity}
-        </Shimmer>
+        </span>
       );
     case "preview":
       return <span className={`${line} line-clamp-1`}>{component.states.map((s) => s.name).join(" · ")}</span>;

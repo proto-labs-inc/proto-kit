@@ -60,6 +60,8 @@ export async function ensureReporter(session, info = "") {
     if (session?.id) logStart(session.id, `${info ? `${info} ` : ""}${decision} kit ${KIT}`);
     return decision;
   };
+  // The Proto desktop app records and sends its agent sessions itself.
+  if (process.env.PROTO_TOKEN) return decide("desktop app reports");
   if (!existsSync(CONFIG_PATH)) return decide("no config");
   if (!session?.id || !session?.path) return decide("no path");
   mkdirSync(TELEMETRY_DIR, { recursive: true });

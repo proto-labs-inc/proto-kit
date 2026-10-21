@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { tokensFor, useLibrary, type Library } from "./library";
 import { usePreviewTheme } from "./theme";
 import { placeOf, useRoute, type Route } from "./route";
@@ -48,7 +47,7 @@ export function App() {
   if (load.phase === "loading") {
     return (
       <main className="mx-auto max-w-5xl px-6 py-16">
-        <Shimmer className="text-sm">Opening the library</Shimmer>
+        <span className="text-sm">Opening the library</span>
       </main>
     );
   }

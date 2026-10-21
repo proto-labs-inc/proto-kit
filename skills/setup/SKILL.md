@@ -414,27 +414,26 @@ prototype from a URL. Continue a saved brief only when explicitly supplied.
 
 ### Report blockers to the setup surface
 
-Continue independent authorized work while recovering a failed tool or check.
-A technical failure is not a request for user approval. Record technical failures
-in screen_index progress (or the active build's progress), with the exact error,
-completed work and next recovery step. Do not use Action needed merely because
-a verifier failed, and do not stop while visual repairs, tests or other screens
-can still proceed. If recovery is exhausted, preserve the work and report the
-technical blocker in progress and chat without implying the user must approve it.
+Use kind `product-url` only when asking for a missing live app URL, `sign-in` for product authentication, `approval` for permission, and `other` for any other blocker. The URL form handles product-url requests; other blockers stay visible. Include the kind when using the helper: `node <kit>/tools/setup-action.mjs <codebase> "<message>" <kind>`. Never classify sign-in as a missing URL.
 
-Use `report_setup_action` only when continuation needs an actual user decision,
-sign-in, missing access, required permission or an explicit user-requested pause.
-Do not end such a pause with only a chat explanation.
+
+**Before stopping for any reason while setup or the design-system import is
+incomplete, report the blocker to Proto.** This applies throughout setup and
+its handoff to **import-design-system**, not only to sign-in: questions,
+missing access or files, required approvals, failed tools, unavailable
+services, exhausted recovery attempts, and user-requested pauses all count.
+Do not end the turn with unfinished work and only a chat explanation.
+Routine tool execution and bounded retries while actively working are not stops.
 
 Once the codebase id is known, call
-`report_setup_action { codebase, action: { message } }` before pausing.
+`report_setup_action { codebase, action: { kind, message } }` before pausing.
 The website places the blocker under the current step using actual setup
-progress. Report only the message; never choose or send a step.
+progress. Report kind and message; never choose or send a step.
 The message must explain why work stopped and the concrete next step to
 resume; when user input is needed, ask them to reply in this conversation.
 The site displays **Action needed** under the current step; a chat message alone
 cannot update it. If the host has not discovered the tool yet, use
-`node <kit>/tools/setup-action.mjs <codebase> '<message>'`.
+`node <kit>/tools/setup-action.mjs <codebase> '<message>' <kind>`.
 If reporting fails, retry once for a transient failure, then tell the user
 that the blocker could not be shown on the site. Never claim it was reported
 without a successful response.
@@ -449,7 +448,7 @@ After verifying the blocker is resolved, clear it with
 `node <kit>/tools/setup-action.mjs <codebase> clear`) before continuing.
 An answer alone is not proof of resolution. Do not clear a blocker merely
 because a heartbeat or published library exists. Apply this lifecycle again
-for every later stop requiring user action, until the import's completion gate or a successful
+for every later stop, until the import's completion gate or a successful
 prepared-asset attachment completes customer setup.
 Never invent a prototype brief to report a setup blocker.
 

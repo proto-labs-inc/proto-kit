@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon } from "lucide-react";
+import { ArrowLeftIcon, Loader2Icon } from "lucide-react";
 import { ComponentBlock } from "@/components/ComponentBlock";
 import { ImportQueue } from "@/components/ImportQueue";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { TokenSwatches } from "@/components/TokenSwatches";
 import { TypeSpecimens } from "@/components/TypeSpecimens";
 import { componentView, importInProgress, tokensFor, type Component, type RequestQueue, type Library } from "@/library";
@@ -29,7 +28,32 @@ export function Overview({ library, requestQueue }: Props) {
         <ThemeToggle manifest={manifest} />
 
         {!started && (
-          <p className="text-sm text-muted-foreground">Nothing imported yet. The import fills this page as it reads your product.</p>
+          <div role="status" aria-label="Loading design system" className="space-y-10">
+            <div className="space-y-2">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <Loader2Icon aria-hidden="true" className="size-4 motion-safe:animate-spin" />
+                Preparing your design system…
+              </p>
+              <p className="text-sm text-muted-foreground">Styles and components appear here as they’re imported.</p>
+            </div>
+            <div aria-hidden="true" className="space-y-14 motion-safe:animate-pulse">
+              <div className="space-y-4">
+                <div className="h-4 w-24 rounded bg-muted" />
+                <div className="h-9 w-2/3 rounded bg-muted" />
+                <div className="h-4 w-1/2 rounded bg-muted" />
+              </div>
+              <div className="space-y-4">
+                <div className="h-4 w-20 rounded bg-muted" />
+                <div className="flex gap-3">
+                  {Array.from({ length: 6 }, (_, index) => <div key={index} className="h-16 min-w-0 flex-1 rounded-md bg-muted" />)}
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="h-4 w-28 rounded bg-muted" />
+                <div className="h-32 rounded-lg bg-muted" />
+              </div>
+            </div>
+          </div>
         )}
 
         {started && (
@@ -71,7 +95,7 @@ type SectionProps = {
 };
 
 /** A section with its heading and count in place from the start, and
- *  one line in it, shimmering while the import reads, until it fills. */
+ *  a plain status line until the import fills it. */
 function Section({ title, count, reading, reserve, gap = "gap-4", children }: SectionProps) {
   return (
     <section id={title === "Type styles" ? "type-styles" : title === "Colours" ? "colours" : "components"} className={`scroll-mt-8 flex flex-col ${gap}`}>
@@ -83,9 +107,9 @@ function Section({ title, count, reading, reserve, gap = "gap-4", children }: Se
         children
       ) : (
         <div className={reserve}>
-          <Shimmer as="p" className="m-0 text-sm">
+          <p className="m-0 text-sm">
             {reading}
-          </Shimmer>
+          </p>
         </div>
       )}
     </section>

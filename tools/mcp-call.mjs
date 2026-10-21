@@ -212,6 +212,9 @@ export function targetFor(config, options) {
  * the file is written in.
  */
 export function readConfig() {
+  // The Proto desktop app signs the person in itself and hands the kit its
+  // credential for the session: no link file, no linking step.
+  if (process.env.PROTO_TOKEN?.trim()) return appConfig();
   let config;
   try {
     config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
@@ -226,6 +229,28 @@ export function readConfig() {
   const credentials = credentialsIn(config);
   if (app.length === 0 || credentials.length === 0) throw new Error(NOT_SET_UP);
   return { ...config, app: app.replace(/\/+$/, ""), credentials };
+}
+
+/** The credential the Proto desktop app hands the kit (PROTO_APP, PROTO_TOKEN,
+ *  and who it stands for in PROTO_USER_ID, PROTO_TEAM_ID, PROTO_TEAM_NAME). */
+function appConfig() {
+  const app = process.env.PROTO_APP?.trim();
+  if (!app) throw new Error(NOT_SET_UP);
+  const team = { id: process.env.PROTO_TEAM_ID ?? "", name: process.env.PROTO_TEAM_NAME ?? "" };
+  return {
+    schemaVersion: 3,
+    app: app.replace(/\/+$/, ""),
+    credentials: [
+      {
+        kind: "laptop-token",
+        secret: process.env.PROTO_TOKEN.trim(),
+        user: { id: process.env.PROTO_USER_ID ?? "" },
+        team,
+        laptop: { id: "desktop", label: "Proto app" },
+        linkedAt: new Date(0).toISOString(),
+      },
+    ],
+  };
 }
 
 /** Every JSON-RPC message in a response body: plain JSON or SSE frames. */

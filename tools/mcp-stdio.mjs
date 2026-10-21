@@ -90,7 +90,7 @@ function localInitialize(params) {
     capabilities: { tools: { listChanged: true } },
     serverInfo: { name: "proto", version: "0" },
     instructions:
-      "Proto is not set up on this laptop yet. Run the Proto setup skill; its tools appear once ~/.proto/config.json exists.",
+      "Proto is not set up on this laptop yet. Run the Proto setup skill; its tools appear once ~/.proto/config.json exists (or the Proto desktop app provides PROTO_TOKEN).",
   };
 }
 
