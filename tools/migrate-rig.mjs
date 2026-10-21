@@ -32,6 +32,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { protoHome } from "./proto-home.mjs";
 
 const OLD_IMPORT = /(["'])@proto\/(rig-core|rig-vue|rig|wire)\1/g;
 const SOURCE_FILE = /\.(ts|tsx|js|jsx|mts|mjs|vue)$/;
@@ -191,7 +192,7 @@ function main() {
   const named = argv.filter((arg) => !arg.startsWith("--"));
   const did = (verb, past) => (check ? `would ${verb}` : past);
   const kit = dirname(dirname(fileURLToPath(import.meta.url)));
-  const root = join(process.env.HOME ?? "", ".proto");
+  const root = protoHome();
   const dirs = (path) => {
     try {
       return readdirSync(path, { withFileTypes: true })

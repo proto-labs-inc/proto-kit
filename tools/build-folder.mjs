@@ -8,15 +8,16 @@
  */
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { belowProtoHome, protoHome } from "./proto-home.mjs";
 
-export const protoHome = () => join(process.env.HOME ?? "", ".proto");
+export { protoHome };
 
 export const buildFolder = (codebase, briefId) => join(protoHome(), codebase, "run", "builds", briefId);
 
-/** The codebase id a workspace path belongs to, or null when it is not under ~/.proto. */
+/** The codebase id a workspace path belongs to, or null when it is not in the Proto folder. */
 export function codebaseOfWorkspace(workspace) {
-  const match = /[\\/]\.proto[\\/]([^\\/]+)[\\/](?:prototypes|screens)[\\/]/.exec(resolve(workspace) + "/");
-  return match ? match[1] : null;
+  const parts = belowProtoHome(workspace);
+  return parts && parts.length >= 2 && (parts[1] === "prototypes" || parts[1] === "screens") ? parts[0] : null;
 }
 
 /**

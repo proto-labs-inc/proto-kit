@@ -46,6 +46,7 @@ import { displayOf, headlessPage } from "./cdp/headless.mjs";
 import { cropPng, decodePng, encodePng, scalePng } from "./cdp/png.mjs";
 import { READ_INSTANCE, visualStateDiffers } from "./snapshot.mjs";
 import { compareForcedState } from "./verify-replica.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const INTERACTIVE = new Set(["button", "a", "link", "input", "textarea", "combobox", "checkbox", "switch", "radio", "tab", "menuitem", "slider"]);
 
@@ -67,7 +68,7 @@ if (options.theme && !["light", "dark"].includes(options.theme)) {
   console.error("--theme is light or dark");
   process.exit(1);
 }
-const home = join(process.env.HOME ?? "", ".proto", codebase);
+const home = join(protoHome(), codebase);
 const liveUrl = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8")).source?.liveUrl;
 if (!liveUrl) {
   console.error(`${home}/codebase.json has no source.liveUrl: the product page setup opened in the Proto window`);

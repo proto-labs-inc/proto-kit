@@ -56,6 +56,7 @@ import { answeredInTerminal, ask, waitForAnswer } from "./ask.mjs";
 import { createReporter } from "./build-report.mjs";
 import { draftCuration } from "./curate.mjs";
 import { captureAssets, overlayLine, readPage } from "./read-page.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 
 function fail(message) {
@@ -103,7 +104,7 @@ if (!command || !briefId) fail("usage: node tools/build-stream.mjs <command> <br
 const codebase = flags.codebase;
 if (!codebase) fail("--codebase is required: it chooses this laptop's credential for the build");
 
-const runDir = join(process.env.HOME ?? "", ".proto", codebase, "run", "builds", briefId);
+const runDir = join(protoHome(), codebase, "run", "builds", briefId);
 const treePath = join(runDir, "tree.json");
 const readPath = join(runDir, "read.json");
 const curationPath = join(runDir, "curation.json");

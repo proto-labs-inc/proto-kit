@@ -14,8 +14,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { join } from "node:path";
+import { protoHome } from "./proto-home.mjs";
 
-const PROTO = join(process.env.HOME ?? "", ".proto");
+const PROTO = protoHome();
 const LOOPBACKS = ["127.0.0.1", "::1"];
 
 /** Whether `port` can be bound on both loopback addresses and nothing answers a connection on either. */

@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { callTool, readConfig } from "./mcp-call.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 export function atomicRecord(path, value) {
   mkdirSync(dirname(path), { recursive: true });
@@ -17,7 +18,7 @@ export function atomicRecord(path, value) {
 }
 
 export async function setupCodebase(options, deps = {}) {
-  const home = deps.home ?? join(process.env.HOME ?? "", ".proto");
+  const home = deps.home ?? protoHome();
   const save = deps.save ?? atomicRecord;
   const call = deps.call ?? callTool;
   const config = (deps.config ?? readConfig)();

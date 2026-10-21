@@ -18,8 +18,9 @@
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { protoHome } from "./proto-home.mjs";
 
-export const CONFIG_PATH = join(process.env.HOME ?? "", ".proto", "config.json");
+export const CONFIG_PATH = join(protoHome(), "config.json");
 export const NOT_SET_UP =
   "Proto is not set up on this laptop yet: run the Proto setup skill, then try again.";
 export const STALE_CREDENTIAL =
@@ -74,7 +75,7 @@ export function codebaseTeam(codebase) {
 }
 
 function codebaseRecordPath(codebase) {
-  return join(process.env.HOME ?? "", ".proto", codebase, "codebase.json");
+  return join(protoHome(), codebase, "codebase.json");
 }
 
 /** Record which team a codebase belongs to, once a credential for that

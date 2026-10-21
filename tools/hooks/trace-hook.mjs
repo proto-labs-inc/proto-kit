@@ -20,8 +20,9 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSyn
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { protoHome } from "../proto-home.mjs";
 
-const TRACES = join(homedir(), ".proto", "traces");
+const TRACES = join(protoHome(), "traces");
 let cursor = false;
 
 try {

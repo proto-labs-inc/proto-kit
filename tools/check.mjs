@@ -56,6 +56,7 @@ import { checkFingerprint } from "./import-evidence.mjs";
 import { restoreFolder } from "./unit-restore.mjs";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
 import { resolveStates } from "./live-selector.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 // Verdicts that count as the product's look: identical, a one-pixel
@@ -129,7 +130,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error("--theme is light or dark");
     process.exit(1);
   }
-  const home = join(process.env.HOME ?? "", ".proto", codebase);
+  const home = join(protoHome(), codebase);
   const library = join(home, "library");
 
   // The library's component unless the target is named.

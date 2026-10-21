@@ -7,6 +7,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isLegacyCourierRun, LEGACY_SCRIPTS, readLegacyJson } from "./legacy-runs.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 export function processTable() {
   const output = execFileSync("ps", ["-ww", "-axo", "pid=,ppid=,lstart=,stat=,command="], { encoding: "utf8" });
@@ -156,7 +157,7 @@ export function discoverLegacyRuns(root) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2), at = args.indexOf("--root");
-  const root = resolve(at === -1 ? join(process.env.HOME ?? "", ".proto") : args[at + 1] ?? "");
+  const root = resolve(at === -1 ? protoHome() : args[at + 1] ?? "");
   const apply = args.includes("--apply");
   const named = args.filter((arg, index) => arg !== "--apply" && arg !== "--root" && (at === -1 || index !== at + 1));
   try {

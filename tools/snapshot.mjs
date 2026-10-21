@@ -1177,7 +1177,7 @@ export function instanceOf(state, read) {
 }
 
 async function run(codebase, spec, theme) {
-  const home = join(process.env.HOME ?? "", ".proto", codebase);
+  const home = join(protoHome(), codebase);
   const library = join(home, "library");
   const folder = join(library, "src", "components", spec.slug);
   const manifest = JSON.parse(readFileSync(join(library, "public", "manifest.json"), "utf8"));
@@ -1688,6 +1688,7 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
 
   const tsx = `import ${keptIds.size > 0 ? "{ useId, type ReactNode }" : "type { ReactNode }"} from "react";
 import styles from "./${Name}.module.css";
+import { protoHome } from "./proto-home.mjs";
 ${[...images.values()].map((img) => `import ${img.ident} from "./${img.file}";`).join("\n")}
 ${[...pictures.svgs.values()].map((svg) => `import ${svg.ident} from "./${svg.file}?raw";`).join("\n")}
 ${[...pictures.canvases.values()].map((png) => `import ${png.ident} from "./${png.file}";`).join("\n")}

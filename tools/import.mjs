@@ -47,6 +47,7 @@ import { classifyState, record, tailFile } from "./tail.mjs";
 
 import { IMPORT_THEMES } from "./import-evidence.mjs";
 import { componentStage, requirePreviousStages, STAGES } from "./import-stages.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
@@ -73,7 +74,7 @@ if (!IMPORT_THEMES.includes(options.theme) || (options["check-theme"] && !IMPORT
   process.exit(1);
 }
 if (!STAGES.includes(options.stage)) throw new Error("--stage is foundations, core or extended");
-const home = join(process.env.HOME ?? "", ".proto", codebase);
+const home = join(protoHome(), codebase);
 // The plan tools/plan.mjs wrote, unless another is named.
 const plan = options["check-theme"] ? null : JSON.parse(readFileSync(planArg ?? join(home, "run", "plan.json"), "utf8"));
 const scratch = join(home, "run", "import");

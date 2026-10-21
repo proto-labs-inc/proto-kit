@@ -22,6 +22,7 @@ import {
   screenDependencies,
   unpackScreen,
 } from "./screen-bundle.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 // All calls include codebase for credential selection, even when the server
 // identifies the target through indexId or screenId.
@@ -158,7 +159,7 @@ else if (command === "capture") {
   const [screenId, planFile] = rest;
   const { screen, buildDownloadUrl } = await invoke({ operation: "inspect", screenId });
   if (screen.codebase !== codebase || !buildDownloadUrl) throw new Error("Prepare this screen's compiled build first.");
-  const cache = join(process.env.HOME, ".proto", codebase, "screens", screenId);
+  const cache = join(protoHome(), codebase, "screens", screenId);
   const prepared = screen.metadata.preparedBuild;
   const bytes = await download(buildDownloadUrl, prepared.checksum, join(cache, `${prepared.checksum}.build.json.gz`));
   const temporary = mkdtempSync(join(tmpdir(), "proto-verify-screen-"));
@@ -187,7 +188,7 @@ else if (command === "capture") {
   });
   if (screen.codebase !== codebase)
     throw new Error("Starter belongs to a different codebase.");
-  const root = join(process.env.HOME, ".proto", codebase);
+  const root = join(protoHome(), codebase);
   const cache = join(root, "screens", screenId);
   const bytes = await download(
     downloadUrl,

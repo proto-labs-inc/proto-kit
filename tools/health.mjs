@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Read-only health check across ~/.proto — the proto plugin's
+ * Read-only health check across the Proto folder (~/.proto, or PROTO_HOME) — the proto plugin's
  * session-start hook. First, which kit this session runs and which site
  * it talks to; then one line per codebase with serving health and its
  * recovery command when
@@ -13,8 +13,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConfig } from "./mcp-call.mjs";
 import { isLegacyCourierRun } from "./legacy-runs.mjs";
+import { protoHome } from "./proto-home.mjs";
 
-const root = join(process.env.HOME ?? "", ".proto");
+const root = protoHome();
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -57,6 +58,7 @@ try {
   site = readConfig().app;
 } catch {}
 console.log(`proto kit ${version}, site ${site}`);
+if (process.env.PROTO_HOME) console.log(`Proto folder: ${root}. Wherever the kit says ~/.proto, use this folder.`);
 
 for (const codebase of codebases) {
   const runRoot = join(root, codebase.name, "run");

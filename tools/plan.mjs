@@ -27,13 +27,14 @@ import { join } from "node:path";
 
 import { DARK_MODE_IMPORT_ENABLED } from "./import-evidence.mjs";
 import { componentStage } from "./import-stages.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const [codebase, editsArg] = process.argv.slice(2);
 if (!codebase || !editsArg) {
   console.error("usage: node tools/plan.mjs <codebase> '<edits json>'");
   process.exit(1);
 }
-const run = join(process.env.HOME ?? "", ".proto", codebase, "run");
+const run = join(protoHome(), codebase, "run");
 const survey = join(run, "survey");
 let draftPath = join(survey, "plan.draft.json");
 try { readFileSync(draftPath); } catch {

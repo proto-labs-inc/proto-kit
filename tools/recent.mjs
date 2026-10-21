@@ -20,11 +20,12 @@
 import { mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { protoHome } from "./proto-home.mjs";
 
 const API = "https://api.recent.design/rpc/items/list";
 const SITE = "https://recent.design";
 const CATEGORIES = ["interface", "product", "web", "motion"];
-const CACHE = join(process.env.HOME ?? ".", ".proto", "cache", "recent-design.json");
+const CACHE = join(protoHome(), "cache", "recent-design.json");
 const CACHE_MS = 6 * 60 * 60 * 1000;
 const PAGE = 100;
 

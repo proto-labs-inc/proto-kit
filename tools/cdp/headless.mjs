@@ -29,9 +29,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect, evaluate } from "./cdp.mjs";
+import { protoHome } from "../proto-home.mjs";
 
 export const HEADLESS_PORT = 9444;
-const PROFILE = join(process.env.HOME ?? "", ".proto", "chrome-headless");
+const PROFILE = join(protoHome(), "chrome-headless");
 const LAUNCHED = join(PROFILE, "display.json");
 
 /** @typedef {{ dpr: number, colorProfile: "srgb" | "display-p3-d65" }} Display */
