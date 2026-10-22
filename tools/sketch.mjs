@@ -4,11 +4,7 @@
  * side of it, so the agent never hand-writes an MCP call or a poll loop.
  *
  * Usage:
- *   node tools/sketch.mjs candidates --brief <id> [--recent "<words>"]... [--mobbin <topic|page>]... [--limit <n>]
- *       reference candidates from Recent and Mobbin, read in parallel:
- *       writes them to <dir>/candidates.json and a numbered contact sheet
- *       to <dir>/sheet.png (read it to judge relevance in one look), and
- *       prints one line per candidate: n, source, title, app, description
+ *   Reference retrieval: tools/reference-research.mjs (docs/variant-references.md).
  *   node tools/sketch.mjs post --brief <id> <events.json | ->
  *       report_sketch: one event or an array (at most 12), shown at once.
  *       A wireframe may be written as changes to another one, so a
@@ -99,27 +95,8 @@ async function lines(file, args) {
   }
 }
 
-async function candidates(flags) {
-  const dir = dirOf(flags.brief);
-  const limit = String(flags.limit ?? 8);
-  const [recent, mobbin] = await Promise.all([
-    Promise.all(list(flags.recent).map((words) => lines("recent.mjs", ["search", words, "--limit", limit]))),
-    list(flags.mobbin).length ? lines("mobbin.mjs", ["cards", ...list(flags.mobbin), "--limit", String(Math.ceil(Number(limit) / 2))]) : [],
-  ]);
-  const seen = new Set();
-  const all = [...recent.flat(), ...mobbin].filter((c) => !seen.has(c.url) && seen.add(c.url));
-  if (all.length === 0) throw new Error("no candidates: try other words or topics");
-  const numbered = all.map((c, index) => ({ n: index + 1, ...c }));
-  writeFileSync(join(dir, "candidates.json"), JSON.stringify(numbered, null, 2));
-  for (const c of numbered) {
-    console.log(`${c.n}. [${c.source}] ${c.title}${c.app ? ` (${c.app})` : ""}${c.description ? ` - ${c.description.slice(0, 140)}` : ""}`);
-  }
-  const sheet = await contactSheet(numbered, join(dir, "sheet.png")).catch((error) => {
-    console.error(`contact sheet: ${error.message}`);
-    return null;
-  });
-  if (sheet) console.log(`\nContact sheet: ${sheet}`);
-  console.log(`Candidates: ${join(dir, "candidates.json")}`);
+async function candidates() {
+  throw new Error("Reference retrieval moved to reference-research.mjs. Follow docs/variant-references.md; local scraping is no longer supported.");
 }
 
 /** Every candidate in one numbered picture, so relevance is judged in
