@@ -11,9 +11,11 @@
  * one check is the build: a build that fails publishes nothing, and the
  * last good copy stays. What the agent edited is what the after-edit hook
  * (tools/hooks/post-edit-markers.mjs) asked for: <run>/publish.requested,
- * taken here as the publish starts. A served run is a run dir under
- * <home>/<codebase>/run/<name>/ whose supervisor is up; "library" is the
- * library, any other name the prototype of that slug. A run serving an
+ * taken here as the publish starts. A run is a run dir under
+ * <home>/<codebase>/run/<name>/, up or not: building needs no dev server,
+ * so an edit made while the run is stopped (after a laptop restart) is
+ * published all the same. "library" is the library, any other name the
+ * prototype of that slug. A run serving an
  * unchanged starter's saved build (tools/serve.mjs) has nothing to build.
  *
  * Changed means a different fingerprint of the workspace's files (path,
@@ -34,7 +36,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSyn
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { protoHome } from "./proto-home.mjs";
-import { alive, readJson } from "./run-repair.mjs";
+import { readJson } from "./run-repair.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STALE_MS = 20 * 60_000;
@@ -66,8 +68,8 @@ export function fingerprint(dir) {
   return hash.digest("hex");
 }
 
-/** Every run whose supervisor is up, with what it serves, and whether a
- *  publish was requested for it. */
+/** Every run on this laptop, with what it serves, and whether a publish
+ *  was requested for it. */
 export function servedRuns(home = protoHome()) {
   const runs = [];
   const dirs = (path) => {
@@ -81,9 +83,8 @@ export function servedRuns(home = protoHome()) {
     for (const name of dirs(join(home, codebase, "run"))) {
       const runDir = join(home, codebase, "run", name);
       const spec = readJson(join(runDir, "spec.json"));
-      const state = readJson(join(runDir, "state.json"));
       const dev = spec?.processes?.find((p) => p.name === "dev");
-      if (!dev || state === null || !alive(state.pid)) continue;
+      if (!dev) continue;
       if (dev.command?.some((arg) => String(arg).endsWith("/serve.mjs"))) continue;
       const kind = name === "library" ? "library" : "prototype";
       const workspace = kind === "library" ? join(home, codebase, "library") : join(home, codebase, "prototypes", name);

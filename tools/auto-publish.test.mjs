@@ -21,7 +21,7 @@ test("a workspace's fingerprint moves with its source and ignores what a build o
   assert.notEqual(fingerprint(workspace), before);
 });
 
-test("only runs whose supervisor is up and that have something to build are published", () => {
+test("every run with something to build is published, up or not", () => {
   const home = mkdtempSync(join(tmpdir(), "proto-home-"));
   const run = (name, dev, pid) => {
     const dir = join(home, "cb", "run", name);
@@ -40,7 +40,7 @@ test("only runs whose supervisor is up and that have something to build are publ
   run("starter", ["node", "/kit/tools/serve.mjs", "dist", "5200"], process.pid);
   run("library", ["pnpm", "dev"], process.pid);
   const runs = servedRuns(home).map((r) => `${r.kind}:${r.name}`).sort();
-  assert.deepEqual(runs, ["library:library", "prototype:up"]);
+  assert.deepEqual(runs, ["library:library", "prototype:down", "prototype:up"]);
 });
 
 test("an edit inside a served workspace asks for that run alone to be published", () => {
