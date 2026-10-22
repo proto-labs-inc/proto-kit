@@ -46,6 +46,12 @@
         "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/telemetry-stop.mjs\"",
         "timeout": 10
       }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/turn-start.mjs\"",
+        "timeout": 10
+      }
     ]
   }
 }

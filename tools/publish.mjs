@@ -33,7 +33,7 @@
  * at its end does that.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve, relative, extname, sep } from "node:path";
 import { workflowEvent, activityEvent } from "./workflow-report.mjs";
@@ -44,6 +44,7 @@ import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 import { validatePublishedManifest } from "./variant-manifest.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
 import { belowProtoHome, protoHome } from "./proto-home.mjs";
+import { takeRunLock } from "./run-lock.mjs";
 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
@@ -266,6 +267,14 @@ else target = { kind, codebase };
 // of the @proto-labs-inc/rig-core the workspace's adapter resolves.
 let rigVersion = null;
 if (kind === "prototype") rigVersion = resolvedRigVersion(workspace);
+// The skill's publish waits for a turn-end publish of the same run to
+// finish (tools/run-lock.mjs); an automatic one already holds the lock.
+const runDir = kind === "prototype" && codebase && slug ? join(protoHome(), codebase, "run", slug) : null;
+if (runDir && existsSync(runDir) && !options.auto && !dryRun) {
+  const lock = join(runDir, "publish.lock");
+  takeRunLock(lock, { wait: true });
+  process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
+}
 // An automatic publish only uploads: the brief is the skill's to finish.
 let progressBuild = kind === "prototype" && !options.auto ? buildOfWorkspace(workspace) : null;
 if (progressBuild) {

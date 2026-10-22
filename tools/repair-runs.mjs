@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /** Repair library/prototype serving specs. Legacy command listeners are always skipped.
  * Usage: node repair-runs.mjs [<codebase>…] [--check] [--restart]
+ *        node repair-runs.mjs --retired
+ * --retired repairs and restarts only the runs an older kit left with a
+ * tunnel or a heartbeat (the session-start hook, tools/hooks/retire-tunnels.mjs).
  */
 import { chmodSync, existsSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -11,7 +14,8 @@ import { isLegacyCourierRun } from "./legacy-runs.mjs";
 import { protoHome } from "./proto-home.mjs";
 const argv = process.argv.slice(2);
 const check = argv.includes("--check");
-const restart = argv.includes("--restart");
+const retiredOnly = argv.includes("--retired");
+const restart = argv.includes("--restart") || retiredOnly;
 // Consume the obsolete --harness argument for older update invocations only.
 const named = argv.filter((a, i) => !a.startsWith("--") && argv[i - 1] !== "--harness");
 
@@ -66,6 +70,7 @@ for (const codebase of codebases) {
     const changes = repair.changes.map((change) => describeChange(change, did));
 
     if (changes.length === 0) continue;
+    if (retiredOnly && !repair.changes.some((change) => change.kind === "drop-tunnel")) continue;
 
     const state = readJson(join(runDir, "state.json"));
     const up = state !== null && alive(state.pid);

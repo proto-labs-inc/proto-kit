@@ -12,6 +12,10 @@ import { fileURLToPath } from "node:url";
 
 let context = "";
 try {
+  const retire = fileURLToPath(new URL("./retire-tunnels.mjs", import.meta.url));
+  spawnSync(process.execPath, [retire], { stdio: "ignore", timeout: 5000 });
+} catch {}
+try {
   const health = fileURLToPath(new URL("../health.mjs", import.meta.url));
   const res = spawnSync(process.execPath, [health], { encoding: "utf8", timeout: 8000 });
   // health.mjs names the fix as Claude Code's command; in Cursor the
