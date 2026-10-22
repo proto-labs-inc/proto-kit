@@ -50,57 +50,18 @@ when you were not waiting), do that step, unless the stream shows you
 already did it, then go back to `wait`. Sketchers run in the background and post on
 their own; you do not wait for them.
 
-## 1. References (target: on screen within 30 seconds)
+## 1. References
 
-1. `node tools/sketch.mjs status --brief <id> "Reading your brief"`, and
-   in the same message dispatch the **base wireframe** sketcher in the
-   background (step 4 below says what it draws). It must be ready before
-   the person has finished ranking.
-2. You decide the search words, from the brief: 2 or 3 `--recent` phrases (what it
-   should feel like: "inline warning", "permissions settings", "status
-   badge table") and 2 to 4 Mobbin topics
-   (`node tools/mobbin.mjs topics --platform web --match "<words>"`,
-   instant). Then one command reads both sources in parallel:
+Reference retrieval now uses the server-side workflow in `docs/variant-references.md`.
+Register the variant set, capture the current product, and run `reference-research.mjs`.
+Show its progress, inspect the ranked selection and register the saved references in
+the variant set's normal References gallery. The historical sketch reference-event
+format is not the route for new multi-source research. Keep supplied references.
+Do not call local `mobbin.mjs`, `recent.mjs`, or `sketch.mjs candidates` for research.
 
-   ```
-   node tools/sketch.mjs candidates --brief <id> --recent "<words>" --recent "<words>" --mobbin <topic> --mobbin <topic> --limit 8
-   ```
-
-   In the same message, read the product's colours off the reference
-   page so every wireframe is drawn in them (its paper, ink, brand as the
-   accent, and its red, green and amber):
-   `node tools/sketch.mjs palette --brief <id> --page <referenceUrl>`.
-   It needs the page open in Proto Chrome; when it is not, skip it and
-   the wireframes keep the studio's own colours.
-
-   `candidates` prints the candidates numbered and writes a contact sheet. **Read
-   the sheet** (one picture) and keep only the ones that are actually
-   relevant to this brief: the right kind of screen, a pattern the
-   person could borrow. Drop gimmicks and anything off-topic even if its
-   words matched. Aim for 10 (8 to 12), both sources when both have good
-   ones. Fewer good ones beat ten weak ones. If no Recent result fits,
-   say so in a status line rather than padding with weak ones.
-   For each one you keep, look at it on the sheet and write `notes`: 1 to
-   3 key things in that design that this brief could borrow ("Each check
-   has its own fix button.", "Counts come before the list."). The studio
-   puts the first note in the person's note when they pick it, and offers
-   the others; write them as the person would.
-3. Post them as one `references` event. Copy `title`, `app`, `url`,
-   `image`, `video`, `width`, `height` from `candidates.json` as they are
-   (media must stay on the source's CDN); write a short kebab `id` and
-   its `notes`.
-
-   ```
-   node tools/sketch.mjs post --brief <id> refs.json
-   ```
-   `refs.json`: `{"type":"references","items":[{"id":"better-stack-settings","source":"mobbin","app":"Better Stack","title":"Settings","url":"…","image":"…","notes":["Status sits next to each item.","Risky items use one color."]}, …]}`
-4. The **base wireframe** (dispatched in step 1): one `proto:sketcher`,
-   in the background, draws the current
-   screen (`referenceUrl`) as `~/.proto/sketches/<id>/base.json`, with no
-   highlight and no notes, and an `id` on every region (header, sidebar,
-   each section and card, the main column). Every direction is written as
-   changes to it, so they all look like the same product and each one is
-   quick to write. Then go to the loop.
+Draw the base wireframe from the current screen, then continue with the wireframe
+format and refinements below. Read the product palette using `sketch.mjs palette`
+when needed. References remain in the normal variant-set gallery.
 
 ## 2. The wireframe format
 
@@ -276,3 +237,9 @@ chosen detail option is a state of the prototype to build (a preview
 state, step 7). The references say what it should feel like; the
 product's own components and styles still decide how it looks. Then run
 the create-prototype runbook as written, with this briefId.
+
+## Reference retrieval
+
+The earlier local `sketch.mjs candidates`, `mobbin.mjs` and `recent.mjs` search
+commands are retired for research. Follow `docs/variant-references.md` and use
+`reference-research.mjs`; show its progress and use its ranked selection.
