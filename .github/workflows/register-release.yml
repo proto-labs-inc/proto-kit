@@ -23,10 +23,23 @@ jobs:
         with:
           node-version: 22
       - name: Test release construction and registration
-        run: node --test tools/check-plugin.test.mjs tools/update-plugin.test.mjs tools/publish-release.test.mjs tools/register-release.test.mjs tools/variant-manifest.test.mjs tools/publish.test.mjs tools/screen-bundle.test.mjs tools/screen-approval.test.mjs tools/update-rig.test.mjs tools/migrate-rig.test.mjs
+        run: node --test tools/check-plugin.test.mjs tools/update-plugin.test.mjs tools/publish-release.test.mjs tools/publish-desktop-artifact.test.mjs tools/register-release.test.mjs tools/variant-manifest.test.mjs tools/publish.test.mjs tools/screen-bundle.test.mjs tools/screen-approval.test.mjs tools/update-rig.test.mjs tools/migrate-rig.test.mjs
       - name: Generate version and advance release branch
         id: release
         run: node tools/publish-release.mjs
+      - name: Publish signed desktop kit archive
+        env:
+          PROTO_RELEASE_SHA: ${{ steps.release.outputs.commit }}
+          PROTO_ARTIFACT_SIGNING_KEY: ${{ secrets.PROTO_ARTIFACT_SIGNING_KEY }}
+          PROTO_ARTIFACT_KEY_ID: ${{ vars.PROTO_ARTIFACT_KEY_ID }}
+          PROTO_UPDATES_BASE_URL: ${{ vars.PROTO_UPDATES_BASE_URL }}
+          PROTO_UPDATES_R2_BUCKET: ${{ vars.PROTO_UPDATES_R2_BUCKET }}
+          PROTO_UPDATES_R2_ENDPOINT: ${{ vars.PROTO_UPDATES_R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.PROTO_UPDATES_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.PROTO_UPDATES_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: node tools/publish-desktop-artifact.mjs
       # GITHUB_TOKEN pushes do not trigger another push workflow.
       - name: Verify published manifest and record release
         if: github.ref == 'refs/heads/main'
