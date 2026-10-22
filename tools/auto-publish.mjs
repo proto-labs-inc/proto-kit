@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Publish every served prototype and library whose files changed since
- * its last publish, so the copy everyone else sees follows the maker's
- * within a turn. The maker sees the local dev server in the Proto
+ * Publish every served prototype and library the agent edited this turn,
+ * so the copy everyone else sees follows the maker's within a turn. The maker sees the local dev server in the Proto
  * desktop app; nobody else reaches this laptop, so the published copy is
  * all they have.
  *
@@ -10,7 +9,9 @@
  * detached, so the agent never waits on it), not on every file save: a
  * turn's end is when the agent believes the work is in a good state. The
  * one check is the build: a build that fails publishes nothing, and the
- * last good copy stays. A served run is a run dir under
+ * last good copy stays. What the agent edited is what the after-edit hook
+ * (tools/hooks/post-edit-markers.mjs) asked for: <run>/publish.requested,
+ * taken here as the publish starts. A served run is a run dir under
  * <home>/<codebase>/run/<name>/ whose supervisor is up; "library" is the
  * library, any other name the prototype of that slug. A run serving an
  * unchanged starter's saved build (tools/serve.mjs) has nothing to build.
@@ -65,7 +66,8 @@ export function fingerprint(dir) {
   return hash.digest("hex");
 }
 
-/** Every run whose supervisor is up, with what it serves. */
+/** Every run whose supervisor is up, with what it serves, and whether a
+ *  publish was requested for it. */
 export function servedRuns(home = protoHome()) {
   const runs = [];
   const dirs = (path) => {
@@ -85,13 +87,16 @@ export function servedRuns(home = protoHome()) {
       if (dev.command?.some((arg) => String(arg).endsWith("/serve.mjs"))) continue;
       const kind = name === "library" ? "library" : "prototype";
       const workspace = kind === "library" ? join(home, codebase, "library") : join(home, codebase, "prototypes", name);
-      if (existsSync(join(workspace, "package.json"))) runs.push({ kind, codebase, name, runDir, workspace });
+      if (existsSync(join(workspace, "package.json"))) {
+        runs.push({ kind, codebase, name, runDir, workspace, requested: existsSync(join(runDir, "publish.requested")) });
+      }
     }
   }
   return runs;
 }
 
 function publishRun(run) {
+  rmSync(join(run.runDir, "publish.requested"), { force: true });
   const log = join(run.runDir, "publish.log");
   const note = (line) => appendFileSync(log, `${new Date().toISOString()} ${line}\n`);
   const recorded = join(run.runDir, "published.fingerprint");
@@ -149,7 +154,7 @@ function publishRun(run) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  for (const run of servedRuns()) {
+  for (const run of servedRuns().filter((run) => run.requested)) {
     try {
       publishRun(run);
     } catch (error) {

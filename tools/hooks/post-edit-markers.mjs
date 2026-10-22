@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
  * PostToolUse hook (Write|Edit): when the edited file sits inside a
- * Proto prototype workspace (~/.proto/<codebase>/prototypes/<slug>/),
- * re-run the marker check on that workspace and say one line — only
- * when something's wrong. Fail soft everywhere: any problem in the
- * hook itself is silence, never a wall.
+ * Proto prototype workspace (~/.proto/<codebase>/prototypes/<slug>/) or
+ * library (~/.proto/<codebase>/library/) that is being served, ask for
+ * it to be published when the turn ends (<run>/publish.requested, read
+ * by tools/auto-publish.mjs). For a prototype, also re-run the marker
+ * check on that workspace and say one line — only when something's
+ * wrong. Fail soft everywhere: any problem in the hook itself is
+ * silence, never a wall.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -18,6 +21,13 @@ try {
   const protoRoot = protoHome() + sep;
   if (!file.startsWith(protoRoot)) process.exit(0);
   const rel = file.slice(protoRoot.length).split(sep);
+  let run = null;
+  if (rel[1] === "prototypes" && rel.length >= 4) run = rel[2];
+  else if (rel[1] === "library" && rel.length >= 3) run = "library";
+  if (run) {
+    const runDir = join(protoRoot, rel[0], "run", run);
+    if (existsSync(runDir)) writeFileSync(join(runDir, "publish.requested"), "");
+  }
   if (rel[1] !== "prototypes" || rel.length < 4) process.exit(0);
   const workspace = join(protoRoot, rel[0], "prototypes", rel[2]);
 
