@@ -9,7 +9,9 @@ One verb: after it, the prototype runs on this laptop and its published
 copy is on Proto. The maker sees the local dev server in the Proto
 desktop app, with hot reload; everyone else sees the published copy,
 which is published again at the end of every agent turn that changed the
-workspace (`tools/auto-publish.mjs`, run by the kit's end-of-turn hook).
+workspace (`tools/auto-publish.mjs`, run by the kit's end-of-turn hook;
+a workspace with an open build request is published by its skill instead,
+and a starter's saved build only once step 2 switches it to the dev server).
 The dev server runs detached under `tools/supervise.mjs`, surviving this
 session. Cloud actions go through the **proto MCP server** (setup
 connects it; if its tools are missing or `whoami` fails, run setup
@@ -80,11 +82,10 @@ versions are unchanged. Stop on an upgrade failure.
    last publish did not already have, and prints the published URL.
    That copy is what everyone but the maker sees.
 
-5. **Report**. If a brief is running (create-prototype passes its
-   `briefId`) and step 4 published, finish it first: `report_progress
-   { briefId, status: "done", prototypeSlug: "<slug>", message: "Ready" }`.
-   That is what closes the build's card in the gallery; registering does
-   not. Then tell the user the Frame URL (`<app>/p/<slug>`), the
+5. **Report**. When the workspace has a running brief, step 4's publish
+   reports it done itself (that is what closes the build's card in the
+   gallery; registering does not), so do not report done again. Then tell
+   the user the Frame URL (`<app>/p/<slug>`), the
    published URL, and where the run lives. Tell the user plainly: in the
    Proto desktop app they see the prototype live from this laptop;
    everyone else sees the published copy, which follows each finished
