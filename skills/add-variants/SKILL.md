@@ -17,8 +17,7 @@ instead of this skill.
 
 Work only in the existing prototype workspace and variant set named by the
 request. This is an incremental edit: do not scaffold a prototype, run
-create-prototype or the full serve workflow, provision or restart a tunnel,
-register the prototype, or change unrelated states or variant sets.
+create-prototype or the full serve workflow, register the prototype, or change unrelated states or variant sets.
 
 ## Add the variants
 

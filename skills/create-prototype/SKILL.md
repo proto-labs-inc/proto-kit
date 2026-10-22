@@ -19,8 +19,8 @@ handle those alternatives separately with `create-variant-set`.
 ## Authorization
 
 A request to create or build a prototype authorizes this runbook end to
-end, including registering the new prototype, provisioning its public
-address, starting its tunnel, and uploading its permanent snapshot. These
+end, including registering the new prototype, starting its dev server,
+and uploading its permanent snapshot. These
 are expected completion steps, not a separate expansion of scope. Do not
 ask the user for an additional permission merely to serve or publish the
 prototype created by the request.
@@ -179,10 +179,9 @@ used the wrong display and disturbed the checks running beside them).
    under Blocked, then rerun the same command. Do not advance to serving or
    composition while the choice is unanswered.
 5. **Serve early.** The dev server the copy used has stopped; start the
-   serve skill's steps 1 to 4 now (register, provision the tunnel, write
-   the run spec, `supervise.mjs start`), in that order, and do not verify
-   through the edge yet: the tunnel connects while you write the change.
-   Registering and the heartbeat do not finish the build: its card stays
+   serve skill's steps 1 to 3 now (register, write the run spec,
+   `supervise.mjs start`), in that order.
+   Registering does not finish the build: its card stays
    up and every stage is still reported. `report_progress serving` comes
    later, at step 9, and `done` at the very end.
 6. **The gate, then the parts left to fix.** A frozen copy has neither:
@@ -298,11 +297,10 @@ used the wrong display and disturbed the checks running beside them).
      pixel clusters outside the change are the headless Chrome's colours
      against the Proto window's (about 0.4%), not a copy problem. Act on a
      moved or missing marker; leave pixel-only differences alone.
-9. **Serve.** Continue in the serve skill at step 5 (verify through the
-    edge, publish, report). Publishing reports its actual upload and availability
-    checks, a clean screenshot of the built files, and completion. Registration
-    and heartbeats do not complete the brief. Tell the user it is reachable only
-    after verification. Never commit anything into the user's repos.
+9. **Serve.** Continue in the serve skill at step 4 (publish, report).
+    Publishing reports its actual upload and availability checks, a clean
+    screenshot of the built files, and completion. Registration does not
+    complete the brief. Tell the user it is ready only after publishing. Never commit anything into the user's repos.
 
 ## Blocked
 

@@ -13,7 +13,7 @@ and `done` only after publishing.
 
 Work only in the existing prototype workspace named by the request. This is
 an incremental edit: do not scaffold a prototype, run create-prototype or the
-full serve workflow, provision or restart a tunnel, or register the prototype.
+full serve workflow, or register the prototype.
 
 ## Build the set
 

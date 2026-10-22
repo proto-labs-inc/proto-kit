@@ -39,7 +39,7 @@ Cursor; the core stays harness-neutral.
 - `create-variant-set/`: add a new variant set to an existing prototype.
 - `add-variants/`: add variants to a set that already exists.
 - `edit-variant/`: change one existing variant.
-- `serve/`: provision the tunnel, supervise serving, recover it.
+- `serve/`: supervise the local dev server, publish, recover it.
 - `create-pr-plan/`: decompose prototype work into ordered pull-request slices.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
 - `publish-library/`: publish the library on demand.
@@ -52,7 +52,7 @@ Cursor; the core stays harness-neutral.
 The library and the import:
 
 - `library.mjs`: the one writer of the library contract, atomic and locked.
-- `host-library.mjs`: scaffold, install, tunnel and supervised run, one call.
+- `host-library.mjs`: scaffold, install and supervised local run, one call.
 - `verify-replica.mjs`: capture the live element, render the replica, diff them.
 - `pictures.mjs`: logos, icons, charts and background images taken from the page as files, never redrawn.
 - `verify-markers.mjs`: check a workspace's `data-proto-id` coverage.
@@ -72,11 +72,10 @@ A prototype build (`docs/build-read.md`):
 Serving and publishing:
 
 - `serve.mjs`: static server, CORS and no-store, port 0.
-- `supervise.mjs`: detached supervisor keeping dev server and tunnel alive.
+- `supervise.mjs`: detached supervisor keeping the dev server alive.
 - `publish.mjs`: upload a built folder over presigned PUTs.
 - `publish-library.mjs`: build and publish the library in one serialised call.
-- `prototype-heartbeat.mjs`: beat while a prototype's or library's run is up.
-- `heartbeat.mjs`: the beat loop those share.
+- `auto-publish.mjs`: at the end of each agent turn, build and publish every served prototype and library that changed.
 - `health.mjs`: the session-start check, one line per codebase.
 - `debug-report.mjs`: session snapshots to Proto: `send` now, `watch` every ten minutes in the background.
 - `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.

@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
       - name: Test release construction and registration
-        run: node --test tools/check-plugin.test.mjs tools/update-plugin.test.mjs tools/publish-release.test.mjs tools/register-release.test.mjs tools/variant-manifest.test.mjs tools/publish.test.mjs tools/screen-bundle.test.mjs tools/screen-approval.test.mjs tools/update-rig.test.mjs tools/migrate-rig.test.mjs
+        run: node --test tools/check-plugin.test.mjs tools/update-plugin.test.mjs tools/publish-release.test.mjs tools/register-release.test.mjs tools/variant-manifest.test.mjs tools/publish.test.mjs tools/screen-bundle.test.mjs tools/screen-approval.test.mjs tools/update-rig.test.mjs tools/migrate-rig.test.mjs tools/auto-publish.test.mjs tools/run-repair.test.mjs
       - name: Generate version and advance release branch
         id: release
         run: node tools/publish-release.mjs

@@ -25,6 +25,6 @@ it lives now.
    URL and stays viewable after this laptop closes.
 
 The import-design-system skill runs this command after every component
-lands and again when the import finishes; this command exists for
-publishing again after manual edits. Each publish uploads to a fresh
+lands and again when the import finishes, and the end of every agent
+turn publishes what it changed; this command publishes now. Each publish uploads to a fresh
 path, so links to earlier publishes keep working.

@@ -240,7 +240,8 @@ local component-request module (`src/queue-client.ts`), a POST to
 `queue.json` on the dev server of `{ "action": "add" | "remove", "slug":
 "…" }`. It does not wake a coding agent or send remote commands. A published
 build has no server behind it, so there the request fails and the app
-says only the live library can ask.
+says only the maker's own library can ask: the one the Proto desktop app
+shows from this laptop.
 
 An active import checks the file finitely with `take-queued`, which, for the
 first request it can act on, removes the request from `requests` and

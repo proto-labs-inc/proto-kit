@@ -10,8 +10,9 @@ a feed, binds a chat for delivery, or launches a headless session.
 
 Questions return promptly with a durable checkpoint and are answered in chat.
 A local component request is checked during active import work only. Serving
-supervisors stay alive independently to run dev servers, tunnels, and
-heartbeats; this is serving, not unattended agent work.
+supervisors stay alive independently to run dev servers; this is serving,
+not unattended agent work. The end-of-turn hook publishes what the turn
+changed (`tools/auto-publish.mjs`) and returns at once.
 
 ## Packaging
 

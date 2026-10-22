@@ -156,23 +156,9 @@ before linking the laptop. Preserve local development folders and their edits.
 
 ### Prerequisites
 
-`node` (≥ 20), `pnpm`, and `cloudflared` on PATH. Install what's
-missing with the user's package manager (macOS: `brew install
-cloudflared`); tell them what you installed.
-
-**The network.** Everything this laptop sends to Proto goes over
-ordinary HTTPS on port 443 and works anywhere: linking, the design
-system import, publishing, every command. Going *live* is the other
-direction, and it needs outbound port 7844, which guest and corporate
-Wi-Fi commonly block. cloudflared says so in its own log within about
-fifteen seconds of starting (`precheck complete hard_fail=true`), and
-`host-library.mjs` prints `tunnel: blocked` and this sentence when it
-does:
-
-> This network blocks the connection the tunnel needs (port 7844), so nothing here can go live on it. Publishing still works, and so does everything else this laptop sends to Proto; for a live view use a phone hotspot or another network.
-
-Setup finishes either way, and so does the import. Say the sentence
-once, when it happens, and carry on.
+`node` (≥ 20) and `pnpm` on PATH. Install what's missing with the
+user's package manager; tell them what you installed. Everything this
+laptop sends to Proto goes over ordinary HTTPS and works on any network.
 
 ### `~/.proto/config.json`
 
@@ -224,7 +210,7 @@ the most recently linked one, saying so on stderr.
 ### The proto MCP server
 
 The `proto` MCP server is how every kit skill talks to Proto
-(tunnels, registration, source registry, comments). In Claude Code and
+(registration, publishing, source registry, comments). In Claude Code and
 Cursor it ships as the kit's stdio bridge (`tools/mcp-stdio.mjs`), which
 reads config.json, so once the link helper has written the file the server
 works with nothing else to add. The bridge announces its tools when
@@ -281,9 +267,6 @@ A codebase is one codebase being prototyped, keyed everywhere by a
 cloud-minted id: `~/.proto/<id>/` on the laptop, and the id in every
 later call. Its display name is separate and renamable; never derive
 a path or slug from it. The codebase is the team's.
-Tunnels are provisioned by target, never by a name you compose: the
-library's by the codebase id. The site chooses and stores every
-address.
 
 **Branch on `codebase` before looking for code.** A `codebase` in the
 setup document is the cloud-minted id of an existing codebase. It is
@@ -405,8 +388,8 @@ Follow import-design-system, resuming existing local checkpoints. Do not run
 index-screens, discover screens, review an inventory or prepare starter screens.
 Finish with `node <kit>/tools/finish-import.mjs <codebase>`: its existing verification
 and publication gates write completedAt into the published library manifest.
-Partial publications do not complete setup. The website reads that manifest and
-existing library heartbeat; no extra completion-report tool is needed.
+Partial publications do not complete setup. The website reads that manifest;
+no extra completion-report tool is needed.
 On failure, preserve local work, report the actual error and resume the same import.
 Use report_setup_action only for actual user decisions, sign-in or access blockers.
 After completion, clear resolved blockers and return to Proto to create the first
@@ -447,7 +430,7 @@ After verifying the blocker is resolved, clear it with
 `report_setup_action { codebase, action: null }` (or
 `node <kit>/tools/setup-action.mjs <codebase> clear`) before continuing.
 An answer alone is not proof of resolution. Do not clear a blocker merely
-because a heartbeat or published library exists. Apply this lifecycle again
+because a published library exists. Apply this lifecycle again
 for every later stop, until the import's completion gate or a successful
 prepared-asset attachment completes customer setup.
 Never invent a prototype brief to report a setup blocker.
@@ -542,7 +525,6 @@ without stopping anything.
   disagree with each other, a fork or renamed checkout, which is
   why confirmation beat validation above).
 - The `whoami` MCP tool answers with the expected team and grants.
-- `cloudflared --version` runs.
 
 Report what you set up, leading with the link `summary`: which member
 and team this laptop now works as, and which teams it already worked in
