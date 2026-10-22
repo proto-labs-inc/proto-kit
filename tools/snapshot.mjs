@@ -53,6 +53,8 @@ import { INSIDE, PICTURE_OF, inSvgPicture, localStyleImages, writePictures, writ
 import { FORCEABLE, withForcedState } from "./verify-replica.mjs";
 import { DARK_MODE_IMPORT_ENABLED } from "./import-evidence.mjs";
 import { STURDY_SELECTOR, positional } from "./live-selector.mjs";
+import { libraryPort } from "./ports.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const USAGE = "usage: node tools/snapshot.mjs <codebase> <json | @file> [--theme <light|dark>]";
 
@@ -1689,8 +1691,6 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
 
   const tsx = `import ${keptIds.size > 0 ? "{ useId, type ReactNode }" : "type { ReactNode }"} from "react";
 import styles from "./${Name}.module.css";
-import { protoHome } from "./proto-home.mjs";
-import { libraryPort } from "./ports.mjs";
 ${[...images.values()].map((img) => `import ${img.ident} from "./${img.file}";`).join("\n")}
 ${[...pictures.svgs.values()].map((svg) => `import ${svg.ident} from "./${svg.file}?raw";`).join("\n")}
 ${[...pictures.canvases.values()].map((png) => `import ${png.ident} from "./${png.file}";`).join("\n")}
