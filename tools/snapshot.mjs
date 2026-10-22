@@ -1183,7 +1183,8 @@ async function run(codebase, spec, theme) {
   const manifest = JSON.parse(readFileSync(join(library, "public", "manifest.json"), "utf8"));
   const palette = manifest.themes?.[theme] ?? manifest.tokens ?? [];
   const liveUrl = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8")).source?.liveUrl;
-  const port = JSON.parse(readFileSync(join(home, "run", "library", "tunnel.json"), "utf8")).port;
+  const port = libraryPort(codebase);
+  if (port === null) throw new Error(`the library is not being served: run node tools/host-library.mjs ${codebase}`);
   const appUrl = `http://localhost:${port}`;
   const page = new URL(liveUrl);
   const tab = await findPage(`${page.host}${page.pathname}`);
@@ -1689,6 +1690,7 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
   const tsx = `import ${keptIds.size > 0 ? "{ useId, type ReactNode }" : "type { ReactNode }"} from "react";
 import styles from "./${Name}.module.css";
 import { protoHome } from "./proto-home.mjs";
+import { libraryPort } from "./ports.mjs";
 ${[...images.values()].map((img) => `import ${img.ident} from "./${img.file}";`).join("\n")}
 ${[...pictures.svgs.values()].map((svg) => `import ${svg.ident} from "./${svg.file}?raw";`).join("\n")}
 ${[...pictures.canvases.values()].map((png) => `import ${png.ident} from "./${png.file}";`).join("\n")}

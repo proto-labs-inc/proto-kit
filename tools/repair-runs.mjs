@@ -73,7 +73,7 @@ for (const codebase of codebases) {
       const written = join(runDir, "spec.json.new");
       writeFileSync(written, JSON.stringify({ ...spec, processes }, null, 2) + "\n", { mode: 0o600 });
       renameSync(written, specPath);
-      chmodSync(specPath, 0o600); // it holds the run's connector token
+      chmodSync(specPath, 0o600); // an older run's spec held a connector token
     }
 
     // A run that is up was started from the spec as it was, so the
@@ -131,6 +131,6 @@ if (check) console.log("\nNothing was written (--check).");
 // What restarting this run costs, for the report when it runs
 // without --restart.
 function interruption(name) {
-  if (name === "library") return "the library's public address is down for a few seconds.";
-  return "its public address is down for a few seconds, and the Frame shows the last published build meanwhile.";
+  if (name === "library") return "the library's local server is down for a few seconds.";
+  return "its local server is down for a few seconds, and the Frame shows the last published build meanwhile.";
 }

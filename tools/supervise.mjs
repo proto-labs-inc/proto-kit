@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Process supervisor for a served prototype: keeps the dev server and the
- * tunnel connector alive together, detached from any agent session.
+ * Process supervisor for a served prototype or library: keeps its dev
+ * server alive, detached from any agent session.
  *
  * A run dir holds one prototype's serving state:
  *   spec.json    what to run (written by the serve skill)
@@ -11,9 +11,7 @@
  * spec.json:
  *   { "name": "<codebase>/<slug>",
  *     "processes": [
- *       { "name": "dev", "cwd": "/abs/workspace", "command": ["pnpm", "dev"],
- *         "env": { "PROTO_TUNNEL": "1" } },
- *       { "name": "tunnel", "command": ["cloudflared", "tunnel", "run", "--token", "…"] }
+ *       { "name": "dev", "cwd": "/abs/workspace", "command": ["pnpm", "dev"] }
  *     ] }
  *
  * Usage: node supervise.mjs start|stop|status <run-dir>

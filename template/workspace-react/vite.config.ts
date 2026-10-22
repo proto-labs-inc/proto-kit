@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
-const tunnel = process.env.PROTO_TUNNEL === "1";
 const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 
 // Variant previews land in public/previews while this server is already
@@ -49,7 +48,7 @@ function publicAssets(): Plugin {
           res.end(body);
         } catch {
           // A missing file may only not exist yet (a preview being written):
-          // never let a browser or the tunnel's edge cache its absence.
+          // never let a browser cache its absence.
           res.statusCode = 404;
           res.setHeader("Cache-Control", "no-store");
           res.end();
@@ -72,11 +71,5 @@ export default defineConfig({
     // new file that is not a module (a part's notes, its fonts and
     // pictures) would otherwise reload every open page mid-capture.
     watch: { ignored: ["**/notes.md", "**/*.woff2", "**/*.woff", "**/*.ttf", "**/*.otf", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.avif", "**/*.svg"] },
-    // Tunnel gotchas: accept the public hostname + wss HMR when served
-    // through the gateway. Off by default so local dev stays untouched.
-    ...(tunnel && {
-      allowedHosts: true,
-      hmr: { protocol: "wss", clientPort: 443 },
-    }),
   },
 });

@@ -31,7 +31,8 @@ export async function portIsFree(port) {
 /**
  * Every port recorded under ~/.proto, for every codebase: each
  * workspace's public/prototype.json, each run spec's PROTO_PORT and
- * each library's tunnel.json. A record may be stale (its server is
+ * each library's local.json (tunnel.json for a run an older kit
+ * started). A record may be stale (its server is
  * down) and still counts: it is that prototype's port to come back to.
  */
 export function claimedPorts() {
@@ -61,11 +62,28 @@ export function claimedPorts() {
         const port = Number(process.env?.PROTO_PORT);
         if (Number.isInteger(port) && port > 0) claimed.add(port);
       }
-      const tunnel = readJson(join(run, "tunnel.json"));
-      if (Number.isInteger(tunnel?.port)) claimed.add(tunnel.port);
+      for (const record of ["local.json", "tunnel.json"]) {
+        const port = readJson(join(run, record))?.port;
+        if (Number.isInteger(port)) claimed.add(port);
+      }
     }
   }
   return claimed;
+}
+
+/**
+ * The port a codebase's library run serves on, from the record
+ * host-library.mjs writes (run/library/local.json; tunnel.json for a run
+ * an older kit started), or null when the library has never been served.
+ */
+export function libraryPort(codebase) {
+  for (const record of ["local.json", "tunnel.json"]) {
+    try {
+      const port = JSON.parse(readFileSync(join(PROTO, codebase, "run", "library", record), "utf8")).port;
+      if (Number.isInteger(port)) return port;
+    } catch {}
+  }
+  return null;
 }
 
 /**

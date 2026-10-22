@@ -16,7 +16,7 @@
  *
  * The first form explains a library component (src/components/<slug>/
  * in ~/.proto/<codebase>/library, rendered by the library app at its
- * tunnel port); the second a part of a prototype build
+ * local port); the second a part of a prototype build
  * (<workspace>/src/parts/<slug>/, rendered by the workspace's dev
  * server, against the page the build read). Nothing is landed and
  * nothing is written outside <run>/explain/<slug>/.
@@ -49,6 +49,7 @@ import { decodePng } from "./cdp/png.mjs";
 import { channelDelta, colourShift, rgbText } from "./colour-shift.mjs";
 import { resolveStates } from "./live-selector.mjs";
 import { protoHome } from "./proto-home.mjs";
+import { libraryPort } from "./ports.mjs";
 
 const USAGE = "usage: node tools/explain-diff.mjs <codebase> <slug> [--state <name>] [--theme <light|dark>] [--build <briefId>]";
 
@@ -671,9 +672,9 @@ if (options.build) {
   const library = join(home, "library");
   const liveUrl = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8")).source?.liveUrl;
   if (!liveUrl) fail(`${home}/codebase.json has no source.liveUrl`);
-  const tunnel = join(home, "run", "library", "tunnel.json");
-  if (!existsSync(tunnel)) fail(`the library is not being served: run node tools/host-library.mjs ${codebase}`);
-  target = { unitPath: join(library, "src", "components", slug, "component.json"), appUrl: `http://localhost:${JSON.parse(readFileSync(tunnel, "utf8")).port}`, liveMatch: liveMatchOf(liveUrl), out: join(home, "run", "explain", slug) };
+  const port = libraryPort(codebase);
+  if (port === null) fail(`the library is not being served: run node tools/host-library.mjs ${codebase}`);
+  target = { unitPath: join(library, "src", "components", slug, "component.json"), appUrl: `http://localhost:${port}`, liveMatch: liveMatchOf(liveUrl), out: join(home, "run", "explain", slug) };
 }
 if (!existsSync(target.unitPath)) fail(`${target.unitPath} does not exist: write the component before explaining it`);
 // A unit's first step is this read, before any edit: the folder as the
