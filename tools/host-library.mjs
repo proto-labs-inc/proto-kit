@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Put the codebase's library online in one call, so the import has
- * somewhere for the user to watch before it extracts anything (ADR
+ * Serve the codebase's library on this laptop in one call, so the import
+ * has somewhere for the user to watch before it extracts anything (ADR
  * 0003; serve skill, "The library"). Idempotent: run it again and it
  * repairs what is missing and prints the same addresses.
  *
@@ -10,41 +10,28 @@
  *      on every run (the import's public/ and unit folders stay).
  *   2. pnpm install --frozen-lockfile there, once per codebase and
  *      again when the kit's lockfile changes.
- *   3. Settle this run's port — the one an up run is already bound
- *      to, else a free one — then provision_tunnel { kind: "library",
- *      codebase, port } through the Proto app, which chooses and
- *      stores the address. This happens before anything could look the
- *      hostname up: a lookup that finds no record is remembered as
- *      "does not exist" for thirty minutes.
- *   4. Write run/library/spec.json (Vite dev server, cloudflared,
- *      the liveness beat) and start it under supervise.mjs.
- *   5. Wait for the dev server locally, then read cloudflared's own
- *      log for whether it reached Cloudflare, and verify through the
- *      edge with --resolve (never a plain lookup) when it did.
+ *   3. Settle this run's port (the one an up run is already bound to,
+ *      else a free one) and record it in run/library/local.json, where
+ *      the checks and the Proto desktop app find it.
+ *   4. Write run/library/spec.json (the Vite dev server) and start it
+ *      under supervise.mjs.
+ *   5. Wait for the dev server to answer.
  *
- * Once the dev server answers, this call succeeds (MAA-182). A network
- * that blocks the tunnel's port, as guest and corporate Wi-Fi commonly
- * do, is named in one sentence and does not fail the run: the library
- * is up locally, publishing goes over 443 and works, and the import
- * that called this has everything it needs. Failing here was how an
- * import came to extract nothing at all. A site that cannot be reached
- * at all is the same: the run starts without a tunnel process,
- * tunnel.json records the port with no address, and the import runs
- * on the local port.
+ * The maker sees this local library in the Proto desktop app; everyone
+ * else sees its published copy, which the import publishes after each
+ * component and the end of every agent turn publishes again
+ * (auto-publish.mjs).
  *
- * Prints, one per line: the public URL (or "not shared" and why), the
- * local URL, the run dir, and whether the tunnel is connected, blocked
- * or none.
+ * Prints, one per line: the local URL and the run dir.
  *
  * Usage: node host-library.mjs <codebase>
  */
-import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callTool } from "./mcp-call.mjs";
 import { ephemeralPort } from "./ports.mjs";
-import { TUNNEL_BLOCKED, TUNNEL_BLOCKED_SENTENCE, TUNNEL_CONNECTED, TUNNEL_CONNECTING, watchTunnel } from "./tunnel-state.mjs";
 import { protoHome } from "./proto-home.mjs";
 
 const codebase = process.argv[2];
@@ -103,57 +90,32 @@ if (!existsSync(join(library, "node_modules")) || lockChanged) {
   if (install.status !== 0) fail("pnpm install failed in the library folder");
 }
 
-// 3. The port for this run, and the address the site chooses for it.
-// The port belongs to the run, not to the kit, so two codebases can
-// serve their libraries at the same time.
+// 3. The port for this run. The port belongs to the run, not to the
+// kit, so two codebases can serve their libraries at the same time.
 //
 // A run that is already up keeps the port its dev server bound, and
 // every other run takes a free one. That asymmetry is what keeps this
-// script idempotent, and the import skill runs it first thing: taking
-// a fresh port here would re-provision the tunnel onto a port the
-// running dev server is not listening on, and the library the caller
-// asked about would go dark.
+// script idempotent, and the import skill runs it first thing.
 mkdirSync(runDir, { recursive: true });
-const unwrap = (result) => {
-  const text = result?.content?.[0]?.text;
-  if (!text) return result;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: text.split("\n")[0] };
-  }
-};
 const supervise = join(kit, "tools", "supervise.mjs");
 const specPath = join(runDir, "spec.json");
 const status = spawnSync(process.execPath, [supervise, "status", runDir], { encoding: "utf8" });
-const servingPort = status.status === 0 && !status.stdout.includes("DOWN") ? specPort() : null;
+// A run an older kit started also ran a tunnel and a heartbeat; it is
+// replaced by a run of the dev server alone, on the same port.
+const oldRun = existsSync(specPath) && JSON.parse(readFileSync(specPath, "utf8")).processes?.some((p) => p.name !== "dev");
+const up = status.status === 0 && !status.stdout.includes("DOWN");
+const servingPort = up ? specPort() : null;
 const port = servingPort ?? (await ephemeralPort());
-// The tunnel is only for sharing: the import, the checks and the units
-// need the local port alone. A site that cannot be reached (offline, a
-// deployment down) is said in one line, the run still starts, and
-// tunnel.json still records the port with no address, so nothing that
-// reads it fails on a missing file. The next run of this script asks
-// for the tunnel again.
-step(`provisioning the library tunnel for port ${port}`);
-const tunnel = unwrap(await callTool("provision_tunnel", { kind: "library", codebase, port }).catch((e) => ({ content: [{ text: e.message }] })));
-const shared = Boolean(tunnel.url && tunnel.hostname && tunnel.connectorToken);
-const notShared = shared ? null : `the site did not hand out an address: ${firstLine(tunnel.error ?? JSON.stringify(tunnel))}`;
-if (!shared) console.error(`! The library is served on this laptop only: ${notShared}. Run host-library.mjs again once the site is reachable to share it.`);
-writeFileSync(join(runDir, "tunnel.json"), JSON.stringify(shared ? { url: tunnel.url, hostname: tunnel.hostname, port } : { url: null, hostname: null, port, notShared }, null, 2) + "\n");
+writeFileSync(join(runDir, "local.json"), JSON.stringify({ port }, null, 2) + "\n");
+rmSync(join(runDir, "tunnel.json"), { force: true });
 
-// 4. The run: the dev server and the liveness beat, and the tunnel
-// when the site handed one out, exactly as the serve skill shows.
+// 4. The run: the dev server, exactly as the serve skill shows.
 const spec = {
   name: `${codebase}/library`,
-  processes: [
-    { name: "dev", cwd: library, command: ["pnpm", "dev"], env: { PROTO_TUNNEL: "1", PROTO_PORT: String(port) } },
-    ...(shared ? [{ name: "tunnel", command: ["cloudflared", "tunnel", "run", "--token", tunnel.connectorToken] }] : []),
-    { name: "heartbeat", command: ["node", join(kit, "tools", "prototype-heartbeat.mjs"), "--kind", "library", runDir, codebase] },
-  ],
+  processes: [{ name: "dev", cwd: library, command: ["pnpm", "dev"], env: { PROTO_PORT: String(port) } }],
 };
 writeFileSync(specPath, JSON.stringify(spec, null, 2) + "\n");
-chmodSync(specPath, 0o600);
-if (servingPort) {
+if (servingPort && !oldRun) {
   step("the library run is already up");
 } else {
   if (status.status === 0) spawnSync(process.execPath, [supervise, "stop", runDir]);
@@ -162,78 +124,13 @@ if (servingPort) {
   if (started.status !== 0) fail(`supervise start failed: ${started.stderr}`);
 }
 
-// 5. Local first, then the tunnel's own verdict, then the edge. Vite's
-// first start after an install can take a few seconds; cloudflared
-// writes its connectivity pre-check within about fifteen and registers
-// its first connection within about thirty.
+// 5. Vite's first start after an install can take a few seconds.
 const local = `http://localhost:${port}`;
 step("waiting for the dev server");
 await waitFor(`${local}/manifest.json`, 60_000, (url) => fetch(url, { signal: AbortSignal.timeout(2000) }).then((r) => r.ok));
 
-// The library is up locally from here on, so nothing below may fail the
-// run (MAA-182): a network that cannot carry a tunnel is a fact about
-// the network, not a broken library, and the import that called this
-// goes on to extract and publish over 443 as usual.
-let tunnelStatus = "none";
-if (shared) {
-  const watch = watchTunnel(runDir);
-  step("asking cloudflared whether it reached Cloudflare");
-  tunnelStatus = await settledTunnel(watch, 40_000);
-  if (tunnelStatus === TUNNEL_CONNECTED) {
-    step("verifying through Cloudflare's edge");
-    await verifyEdge();
-  } else {
-    console.error(`! ${TUNNEL_BLOCKED_SENTENCE}`);
-    console.error(`  cloudflared is still trying; see ${runDir}/tunnel.log.`);
-  }
-}
-
-console.log(`library: ${shared ? tunnel.url : `not shared (${notShared})`}`);
 console.log(`local: ${local}`);
 console.log(`run: ${runDir}`);
-console.log(`tunnel: ${tunnelLine(tunnelStatus)}`);
-
-function tunnelLine(status) {
-  if (status === "none") return "none";
-  if (status === TUNNEL_CONNECTED) return "connected";
-  return "blocked";
-}
-
-// One line of an error, without Node's own banner.
-function firstLine(text) {
-  return String(text).split("\n").find((line) => line.trim() !== "") ?? "no answer";
-}
-
-// Wait for cloudflared to stop being undecided: a registered connection
-// or a failed pre-check, whichever comes first. Undecided at the
-// deadline counts as blocked, which is what it looks like to anyone
-// opening the address.
-async function settledTunnel(tunnelWatch, timeoutMs) {
-  const until = Date.now() + timeoutMs;
-  for (;;) {
-    const { status } = tunnelWatch.read();
-    if (status !== TUNNEL_CONNECTING) return status;
-    if (Date.now() >= until) return TUNNEL_BLOCKED;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-}
-
-// Through Cloudflare's edge only, with --resolve: a plain lookup of a
-// name whose record was created moments ago is remembered as "does not
-// exist" for half an hour, on this laptop and at its ISP. A tunnel that
-// registered and still does not serve is worth a sentence, not a crash:
-// the library is up locally either way.
-async function verifyEdge() {
-  const edge = edgeIp(tunnel.hostname);
-  if (edge === null) return;
-  const answered = await waitFor(`${tunnel.url}/manifest.json`, 45_000, (url) => {
-    const probe = spawnSync("curl", ["-fsS", "--max-time", "5", "--resolve", `${tunnel.hostname}:443:${edge}`, url], { encoding: "utf8" });
-    return probe.status === 0 && probe.stdout.includes('"components"');
-  }, false);
-  if (!answered) {
-    console.error(`! ${tunnel.url} is not answering yet, though the tunnel is connected; see ${runDir}/tunnel.log and dev.log.`);
-  }
-}
 
 // The port the up run's dev server was started with. A spec that does
 // not name one was written before the port lived there, so its run is
@@ -245,37 +142,14 @@ function specPort() {
   return Number.isInteger(port) && port > 0 ? port : null;
 }
 
-// True once `check` passes. The dev server is the one thing worth
-// failing on, so that caller passes `required`; everything after it is
-// about the network and only ever reports.
-async function waitFor(url, timeoutMs, check, required = true) {
+// True once `check` passes, or the run fails with where to look.
+async function waitFor(url, timeoutMs, check) {
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     try {
-      if (await check(url)) return true;
+      if (await check(url)) return;
     } catch {}
     await new Promise((r) => setTimeout(r, 1000));
   }
-  if (required) fail(`${url} did not answer within ${timeoutMs / 1000}s; see ${runDir}/*.log`);
-  return false;
-}
-
-// One of the edge's IPs, asked of 1.1.1.1 directly: this laptop's
-// resolver never sees the name. Null when the lookup itself cannot
-// happen, which on a network that blocks outside resolvers is a
-// sentence about the network, never a node stack trace.
-function edgeIp(hostname) {
-  let answer = "";
-  try {
-    answer = execFileSync("dig", ["+short", `@1.1.1.1`, hostname, "A"], { encoding: "utf8" });
-  } catch {
-    console.error(`! This network blocks DNS to 1.1.1.1, so the public address cannot be checked from here; the library is up locally and publishing still works.`);
-    return null;
-  }
-  const ip = answer.split("\n").find((line) => /^\d+\.\d+\.\d+\.\d+$/.test(line.trim()));
-  if (!ip) {
-    console.error(`! dig @1.1.1.1 ${hostname} returned no address yet; the record was created moments ago, run this again in a few seconds.`);
-    return null;
-  }
-  return ip.trim();
+  fail(`${url} did not answer within ${timeoutMs / 1000}s; see ${runDir}/*.log`);
 }

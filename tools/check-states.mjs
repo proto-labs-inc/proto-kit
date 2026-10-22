@@ -83,9 +83,10 @@ async function checkView(view) {
   try {
     await page.send("Runtime.enable");
     await page.send("Log.enable");
-    // The dev server's live-reload socket: served through the tunnel, it
-    // points at the public host and fails from here in every view. It is
-    // the dev server's, not the prototype's (in B5 it read as a broken page).
+    // The dev server's live-reload socket: a workspace an older kit started
+    // with a public host can point it elsewhere, and it fails from here in
+    // every view. It is the dev server's, not the prototype's (in B5 it
+    // read as a broken page).
     const hmr = (text) => /\[vite\]|WebSocket connection to .*(ws|wss):\/\/|failed to connect to websocket/i.test(text);
     page.on("Runtime.exceptionThrown", (p) => errors.push({ kind: "exception", text: (p.exceptionDetails.exception?.description ?? p.exceptionDetails.text ?? "").split("\n")[0].slice(0, 300) }));
     page.on("Runtime.consoleAPICalled", (p) => {

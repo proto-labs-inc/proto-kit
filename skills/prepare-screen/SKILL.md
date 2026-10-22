@@ -100,7 +100,7 @@ from prototype.json so the Frame actually resizes the responsive screen. Preserv
 controls. No live-product requests, navigation, authentication or writes.
 For destinations not included in this screen, show a local state reading
 "This screen isn’t included in this prototype" with a working return action.
-Do not create a user's prototype or register a serving tunnel for the baseline.
+Do not create a user's prototype or serve one for the baseline.
 
 ## Keep independent work moving
 
@@ -142,4 +142,4 @@ build is missing, prepare it once with `screen-index.mjs prepare` first. A faile
 old screen remains unavailable; repair it through a new approved revision.
 Never rebuild a starter during selection. Cloning checks current eligibility and
 performs a load/asset/initial-state/rig smoke check. Continue the serve skill's
-actual Frame check before reporting the prototype available.
+publish before reporting the prototype available.

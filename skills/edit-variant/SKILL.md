@@ -7,8 +7,8 @@ description: Edit one existing variant in a Proto prototype. Use when the protot
 
 Work only in the existing prototype workspace, variant set, and variant named
 by the request. This is an incremental edit: do not scaffold a prototype, run
-create-prototype or the full serve workflow, gather references, provision or
-restart a tunnel, or register the prototype.
+create-prototype or the full serve workflow, gather references, or register
+the prototype.
 
 ## Make the edit
 

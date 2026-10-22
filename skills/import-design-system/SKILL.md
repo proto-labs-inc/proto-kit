@@ -67,7 +67,7 @@ chat; report it once the id exists if still unresolved. Never invent an id.
 Verify the blocker is resolved, then call
 `report_setup_action { codebase, action: null }` (or
 `node <kit>/tools/setup-action.mjs <codebase> clear`) before resuming.
-Repeat for every later stop. A reply, heartbeat, or partial publication does
+Repeat for every later stop. A reply or a partial publication does
 not by itself resolve the blocker or satisfy the completion gate.
 
 ## The one rule
@@ -97,7 +97,7 @@ otherwise the root above this skill's `skills/` directory). Do not
 read their source to learn them; the signatures here are complete.
 
 ```
-node tools/host-library.mjs <codebase>             serve the library (idempotent); prints local:, tunnel:
+node tools/host-library.mjs <codebase>             serve the library (idempotent); prints local:, run:
 node tools/library.mjs init <codebase> <codebase> <source> --page-url <url> --page-title "<title>" --favicon <file>
 node tools/publish-library.mjs <codebase> [--wait] publish; returns at once when one is running (it carries yours)
 node tools/survey.mjs <codebase> --theme light  the visible theme in one read (≈1 s); writes palette.json
@@ -160,12 +160,7 @@ components. The library shows the three steps and their verified counts.
    `publish-library.mjs` in the background. Run the light survey again after
    `init` so its capture belongs to the current import; the first survey only
    supplied the page title and favicon. `init` appends "Reading
-   the source": the user sees the import is alive in seconds. On
-   `tunnel: blocked` the import runs exactly the same (checks use the
-   local address, publishing goes over 443); say the serve skill's
-   sentence once and carry on. On `tunnel: none` (the site could not be
-   reached) the same: the library is up on its local port, every check
-   uses it, and `host-library.mjs` shares it when run again later.
+   the source": the user sees the import is alive in seconds.
 
 
 2. **Discover a representative page and light theme.** Verify sign-in;

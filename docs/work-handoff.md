@@ -45,4 +45,4 @@ ordinary work prompts contain no new linking code or durable credential. Only
 an actual missing/invalid account link uses the setup flow. The website remains
 a place to prepare work and review outward progress and published results.
 
-For create-prototype progress, follow `docs/build-progress.md`: report on the saved brief before context access, keep its ID, and preserve questions and checkpoints. Registration and heartbeat are availability signals, not completion.
+For create-prototype progress, follow `docs/build-progress.md`: report on the saved brief before context access, keep its ID, and preserve questions and checkpoints. Registration is not completion: the publish at the skill's end reports it done.

@@ -6,14 +6,16 @@
  * workspace's own config sets relative asset paths (the templates
  * carry base "./"). publish.mjs then asks the cloud to open a build
  * (`begin_publish` returns a fresh `<codebase>/<slug>/<buildId>/`
- * prefix and one short-lived presigned PUT URL per file), uploads
- * every file straight to the published host with plain HTTP PUTs,
- * closes the build (`finish_publish`), and prints the published URL.
- * Nothing passes through the app's own function, and no published
+ * prefix and one short-lived presigned PUT URL per file that changed;
+ * each file carries its MD5, and the cloud copies a file the previous
+ * build already had byte for byte instead of asking for it again),
+ * uploads those files straight to the published host with plain HTTP
+ * PUTs, closes the build (`finish_publish`), and prints the published
+ * URL. Nothing passes through the app's own function, and no published
  * path is ever overwritten.
  *
  * Usage:
- *   node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
+ *   node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
  *   node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]
  *
  * --kind is required and names what is published. For a prototype,
@@ -25,9 +27,13 @@
  * build` in the library folder, and must contain index.html and a
  * manifest.json naming a codebase. The laptop token in
  * ~/.proto/config.json identifies the member and team. --dry-run prints the upload plan without
- * touching the cloud.
+ * touching the cloud. --auto is the publish at the end of an agent's
+ * turn (tools/auto-publish.mjs): it uploads and nothing else, so it never
+ * captures a preview or reports a brief done; the publish a skill runs
+ * at its end does that.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve, relative, extname, sep } from "node:path";
 import { workflowEvent, activityEvent } from "./workflow-report.mjs";
@@ -38,8 +44,9 @@ import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 import { validatePublishedManifest } from "./variant-manifest.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
 import { belowProtoHome, protoHome } from "./proto-home.mjs";
+import { takeRunLock } from "./run-lock.mjs";
 
-const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
+const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
 const KINDS = ["prototype", "library"];
 const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug"];
@@ -55,6 +62,8 @@ for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
   if (arg === "--dry-run") {
     options.dryRun = true;
+  } else if (arg === "--auto") {
+    options.auto = true;
   } else if (arg.startsWith("--")) {
     const name = arg.slice(2);
     if (!VALUE_OPTIONS.includes(name) || args[i + 1] === undefined) fail(`unknown or valueless option ${arg}\n${USAGE}`);
@@ -157,12 +166,15 @@ const TYPES = {
 const typeFor = (path) => TYPES[extname(path)] ?? "application/octet-stream";
 
 // The files manifest begin_publish wants: relative posix paths with
-// content type and size. Mirror the server's limits here so failures
+// content type, size and MD5 (what the bucket records as an object's
+// ETag, so the cloud can tell an unchanged file from the previous build
+// without reading it). Mirror the server's limits here so failures
 // are one plain sentence instead of a round trip.
 const manifest = files.map((f) => ({
   path: relative(dist, f).split(sep).join("/"),
   contentType: typeFor(f),
   size: statSync(f).size,
+  md5: createHash("md5").update(readFileSync(f)).digest("hex"),
 }));
 const totalBytes = manifest.reduce((n, f) => n + f.size, 0);
 let distLabel = dist;
@@ -183,8 +195,8 @@ for (const f of manifest) {
 // Every asset reference must resolve against the build's own base. A
 // published build lives under <codebase>/<slug>/<buildId>/, so a
 // root-absolute reference ("/portraits/soleio.jpg") resolves against the
-// host root instead and 404s, while the same build serves fine in dev and
-// through the tunnel, where the workspace is the host root. The templates'
+// host root instead and 404s, while the same build serves fine in dev,
+// where the workspace is the host root. The templates'
 // vite base "./" rewrites every reference the bundler sees (HTML
 // attributes, CSS url(), imported assets); a path written as a string
 // literal in application data is invisible to it and ships unchanged.
@@ -194,7 +206,7 @@ for (const f of manifest) {
 // application code, prefix a public/ file with import.meta.env.BASE_URL or
 // import it. In prototype.json, keep preview, reference-image and wireframe
 // values relative without a leading slash; the Frame resolves them against
-// the live or published prototype base, and Vite may also inline them into
+// the local or published prototype base, and Vite may also inline them into
 // the application bundle.
 const SCANNED = new Set([".html", ".js", ".mjs", ".css", ".json"]);
 const carried = new Set(manifest.map((f) => f.path));
@@ -255,7 +267,16 @@ else target = { kind, codebase };
 // of the @proto-labs-inc/rig-core the workspace's adapter resolves.
 let rigVersion = null;
 if (kind === "prototype") rigVersion = resolvedRigVersion(workspace);
-let progressBuild = kind === "prototype" ? buildOfWorkspace(workspace) : null;
+// The skill's publish waits for a turn-end publish of the same run to
+// finish (tools/run-lock.mjs); an automatic one already holds the lock.
+const runDir = kind === "prototype" && codebase && slug ? join(protoHome(), codebase, "run", slug) : null;
+if (runDir && existsSync(runDir) && !options.auto && !dryRun) {
+  const lock = join(runDir, "publish.lock");
+  takeRunLock(lock, { wait: true });
+  process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
+}
+// An automatic publish only uploads: the brief is the skill's to finish.
+let progressBuild = kind === "prototype" && !options.auto ? buildOfWorkspace(workspace) : null;
 if (progressBuild) {
   const response = await callTool("get_brief", { briefId: progressBuild.briefId }, targetFor(readConfig(), { codebase }));
   const brief = unwrap(response);
@@ -282,7 +303,10 @@ if (!opened.buildId || !Array.isArray(opened.uploads)) {
   throw new Error(`Could not prepare publishing: ${opened.error ?? "the app did not return upload targets"}`);
 }
 const { buildId, pathnamePrefix, uploads } = opened;
-console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} upload URLs)`);
+// A cloud that copies unchanged files names them; an older one asks for
+// everything, and everything is uploaded.
+const copied = Array.isArray(opened.copied) ? opened.copied.length : 0;
+console.log(`build ${buildId} → ${pathnamePrefix} (${uploads.length} to upload, ${copied} unchanged and copied)`);
 
 // One presigned PUT URL per file, each bound to its exact object,
 // content type and size; the URLs live ten minutes, so upload in

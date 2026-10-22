@@ -46,10 +46,24 @@ export function kitScript(arg, kit) {
 
 /** Repoint serving scripts and remove obsolete environment settings. */
 export function repairProcesses({ name, spec, kit, runDir }) {
-  const processes = spec.processes.map((proc) => ({ ...proc, command: [...proc.command] }));
+  let processes = spec.processes.map((proc) => ({ ...proc, command: [...proc.command] }));
   const changes = [];
   let missing = false;
   if (name === "courier" || isLegacyCourierRun(runDir, spec)) return { processes, changes, missing, retired: true };
+
+  // Runs no longer have a tunnel or a heartbeat: the maker sees the local
+  // dev server in the Proto desktop app and everyone else the published
+  // copy. Both processes go, with the tunnel's token and the dev server's
+  // public-host setting.
+  const retired = processes.filter((proc) => proc.name === "tunnel" || proc.name === "heartbeat").map((proc) => proc.name);
+  processes = processes.filter((proc) => proc.name !== "tunnel" && proc.name !== "heartbeat");
+  for (const proc of processes) {
+    if (!proc.env || !("PROTO_TUNNEL" in proc.env)) continue;
+    const { PROTO_TUNNEL: _, ...env } = proc.env;
+    proc.env = env;
+    if (!retired.includes(proc.name)) retired.push(proc.name);
+  }
+  if (retired.length > 0) changes.push({ kind: "drop-tunnel", names: retired });
 
   // The copy of the kit each process runs from.
   const repointed = [];
@@ -83,6 +97,7 @@ export function repairProcesses({ name, spec, kit, runDir }) {
 
 /** One change in words. `did(verb, past)` picks "would add" or "added". */
 export function describeChange(change, did) {
+  if (change.kind === "drop-tunnel") return `${did("remove", "removed")} the tunnel and heartbeat (${list(change.names)}), since the maker sees the local server and everyone else the published copy`;
   if (change.kind === "drop-packages-env") return `${did("drop", "dropped")} PROTO_PACKAGES from ${list(change.names)}, since the rig comes from npm`;
   const whose = change.gone ? ", whose own copy is gone" : "";
   return `${did("point", "pointed")} ${list(change.names)} at this copy of the kit${whose}`;

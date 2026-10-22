@@ -31,6 +31,10 @@
       {
         "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/telemetry-turn.mjs\"",
         "timeout": 10
+      },
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/auto-publish-turn.mjs\"",
+        "timeout": 10
       }
     ],
     "sessionEnd": [
@@ -40,6 +44,12 @@
       },
       {
         "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/telemetry-stop.mjs\"",
+        "timeout": 10
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/tools/hooks/turn-start.mjs\"",
         "timeout": 10
       }
     ]

@@ -10,18 +10,28 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), "serving-repair-"));
   const kit = join(root, "kit"), runDir = join(root, "run", "library");
   mkdirSync(join(kit, "tools"), { recursive: true }); mkdirSync(runDir, { recursive: true });
-  writeFileSync(join(kit, "tools", "heartbeat.mjs"), "");
+  writeFileSync(join(kit, "tools", "serve.mjs"), "");
   return { root, kit, runDir };
 }
-test("serving repair keeps tunnels, repoints available tools and removes obsolete env", () => {
+test("serving repair repoints available tools and removes obsolete env", () => {
   const { kit, runDir } = fixture();
-  const spec = { processes: [{ name: "heartbeat", command: ["node", "/old/tools/heartbeat.mjs"], env: { PROTO_PACKAGES: "/old", KEEP: "yes" } }, { name: "tunnel", command: ["cloudflared", "tunnel", "run"] }] };
+  const spec = { processes: [{ name: "dev", command: ["node", "/old/tools/serve.mjs"], env: { PROTO_PACKAGES: "/old", KEEP: "yes" } }] };
   const result = repairProcesses({ name: "library", spec, kit, runDir });
-  assert.equal(result.processes[0].command[1], join(kit, "tools", "heartbeat.mjs"));
+  assert.equal(result.processes[0].command[1], join(kit, "tools", "serve.mjs"));
   assert.deepEqual(result.processes[0].env, { KEEP: "yes" });
-  assert.deepEqual(result.processes[1], spec.processes[1]);
   assert.equal(spec.processes[0].env.PROTO_PACKAGES, "/old");
   assert.equal(kitScript("/old/tools/removed.mjs", kit), null);
+});
+test("serving repair removes the tunnel and the heartbeat, token and public-host setting included", () => {
+  const { kit, runDir } = fixture();
+  const spec = { processes: [
+    { name: "dev", command: ["pnpm", "dev"], env: { PROTO_TUNNEL: "1", PROTO_PORT: "5210" } },
+    { name: "tunnel", command: ["cloudflared", "tunnel", "run", "--token", "secret"] },
+    { name: "heartbeat", command: ["node", "/old/tools/prototype-heartbeat.mjs"] },
+  ] };
+  const result = repairProcesses({ name: "library", spec, kit, runDir });
+  assert.deepEqual(result.processes, [{ name: "dev", command: ["pnpm", "dev"], env: { PROTO_PORT: "5210" } }]);
+  assert.deepEqual(result.changes, [{ kind: "drop-tunnel", names: ["tunnel", "heartbeat", "dev"] }]);
 });
 test("legacy specs cannot be repaired or restarted under any name", () => {
   const { kit, runDir } = fixture();

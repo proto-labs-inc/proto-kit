@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /** Repair library/prototype serving specs. Legacy command listeners are always skipped.
  * Usage: node repair-runs.mjs [<codebase>…] [--check] [--restart]
+ *        node repair-runs.mjs --retired
+ * --retired repairs and restarts only the runs an older kit left with a
+ * tunnel or a heartbeat (the session-start hook, tools/hooks/retire-tunnels.mjs).
  */
 import { chmodSync, existsSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -11,7 +14,8 @@ import { isLegacyCourierRun } from "./legacy-runs.mjs";
 import { protoHome } from "./proto-home.mjs";
 const argv = process.argv.slice(2);
 const check = argv.includes("--check");
-const restart = argv.includes("--restart");
+const retiredOnly = argv.includes("--retired");
+const restart = argv.includes("--restart") || retiredOnly;
 // Consume the obsolete --harness argument for older update invocations only.
 const named = argv.filter((a, i) => !a.startsWith("--") && argv[i - 1] !== "--harness");
 
@@ -66,6 +70,7 @@ for (const codebase of codebases) {
     const changes = repair.changes.map((change) => describeChange(change, did));
 
     if (changes.length === 0) continue;
+    if (retiredOnly && !repair.changes.some((change) => change.kind === "drop-tunnel")) continue;
 
     const state = readJson(join(runDir, "state.json"));
     const up = state !== null && alive(state.pid);
@@ -73,7 +78,7 @@ for (const codebase of codebases) {
       const written = join(runDir, "spec.json.new");
       writeFileSync(written, JSON.stringify({ ...spec, processes }, null, 2) + "\n", { mode: 0o600 });
       renameSync(written, specPath);
-      chmodSync(specPath, 0o600); // it holds the run's connector token
+      chmodSync(specPath, 0o600); // an older run's spec held a connector token
     }
 
     // A run that is up was started from the spec as it was, so the
@@ -131,6 +136,6 @@ if (check) console.log("\nNothing was written (--check).");
 // What restarting this run costs, for the report when it runs
 // without --restart.
 function interruption(name) {
-  if (name === "library") return "the library's public address is down for a few seconds.";
-  return "its public address is down for a few seconds, and the Frame shows the last published build meanwhile.";
+  if (name === "library") return "the library's local server is down for a few seconds.";
+  return "its local server is down for a few seconds, and the Frame shows the last published build meanwhile.";
 }

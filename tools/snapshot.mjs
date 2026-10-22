@@ -53,6 +53,8 @@ import { INSIDE, PICTURE_OF, inSvgPicture, localStyleImages, writePictures, writ
 import { FORCEABLE, withForcedState } from "./verify-replica.mjs";
 import { DARK_MODE_IMPORT_ENABLED } from "./import-evidence.mjs";
 import { STURDY_SELECTOR, positional } from "./live-selector.mjs";
+import { libraryPort } from "./ports.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const USAGE = "usage: node tools/snapshot.mjs <codebase> <json | @file> [--theme <light|dark>]";
 
@@ -1183,7 +1185,8 @@ async function run(codebase, spec, theme) {
   const manifest = JSON.parse(readFileSync(join(library, "public", "manifest.json"), "utf8"));
   const palette = manifest.themes?.[theme] ?? manifest.tokens ?? [];
   const liveUrl = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8")).source?.liveUrl;
-  const port = JSON.parse(readFileSync(join(home, "run", "library", "tunnel.json"), "utf8")).port;
+  const port = libraryPort(codebase);
+  if (port === null) throw new Error(`the library is not being served: run node tools/host-library.mjs ${codebase}`);
   const appUrl = `http://localhost:${port}`;
   const page = new URL(liveUrl);
   const tab = await findPage(`${page.host}${page.pathname}`);
@@ -1688,7 +1691,6 @@ export async function writeComponent({ instances, faces, spec, folder, appUrl, v
 
   const tsx = `import ${keptIds.size > 0 ? "{ useId, type ReactNode }" : "type { ReactNode }"} from "react";
 import styles from "./${Name}.module.css";
-import { protoHome } from "./proto-home.mjs";
 ${[...images.values()].map((img) => `import ${img.ident} from "./${img.file}";`).join("\n")}
 ${[...pictures.svgs.values()].map((svg) => `import ${svg.ident} from "./${svg.file}?raw";`).join("\n")}
 ${[...pictures.canvases.values()].map((png) => `import ${png.ident} from "./${png.file}";`).join("\n")}

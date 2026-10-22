@@ -5,7 +5,6 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-const tunnel = process.env.PROTO_TUNNEL === "1";
 const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 
 // The import writes the contract files into public/ while this server
@@ -78,7 +77,7 @@ function libraryData(): Plugin {
           // the SPA fallback: the browser would cache the app's own page
           // under the image's URL and keep showing it.
           // A missing file may only not exist yet (a preview being written):
-          // never let a browser or the tunnel's edge cache its absence.
+          // never let a browser cache its absence.
           res.statusCode = 404;
           res.setHeader("Cache-Control", "no-store");
           res.end();
@@ -107,10 +106,5 @@ export default defineConfig({
     // reload on each of those killed every capture in flight. Only the
     // modules (tsx, css, component.json) are watched.
     watch: { ignored: [`${publicDir}/**`, "**/notes.md", "**/component.json", "**/*.woff2", "**/*.woff", "**/*.ttf", "**/*.otf", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.avif", "**/*.svg"] },
-    // Through the library tunnel: accept the public hostname and use wss HMR.
-    ...(tunnel && {
-      allowedHosts: true,
-      hmr: { protocol: "wss", clientPort: 443 },
-    }),
   },
 });

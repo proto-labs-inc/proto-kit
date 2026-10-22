@@ -9,7 +9,7 @@
  *
  * The first form checks a library component: src/components/<slug>/
  * in ~/.proto/<codebase>/library, rendered by the library app at its
- * tunnel port, against the page codebase.json names. The second names
+ * local port, against the page codebase.json names. The second names
  * the target itself, for a part of a prototype workspace: the app that
  * serves the render route (`--app`), the part's component.json
  * (`--unit`), the live page it was read from (`--live`) and where the
@@ -57,6 +57,7 @@ import { restoreFolder } from "./unit-restore.mjs";
 import { nextPass, verifyPass } from "./verify-replica.mjs";
 import { resolveStates } from "./live-selector.mjs";
 import { protoHome } from "./proto-home.mjs";
+import { libraryPort } from "./ports.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 // Verdicts that count as the product's look: identical, a one-pixel
@@ -148,12 +149,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       console.error(`${home}/codebase.json has no source.liveUrl: the product page setup opened in the Proto window`);
       process.exit(1);
     }
-    const tunnel = join(home, "run", "library", "tunnel.json");
-    if (!existsSync(tunnel)) {
+    const port = libraryPort(codebase);
+    if (port === null) {
       console.error(`the library is not being served: run node tools/host-library.mjs ${codebase}`);
       process.exit(1);
     }
-    target = { unitPath, appUrl: `http://localhost:${JSON.parse(readFileSync(tunnel, "utf8")).port}`, liveUrl, out: join(home, "run", "checks", slug), land: options.land };
+    target = { unitPath, appUrl: `http://localhost:${port}`, liveUrl, out: join(home, "run", "checks", slug), land: options.land };
   }
   if (!existsSync(target.unitPath)) {
     console.error(`${target.unitPath} does not exist: write the component (tools/snapshot.mjs) before checking it`);
