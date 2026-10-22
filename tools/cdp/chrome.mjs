@@ -14,9 +14,11 @@
 // then reads sRGB).
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { protoHome } from "../proto-home.mjs";
 
 const port = Number(process.argv[2] || 9333);
-const profile = process.argv[3] || `${process.env.HOME}/.proto/chrome`;
+const profile = process.argv[3] || join(protoHome(), "chrome");
 
 async function alive() {
   try {

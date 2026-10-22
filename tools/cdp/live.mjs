@@ -16,8 +16,9 @@ import { join } from "node:path";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./capture.mjs";
 import { evaluate } from "./cdp.mjs";
 import { decodePng, encodePng } from "./png.mjs";
+import { protoHome } from "../proto-home.mjs";
 
-const LOCK = join(process.env.HOME ?? "", ".proto", ".live-lock");
+const LOCK = join(protoHome(), ".live-lock");
 // The lock folder names its holder, so a lock whose process is gone
 // (a lane import.mjs stopped after two minutes, a crashed tool) is
 // taken over at once instead of holding every other lane behind it.
@@ -71,7 +72,7 @@ export async function withLive(work) {
 
 /** Where a codebase's resting frame lives: the picture and what it was taken at. */
 export const framePaths = (codebase) => {
-  const run = join(process.env.HOME ?? "", ".proto", codebase, "run");
+  const run = join(protoHome(), codebase, "run");
   return { png: join(run, "live-frame.png"), pixels: join(run, "live-frame.rgba"), meta: join(run, "live-frame.json") };
 };
 

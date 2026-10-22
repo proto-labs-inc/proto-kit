@@ -46,12 +46,13 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { callTool } from "./mcp-call.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const run = promisify(execFile);
 const KIT = fileURLToPath(new URL(".", import.meta.url));
 
 function dirOf(briefId) {
-  const dir = join(process.env.HOME ?? ".", ".proto", "sketches", briefId);
+  const dir = join(protoHome(), "sketches", briefId);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

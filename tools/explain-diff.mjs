@@ -48,6 +48,7 @@ import { verifyPass, withForcedState } from "./verify-replica.mjs";
 import { decodePng } from "./cdp/png.mjs";
 import { channelDelta, colourShift, rgbText } from "./colour-shift.mjs";
 import { resolveStates } from "./live-selector.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const USAGE = "usage: node tools/explain-diff.mjs <codebase> <slug> [--state <name>] [--theme <light|dark>] [--build <briefId>]";
 
@@ -646,7 +647,7 @@ if (!["light", "dark"].includes(options.theme)) {
   console.error("--theme is light or dark");
   process.exit(1);
 }
-const home = join(process.env.HOME ?? "", ".proto", codebase);
+const home = join(protoHome(), codebase);
 const fail = (message) => {
   console.error(message);
   process.exit(1);

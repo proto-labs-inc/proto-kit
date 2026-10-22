@@ -85,10 +85,11 @@ import { createGzip } from "node:zlib";
 import { rolloutsHolding, CODEX_HOME } from "./codex-transcripts.mjs";
 import { callTool, CONFIG_PATH } from "./mcp-call.mjs";
 import { reportTarget } from "./report-target.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const CLAUDE_PROJECTS = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
 const CODEX_SESSIONS = join(CODEX_HOME, "sessions");
-const PROTO_HOME = join(homedir(), ".proto");
+const PROTO_HOME = protoHome();
 export const TELEMETRY_DIR = join(PROTO_HOME, "telemetry");
 const KIT = dirname(dirname(fileURLToPath(import.meta.url)));
 

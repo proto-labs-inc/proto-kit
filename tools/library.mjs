@@ -71,6 +71,7 @@ import { join, resolve } from "node:path";
 import { completionProblems, paletteDigest, checkFingerprint } from "./import-evidence.mjs";
 
 import { componentStage, completeStage, refreshStages, requirePreviousStages, requireAllStages, STAGES } from "./import-stages.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const USAGE = `usage: node library.mjs <subcommand> <library> ...
   init <library> <codebase> <source> --page-url <url> --page-title <title> [--product-name <name>] [--favicon <file>]
@@ -139,7 +140,7 @@ if (!existsSync(join(libraryDir, "package.json")) || !existsSync(publicDir)) {
 
 function resolveLibrary(arg) {
   if (!arg.includes("/")) {
-    const byId = join(process.env.HOME ?? "", ".proto", arg, "library");
+    const byId = join(protoHome(), arg, "library");
     if (existsSync(byId)) return byId;
   }
   return resolve(arg);

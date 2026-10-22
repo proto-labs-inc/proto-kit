@@ -37,6 +37,7 @@ import { capturePublishedPreview } from "./publish-preview.mjs";
 import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 import { validatePublishedManifest } from "./variant-manifest.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
+import { belowProtoHome, protoHome } from "./proto-home.mjs";
 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
@@ -77,17 +78,16 @@ let dist;
 if (kind === "prototype") {
   if (!positional[0]) fail(USAGE);
   workspace = resolve(positional[0]);
-  const parts = workspace.split(sep);
-  const protoIdx = parts.lastIndexOf(".proto");
-  const canonical = protoIdx !== -1 && parts[protoIdx + 2] === "prototypes";
-  if (!codebase && canonical) codebase = parts[protoIdx + 1];
+  const parts = belowProtoHome(workspace) ?? [];
+  const canonical = parts[1] === "prototypes";
+  if (!codebase && canonical) codebase = parts[0];
   dist = resolve(workspace, options.dist ?? "dist");
   slug = options.slug ?? null;
-  if (!slug && canonical) slug = parts[protoIdx + 3];
+  if (!slug && canonical) slug = parts[2];
   if (!slug) slug = JSON.parse(readFileSync(join(dist, "prototype.json"), "utf8")).name;
 } else {
   if (!codebase) fail(`--kind library needs --codebase <id>\n${USAGE}`);
-  dist = resolve(options.dir ?? join(process.env.HOME ?? "", ".proto", codebase, "library", "dist"));
+  dist = resolve(options.dir ?? join(protoHome(), codebase, "library", "dist"));
 }
 if (!codebase && !dryRun) fail("cannot derive codebase from the workspace path; pass --codebase <id>");
 

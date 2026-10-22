@@ -59,6 +59,7 @@ import { INSIDE, inSvgPicture, localStyleImages, writePictures, writeStyleImages
 import { appBaseline, cssBlock, download, instanceOf, jsxAttr, jsxValue, kindOf, layoutOf, nameNodes, pascal, propsFor, pseudoProps, shapeFingerprint, writeComponent } from "./snapshot.mjs";
 
 import { artifactFiles, retryFingerprint, selectRetryParts } from "./selective-retry.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const started = Date.now();
@@ -104,8 +105,7 @@ setTimeout(() => {
   process.exit(2);
 }, RUN_MS).unref();
 
-const homeDir = process.env.HOME ?? "";
-const home = join(homeDir, ".proto", codebase);
+const home = join(protoHome(), codebase);
 const buildDir = join(home, "run", "builds", briefId);
 const need = (name, hint) => {
   const path = join(buildDir, name);

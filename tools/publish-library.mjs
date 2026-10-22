@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { packHistory } from "./pack-history.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // A build and an upload take tens of seconds, so a waiting publish
@@ -45,7 +46,7 @@ if (!argument) fail("usage: node publish-library.mjs <library> [--wait] [--dry-r
 
 let libraryDir = resolve(argument);
 if (!argument.includes("/")) {
-  const byId = join(process.env.HOME ?? "", ".proto", argument, "library");
+  const byId = join(protoHome(), argument, "library");
   if (existsSync(byId)) libraryDir = byId;
 }
 if (!existsSync(join(libraryDir, "package.json"))) {

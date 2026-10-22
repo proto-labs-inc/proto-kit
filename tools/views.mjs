@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { evaluate } from "./cdp/cdp.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 /**
  * [{ name, url, state, component, variant }]: the default view, one per
@@ -50,7 +51,7 @@ export function viewsOf(manifest, appUrl) {
  * reuses it instead of relaunching; the common Retina display otherwise.
  */
 export function launchedDisplayOr(viewport) {
-  const path = join(process.env.HOME ?? "", ".proto", "chrome-headless", "display.json");
+  const path = join(protoHome(), "chrome-headless", "display.json");
   if (existsSync(path)) {
     try {
       return JSON.parse(readFileSync(path, "utf8"));

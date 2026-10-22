@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { alive, describeChange, list, readJson, readableSpec, repairProcesses, restartRun } from "./run-repair.mjs";
 
 import { isLegacyCourierRun } from "./legacy-runs.mjs";
+import { protoHome } from "./proto-home.mjs";
 const argv = process.argv.slice(2);
 const check = argv.includes("--check");
 const restart = argv.includes("--restart");
@@ -15,7 +16,7 @@ const restart = argv.includes("--restart");
 const named = argv.filter((a, i) => !a.startsWith("--") && argv[i - 1] !== "--harness");
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
-const root = join(process.env.HOME ?? "", ".proto");
+const root = protoHome();
 const did = (verb, past) => (check ? `would ${verb}` : past);
 
 const dirs = (path) => {

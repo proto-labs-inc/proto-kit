@@ -61,8 +61,9 @@ import { fileURLToPath } from "node:url";
 import { claudeFiles, codexFiles, codexRollout, sessionAt, usesProto } from "./debug-report.mjs";
 import { analyze, duration, readTrace, reportMarkdown } from "./trace-read.mjs";
 import { FLAG_KINDS, transcriptHtml, transcriptMarkdown } from "./trace-transcript.mjs";
+import { protoHome } from "./proto-home.mjs";
 
-const PROTO_HOME = join(homedir(), ".proto");
+const PROTO_HOME = protoHome();
 export const TRACES_DIR = join(PROTO_HOME, "traces");
 const CLAUDE_PROJECTS = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
 const KIT = dirname(dirname(fileURLToPath(import.meta.url)));

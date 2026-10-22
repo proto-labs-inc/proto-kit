@@ -44,6 +44,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { protoHome } from "./proto-home.mjs";
 
 export const TAIL = {
   // The first moment a phase weighs moving on: two minutes in, most of
@@ -85,7 +86,7 @@ const ACCEPTED = new Set(["match", "shifted", "context", "faint", "offscreen"]);
 
 /** Where a run's tail record lives: the codebase's run folder, or the build's. */
 export function tailFile(codebase, briefId = null) {
-  const run = join(process.env.HOME ?? "", ".proto", codebase, "run");
+  const run = join(protoHome(), codebase, "run");
   return briefId ? join(run, "builds", briefId, "tail.jsonl") : join(run, "tail.jsonl");
 }
 

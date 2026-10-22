@@ -45,6 +45,7 @@ import { fileURLToPath } from "node:url";
 import { callTool } from "./mcp-call.mjs";
 import { ephemeralPort } from "./ports.mjs";
 import { TUNNEL_BLOCKED, TUNNEL_BLOCKED_SENTENCE, TUNNEL_CONNECTED, TUNNEL_CONNECTING, watchTunnel } from "./tunnel-state.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const codebase = process.argv[2];
 if (!codebase) {
@@ -52,7 +53,7 @@ if (!codebase) {
   process.exit(1);
 }
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
-const home = join(process.env.HOME ?? "", ".proto", codebase);
+const home = join(protoHome(), codebase);
 const library = join(home, "library");
 const runDir = join(home, "run", "library");
 const fail = (message) => {

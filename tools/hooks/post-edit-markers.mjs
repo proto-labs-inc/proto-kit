@@ -10,11 +10,12 @@ import { readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { protoHome } from "../proto-home.mjs";
 
 try {
   const input = JSON.parse(readFileSync(0, "utf8"));
   const file = input?.tool_input?.file_path ?? "";
-  const protoRoot = join(process.env.HOME ?? "", ".proto") + sep;
+  const protoRoot = protoHome() + sep;
   if (!file.startsWith(protoRoot)) process.exit(0);
   const rel = file.slice(protoRoot.length).split(sep);
   if (rel[1] !== "prototypes" || rel.length < 4) process.exit(0);

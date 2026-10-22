@@ -43,6 +43,7 @@ import { workspaceIdentity, IDENTITY_FILE } from "./dev-server.mjs";
 import { frameOrigin } from "./frame-origin.mjs";
 import { pickPort } from "./ports.mjs";
 import { requireScreenApproval } from "./screen-approval.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const USAGE = 'usage: node tools/scaffold.mjs <slug> --codebase <id> --brief <briefId> [--title "<title>"]';
@@ -70,8 +71,7 @@ if (options["screen-index"]) {
   screenIndex = {indexId:options["screen-index"], version:Number(options["inventory-version"]), entryId:options["screen-entry"]};
   await requireScreenApproval(options.codebase, screenIndex);
 }
-const homeDir = process.env.HOME ?? "";
-const home = join(homeDir, ".proto", options.codebase);
+const home = join(protoHome(), options.codebase);
 const buildDir = join(home, "run", "builds", options.brief);
 const readPath = join(buildDir, "read.json");
 if (!existsSync(readPath)) fail(`${readPath} does not exist: run build-stream.mjs read first`);

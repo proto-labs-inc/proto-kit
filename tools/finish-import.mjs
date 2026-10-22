@@ -7,11 +7,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { completionProblems } from "./import-evidence.mjs";
 
 import { requireAllStages } from "./import-stages.mjs";
+import { protoHome } from "./proto-home.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export async function finishImport(codebase, deps = {}) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(codebase ?? "")) throw new Error("Usage: finish-import.mjs <codebase>");
-  const library = join(deps.home ?? join(process.env.HOME ?? "", ".proto"), codebase, "library");
+  const library = join(deps.home ?? protoHome(), codebase, "library");
   const before = JSON.parse(readFileSync(join(library, "public", "manifest.json"), "utf8"));
   if (before.codebase !== codebase) throw new Error("The library manifest names a different codebase.");
   const run = deps.run ?? ((tool, args) => spawnSync(process.execPath, [join(here, tool), ...args], { encoding: "utf8" }));
