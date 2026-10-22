@@ -35,6 +35,10 @@
           {
             "type": "command",
             "command": "node \"$PLUGIN_ROOT/tools/hooks/telemetry-turn.mjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/tools/hooks/auto-publish-turn.mjs\""
           }
         ]
       }
