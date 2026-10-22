@@ -212,6 +212,17 @@ test("a held lock taken with wait gives up after its time, and a stale one is ta
   assert.equal(takeRunLock(lock, { wait: false }), true, "a lock nobody refreshed for long belongs to a dead process");
 });
 
+test("a lock whose holder is gone is free at once", () => {
+  // The app quit while a publish held the lock: the next publish must not wait for it to go stale.
+  const dir = mkdtempSync(join(tmpdir(), "proto-lock-"));
+  const lock = join(dir, "publish.lock");
+  const gone = spawnSync(process.execPath, ["-e", "process.exit(0)"]).pid;
+  mkdirSync(lock);
+  writeFileSync(join(lock, "pid"), String(gone));
+  assert.equal(takeRunLock(lock, { wait: false }), true);
+  assert.equal(readFileSync(join(lock, "pid"), "utf8"), String(process.pid));
+});
+
 test("the build uses the workspace's own package manager", () => {
   const { add } = laptop();
   const { workspace } = add("p");
