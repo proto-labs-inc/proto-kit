@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,4 +50,63 @@ test("captured font faces drop Internet Explorer's .eot sources and keep the res
   assert.equal(withoutLegacySources("font-family:X;src:url(x.EOT)"), null);
   const modern = `font-family:Y;src:url(y.woff2) format("woff2");font-weight:400`;
   assert.equal(withoutLegacySources(modern), modern);
+});
+
+/** A fake Proto app: answers begin_publish with an upload for index.html
+ *  only and calls everything else unchanged, and records every PUT. */
+async function fakeApp() {
+  const seen = { files: null, puts: [] };
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const base = `http://127.0.0.1:${server.address().port}`;
+    if (req.method === "PUT") {
+      seen.puts.push(req.url);
+      res.writeHead(200).end();
+      return;
+    }
+    const message = JSON.parse(body);
+    let result = {};
+    if (message.method === "tools/call") {
+      const { name, arguments: args } = message.params;
+      if (name === "begin_publish") {
+        seen.files = args.files;
+        result = { content: [{ text: JSON.stringify({
+          buildId: "20261021T000000Z-abcd",
+          pathnamePrefix: "cb/_library/20261021T000000Z-abcd/",
+          uploads: [{ path: "index.html", contentType: "text/html", url: `${base}/put/index.html` }],
+          copied: args.files.map((f) => f.path).filter((p) => p !== "index.html"),
+        }) }] };
+      } else if (name === "finish_publish") {
+        result = { content: [{ text: JSON.stringify({ publishedUrl: `${base}/cb/_library/20261021T000000Z-abcd/` }) }] };
+      }
+    }
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  return { server, seen, url: `http://127.0.0.1:${server.address().port}` };
+}
+
+test("each file goes with its MD5, and only the uploads the app asks for are sent", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proto-publish-library-"));
+  writeFileSync(join(dir, "index.html"), "<!doctype html>");
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify({ codebase: "cb" }));
+  writeFileSync(join(dir, "big.js"), "unchanged");
+  const app = await fakeApp();
+  try {
+    const child = spawn(process.execPath, [publish, "--kind", "library", "--codebase", "cb", "--dir", dir], {
+      env: { ...process.env, PROTO_HOME: mkdtempSync(join(tmpdir(), "proto-home-")), PROTO_APP: app.url, PROTO_TOKEN: "t" },
+    });
+    let out = "";
+    child.stdout.on("data", (d) => { out += d; });
+    child.stderr.on("data", (d) => { out += d; });
+    const code = await new Promise((done) => child.on("close", done));
+    assert.equal(code, 0, out);
+    const md5 = createHash("md5").update("unchanged").digest("hex");
+    assert.deepEqual(app.seen.files.find((f) => f.path === "big.js"), { path: "big.js", contentType: "text/javascript", size: 9, md5 });
+    assert.deepEqual(app.seen.puts, ["/put/index.html"]);
+    assert.match(out, /1 to upload, 2 unchanged and copied/);
+  } finally {
+    app.server.close();
+  }
 });
