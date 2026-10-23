@@ -36,3 +36,21 @@ jobs:
           PROTO_APP_URL: ${{ vars.PROTO_APP_URL }}
           PROTO_KIT_RELEASE_TOKEN: ${{ secrets.PROTO_KIT_RELEASE_TOKEN }}
         run: node tools/register-release.mjs
+
+      # Enable only as part of the separately approved production rollout.
+      # Artifacts are uploaded and verified before the current manifest changes.
+      - name: Publish generated kit to desktop Blob channel
+        if: github.ref == 'refs/heads/main' && vars.PROTO_DESKTOP_RELEASES_ENABLED == 'true'
+        env:
+          PROTO_RELEASE_SHA: ${{ steps.release.outputs.commit }}
+          DESKTOP_BLOB_READ_WRITE_TOKEN: ${{ secrets.DESKTOP_BLOB_READ_WRITE_TOKEN }}
+          DESKTOP_ARTIFACT_PRIVATE_KEY: ${{ secrets.DESKTOP_ARTIFACT_PRIVATE_KEY }}
+          DESKTOP_RELEASE_MANIFEST_URL: ${{ vars.DESKTOP_RELEASE_MANIFEST_URL }}
+          DESKTOP_RELEASE_CHANNEL: ${{ vars.DESKTOP_RELEASE_CHANNEL }}
+        run: |
+          kit="$RUNNER_TEMP/desktop-kit"
+          sdk="$RUNNER_TEMP/desktop-blob-sdk"
+          mkdir -p "$kit" "$sdk"
+          git archive "$PROTO_RELEASE_SHA" | tar -x -C "$kit"
+          npm install --prefix "$sdk" --no-package-lock --ignore-scripts @vercel/blob@2.8.0
+          DESKTOP_BLOB_SDK="$sdk" node tools/publish-desktop-release.mjs "$kit"
