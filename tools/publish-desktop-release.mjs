@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Publish an already generated GitHub release to Blob, then promote its channel. */
+import { promoteRelease } from './desktop-manifest.mjs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createHash, createPublicKey, sign, verify } from 'node:crypto';
@@ -10,7 +11,7 @@ const release = JSON.parse(await readFile(join(root, '.proto-release.json'), 'ut
 if (!/^0\.1\.0\+codex\.\d{14}$/.test(release.version)) throw new Error('Use the GitHub-generated release snapshot.');
 const { DESKTOP_BLOB_READ_WRITE_TOKEN: token, DESKTOP_ARTIFACT_PRIVATE_KEY: key, DESKTOP_RELEASE_MANIFEST_URL: current, DESKTOP_RELEASE_CHANNEL: channel, DESKTOP_BLOB_SDK: sdk } = process.env;
 if (!token || !key || !current || !sdk || !/^[a-zA-Z0-9_-]+$/.test(channel ?? '')) throw new Error('Desktop release publishing is not configured.');
-const { put } = createRequire(join(resolve(sdk), 'package.json'))('@vercel/blob');
+const { get, put } = createRequire(join(resolve(sdk), 'package.json'))('@vercel/blob');
 const response = await fetch(current, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
 if (!response.ok) throw new Error(`Current desktop manifest unavailable (${response.status}).`);
 const manifest = await response.json();
@@ -60,5 +61,12 @@ const artifact = { kind: 'kit', version: release.version, bridgeVersion: 1, sha2
 artifact.signature = sign(null, Buffer.from(JSON.stringify(artifact)), key).toString('base64');
 const next = { ...manifest, requiredKit: release.version, kits: [...manifest.kits, artifact], publishedAt: new Date().toISOString() };
 await put(`${prefix}/manifests/${release.version}-${Date.now()}.json`, JSON.stringify(next), { ...options, contentType: 'application/json' });
-await put(`${prefix}/current.json`, JSON.stringify(next), { ...options, contentType: 'application/json', allowOverwrite: true, cacheControlMaxAge: 60 });
+await promoteRelease({ get, put, token, channel, staged: next, validate: async candidate => {
+  if (!candidate.kits.some(item => item.version === candidate.requiredKit)) throw new Error('Required kit is missing.');
+  for (const item of [...candidate.kits, ...(candidate.desktop ? [candidate.desktop] : [])]) {
+    const { kind, version, bridgeVersion, sha256, bytes, url, signature } = item;
+    const payload = JSON.stringify({ kind, version, bridgeVersion, sha256, bytes, url });
+    if (!verify(null, Buffer.from(payload), createPublicKey(key), Buffer.from(signature ?? '', 'base64'))) throw new Error('Manifest artifact signature is invalid.');
+  }
+} });
 console.log(JSON.stringify({ version: release.version, channel, published: true }));
