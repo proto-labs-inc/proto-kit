@@ -20,3 +20,12 @@ and proto-kit uses one branch name in both repos.
 Run `node --test tools/check-plugin.test.mjs tools/update-plugin.test.mjs tools/publish-release.test.mjs tools/register-release.test.mjs`
 when changing release automation. Preserve idempotent retries, monotonically
 increasing versions, and fast-forward publication without force pushes.
+
+## Desktop release approval
+
+Before changing bundled Electron code, preload contracts, local agent integration,
+or other capabilities that require a signed desktop release, explain the release
+requirement and proposed changes, then pause for user approval before editing.
+An after-the-fact notice is insufficient. The cloud UI migration and initial
+bootstrap/integration release requested on 2026-10-23 are already authorized.
+That authorization does not cover future desktop releases or production publication.
