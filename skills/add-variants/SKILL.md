@@ -19,6 +19,13 @@ Work only in the existing prototype workspace and variant set named by the
 request. This is an incremental edit: do not scaffold a prototype, run
 create-prototype or the full serve workflow, register the prototype, or change unrelated states or variant sets.
 
+## Implementation and delivery order
+
+Follow [Implement before capturing variants](../../docs/variant-delivery.md):
+implement and wire the real component, verify switching in the running
+prototype, capture that rendered implementation, then expose it in the gallery.
+This order applies before writing preview metadata or delivering chat images.
+
 ## Add the variants
 
 1. Read `public/prototype.json`, the target set, the current view, and the

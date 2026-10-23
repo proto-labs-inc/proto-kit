@@ -20,7 +20,8 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, openSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const IDENTITY_FILE = "__proto-workspace.json";
 
@@ -103,6 +104,23 @@ export async function ensureDevServer({ workspace, logPath, keep = false, timeou
   if (before.who === "this") return { url, port: manifest.port, started: false, stop() {} };
   if (before.who === "other") {
     throw new Error(`port ${manifest.port} is serving ${before.found}, not ${workspace}: stop that server or give this workspace another port (public/prototype.json and vite.config.ts must agree)`);
+  }
+  const runDir = join(dirname(dirname(workspace)), "run", basename(workspace));
+  if (existsSync(join(runDir, "desktop-owners"))) {
+    // Verification tools share the tab's supervisor. They must never create
+    // a detached replacement that can outlive a closed tab or killed desktop.
+    const supervisor = fileURLToPath(new URL("./supervise.mjs", import.meta.url));
+    const launched = spawn(process.execPath, [supervisor, "start", runDir], { stdio: "ignore" });
+    const code = await new Promise((resolve, reject) => { launched.once("exit", resolve); launched.once("error", reject); });
+    if (code !== 0) throw new Error("Open this prototype's tab in Proto before checking its preview.");
+    const until = Date.now() + timeoutMs;
+    while (Date.now() < until) {
+      const now = await whoAnswers(url, workspace);
+      if (now.who === "this") return { url, port: manifest.port, started: false, stop() {} };
+      if (now.who === "other") throw new Error(`port ${manifest.port} is serving ${now.found}, not ${workspace}`);
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    throw new Error("The tab's managed preview did not start. Check its run logs.");
   }
   const log = openSync(logPath, "a");
   const child = spawn("pnpm", ["dev"], {
