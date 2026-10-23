@@ -86,6 +86,13 @@ ${lacking}
 
 ## Check your work
 
+Implement your module before producing any preview. The coordinator owns
+integration into the prototype and the manifest: confirm that integration is
+ready before running the capture command below. A stub or standalone mockup
+must never become a variant thumbnail. The coordinator must verify switching
+to your implementation in the running prototype before delivering the gallery;
+a successful capture alone does not prove that selection works.
+
 1. \`pnpm typecheck\` in the workspace; fix what it names.
 2. \`node ${join(KIT_TOOLS, "previews.mjs")} ${workspace} --only ${component}=${variant.id}\` pictures your variant in every preview state in about a second${multi ? ", every region separately" : ""}. Its output also lists${multi ? ", per region" : ""}:
    - \`unstyled\`: class names no stylesheet defines. They do nothing; fix every one (copy the class the page uses, or move the style into your module CSS).

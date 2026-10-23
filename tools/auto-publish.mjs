@@ -51,12 +51,13 @@ import { callTool, readConfig, targetFor } from "./mcp-call.mjs";
 import { protoHome } from "./proto-home.mjs";
 import { readJson } from "./run-repair.mjs";
 import { refreshRunLock, takeRunLock } from "./run-lock.mjs";
+import { failPublishAttempt, readPublishStatus, startPublishAttempt } from "./publish-status.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STEP_TIMEOUT_MS = 10 * 60_000;
 // What a build, an install or a publish writes into the workspace: never
 // a change worth publishing.
-const SKIPPED = new Set(["node_modules", "dist", ".git", ".publish-lock", ".publish-pending"]);
+const SKIPPED = new Set(["node_modules", "dist", ".git", ".proto", ".publish-lock", ".publish-pending"]);
 // What the app answers when a publish can never succeed from this laptop
 // as things stand: retrying at every turn end would only repeat it.
 const REFUSED = /unknown prototype|unknown codebase|Only its creator|was deleted|not linked to|not set up|no longer works/i;
@@ -164,8 +165,8 @@ function run(command, args, cwd, log) {
 export const defaultSteps = {
   openBrief,
   build: (workspace, log) => run(...buildCommand(workspace), workspace, log),
-  publishPrototype: (workspace, log) =>
-    run(process.execPath, [join(HERE, "publish.mjs"), "--kind", "prototype", workspace, "--auto"], workspace, log),
+  publishPrototype: (workspace, log, attemptId) =>
+    run(process.execPath, [join(HERE, "publish.mjs"), "--kind", "prototype", workspace, "--auto", "--attempt-id", attemptId], workspace, log),
   publishLibrary: (workspace, log) =>
     run(process.execPath, [join(HERE, "publish-library.mjs"), workspace, "--wait"], workspace, log),
 };
@@ -223,14 +224,31 @@ export async function publishRun(run, steps = defaultSteps) {
       const now = changed();
       if (!now) continue;
       note(`publishing ${run.codebase}/${run.name}`);
-      const built = steps.build(run.workspace, log);
-      if (!built.ok) {
-        note("the build failed; nothing published");
-        settle(built, now);
-        continue;
+      const attempt = startPublishAttempt(run.workspace);
+      try {
+        const built = steps.build(run.workspace, log);
+        if (!built.ok) {
+          note("the build failed; nothing published");
+          failPublishAttempt(run.workspace, attempt.attemptId, built.output || "The build failed; nothing was published");
+          settle(built, now);
+          continue;
+        }
+        refreshRunLock(lock);
+        const result = steps.publishPrototype(run.workspace, log, attempt.attemptId);
+        const status = readPublishStatus(run.workspace);
+        // A child can publish successfully, then fail only while reporting
+        // progress. Publication has already happened and must stay successful.
+        if (status?.attemptId === attempt.attemptId && status.status === "published") {
+          settle({ ok: true }, now);
+        } else {
+          if (!result.ok) failPublishAttempt(run.workspace, attempt.attemptId, result.output || "Publishing failed");
+          settle(result, now);
+        }
+      } catch (error) {
+        failPublishAttempt(run.workspace, attempt.attemptId, error);
+        settle({ ok: false, output: error.message ?? String(error) }, now);
+        note(error.message ?? String(error));
       }
-      refreshRunLock(lock);
-      settle(steps.publishPrototype(run.workspace, log), now);
     } while (existsSync(pending));
   } finally {
     rmSync(lock, { recursive: true, force: true });

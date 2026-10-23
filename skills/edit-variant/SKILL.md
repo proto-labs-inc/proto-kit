@@ -10,6 +10,13 @@ by the request. This is an incremental edit: do not scaffold a prototype, run
 create-prototype or the full serve workflow, gather references, or register
 the prototype.
 
+## Implementation and delivery order
+
+Follow [Implement before capturing variants](../../docs/variant-delivery.md):
+implement and wire the real component, verify switching in the running
+prototype, capture that rendered implementation, then expose it in the gallery.
+This order applies before writing preview metadata or delivering chat images.
+
 ## Make the edit
 
 Preserve the prototype's light and dark behavior. The rig supplies

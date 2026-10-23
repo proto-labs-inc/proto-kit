@@ -45,12 +45,24 @@ import { validatePublishedManifest } from "./variant-manifest.mjs";
 import { IDENTITY_FILE } from "./dev-server.mjs";
 import { belowProtoHome, protoHome } from "./proto-home.mjs";
 import { takeRunLock } from "./run-lock.mjs";
+import { completePublishAttempt, failPublishAttempt, startPublishAttempt } from "./publish-status.mjs";
 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
 const KINDS = ["prototype", "library"];
-const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug"];
+const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id"];
+let publishAttempt = null;
+let attemptWorkspace = null;
+function recordFailure(error) {
+  if (!publishAttempt) return;
+  try { failPublishAttempt(attemptWorkspace, publishAttempt.attemptId, error); }
+  catch (statusError) { console.error(`Could not record publishing status: ${statusError.message}`); }
+}
+// Monitoring keeps Node's original error handling and exit code. It also covers
+// preflight throws and top-level await failures before workflow reporting exists.
+process.on("uncaughtExceptionMonitor", recordFailure);
 const fail = (message) => {
+  recordFailure(message);
   console.error(message);
   process.exit(1);
 };
@@ -97,6 +109,21 @@ if (kind === "prototype") {
 } else {
   if (!codebase) fail(`--kind library needs --codebase <id>\n${USAGE}`);
   dist = resolve(options.dir ?? join(protoHome(), codebase, "library", "dist"));
+}
+// Share the run's lock before preflight, so a waiting explicit publish cannot
+// replace the status of the automatic publisher still holding that lock.
+const runDir = kind === "prototype" && codebase && slug ? join(protoHome(), codebase, "run", slug) : null;
+if (runDir && existsSync(runDir) && !options.auto && !dryRun) {
+  const lock = join(runDir, "publish.lock");
+  takeRunLock(lock, { wait: true });
+  process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
+}
+if (kind === "prototype" && !dryRun) {
+  attemptWorkspace = workspace;
+  publishAttempt = startPublishAttempt(workspace, options["attempt-id"] ?? null);
+  process.on("exit", (code) => {
+    if (code !== 0) recordFailure("Publishing was interrupted before it finished");
+  });
 }
 if (!codebase && !dryRun) fail("cannot derive codebase from the workspace path; pass --codebase <id>");
 
@@ -185,10 +212,10 @@ const problems = [];
 if (kind === "prototype" && !manifest.some((f) => f.path === "prototype.json"))
   problems.push("the build has no prototype.json (the workspace's public/ folder should carry it)");
 if (manifest.length > 200) problems.push(`${manifest.length} files; the limit is 200`);
-if (totalBytes > 40 * 1024 * 1024) problems.push(`${(totalBytes / 1048576).toFixed(1)} MB total; the limit is 40 MB`);
+if (totalBytes > 100 * 1024 * 1024) problems.push(`${(totalBytes / 1048576).toFixed(1)} MB total; the limit is 100 MB`);
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 for (const f of manifest) {
-  if (f.size > 8 * 1024 * 1024) problems.push(`${f.path} is ${(f.size / 1048576).toFixed(1)} MB; the per-file limit is 8 MB`);
+  if (f.size > 100 * 1024 * 1024) problems.push(`${f.path} is ${(f.size / 1048576).toFixed(1)} MB; the per-file limit is 100 MB`);
   if (!f.path.split("/").every((seg) => SEGMENT.test(seg)))
     problems.push(`${f.path} has a path segment the published host refuses (each part of a path must start with a letter or digit, then letters, digits, dot, dash or underscore)`);
 }
@@ -227,8 +254,7 @@ for (const [ref, sources] of misrooted) {
 }
 
 if (problems.length > 0) {
-  for (const p of problems) console.error(`cannot publish: ${p}`);
-  process.exit(1);
+  fail(problems.map((p) => `cannot publish: ${p}`).join("\n"));
 }
 
 if (dryRun) {
@@ -267,14 +293,6 @@ else target = { kind, codebase };
 // of the @proto-labs-inc/rig-core the workspace's adapter resolves.
 let rigVersion = null;
 if (kind === "prototype") rigVersion = resolvedRigVersion(workspace);
-// The skill's publish waits for a turn-end publish of the same run to
-// finish (tools/run-lock.mjs); an automatic one already holds the lock.
-const runDir = kind === "prototype" && codebase && slug ? join(protoHome(), codebase, "run", slug) : null;
-if (runDir && existsSync(runDir) && !options.auto && !dryRun) {
-  const lock = join(runDir, "publish.lock");
-  takeRunLock(lock, { wait: true });
-  process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
-}
 // An automatic publish only uploads: the brief is the skill's to finish.
 let progressBuild = kind === "prototype" && !options.auto ? buildOfWorkspace(workspace) : null;
 if (progressBuild) {
@@ -342,6 +360,8 @@ const finished = unwrap(
 if (!finished.publishedUrl) {
   throw new Error(`Could not verify publishing: ${finished.error ?? "the app did not confirm availability"}`);
 }
+// Publication succeeded even if recording build-request progress later fails.
+if (publishAttempt) completePublishAttempt(workspace, publishAttempt.attemptId, finished.publishedUrl);
 console.log(`published: ${finished.publishedUrl}`);
 if (kind === "library") console.log(`the app loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}manifest.json`);
 else console.log(`the Frame loads ${finished.publishedUrl}index.html and ${finished.publishedUrl}prototype.json`);

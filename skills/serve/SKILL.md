@@ -13,7 +13,12 @@ workspace (`tools/auto-publish.mjs`, run by the kit's end-of-turn hook;
 a workspace with an open build request is published by its skill instead,
 and a starter's saved build only once step 2 switches it to the dev server).
 The dev server runs detached under `tools/supervise.mjs`, surviving this
-session. Cloud actions go through the **proto MCP server** (setup
+session for standalone plugin use. In the desktop app, open tabs own preview
+servers: closing a tab pauses its chats and stops its server; quitting or
+force-killing Proto stops all owned preview trees. Reopening Proto starts
+servers for restored tabs. A desktop-owned run without an open tab refuses
+startup. Reopen the tab instead of removing ownership records or starting a
+replacement server. Cloud actions go through the **proto MCP server** (setup
 connects it; if its tools are missing or `whoami` fails, run setup
 first). The workspace's `public/prototype.json` carries the port. All
 `tools/…` and `<kit>/tools/…` paths resolve from the kit root. Prefer the
