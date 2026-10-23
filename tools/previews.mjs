@@ -21,7 +21,10 @@
  * anything that spills past the page's edge at the narrowest width the
  * page itself fits (viewport.minWidth), where the Frame re-flows it.
  *
- * Usage: node tools/previews.mjs <workspace> [--pad 24] [--brief <id> --codebase <id>] [--no-send]
+ * --set <component> pictures only that set, in the default state and its
+ * own showcase state: what a pass that builds one set needs.
+ *
+ * Usage: node tools/previews.mjs <workspace> [--set <component>] [--pad 24] [--brief <id> --codebase <id>] [--no-send]
  *
  * With --brief, the set's default variant is reported as matched for
  * the part's node, with its picture, so the site shows the change.
@@ -40,7 +43,7 @@ import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
 import { backdropOf, launchedDisplayOr, narrowestWidth, OVERFLOWING, regionBox, viewsOf, waitForMarkers } from "./views.mjs";
 
-const USAGE = "usage: node tools/previews.mjs <workspace> [--pad 24] [--only <component>=<variant>] [--brief <id> --codebase <id>] [--no-send]";
+const USAGE = "usage: node tools/previews.mjs <workspace> [--set <component>] [--pad 24] [--only <component>=<variant>] [--brief <id> --codebase <id>] [--no-send]";
 const options = { pad: "24" };
 const positional = [];
 const args = process.argv.slice(2);
@@ -74,8 +77,11 @@ const dev = await ensureDevServer({ workspace, logPath: join(logDir, "dev.log") 
 // --only pictures one variant in every state for the unit writing it, to
 // check its own work: the manifest and the site are left to the full run.
 const only = options.only ? options.only.split("=") : null;
-const views = viewsOf(manifest, dev.url).filter((view) => view.component && (!only || (view.component === only[0] && view.variant === only[1])));
+// --set pictures the one set being built: the others' previews are current
+// already, and picturing every set in every state grows with each set added.
+const views = viewsOf(manifest, dev.url).filter((view) => view.component && (!only || (view.component === only[0] && view.variant === only[1])) && (!options.set || view.component === options.set));
 if (only && views.length === 0) fail(`no variant ${options.only} in the manifest`);
+if (options.set && views.length === 0) fail(`no set ${options.set} with variants in the manifest`);
 
 const reporter = !only && options.brief && options.codebase && build ? createReporter({ codebase: options.codebase, briefId: options.brief, runDir: build.dir, sink: options.noSend ? "file" : "site" }) : null;
 const previews = [];
@@ -266,7 +272,11 @@ const LAYOUT = (selector, region) => `(() => {
 // so a state's look is checked from a picture, not an improvised screenshot.
 const statePictures = [];
 const firstState = (manifest.states ?? [])[0]?.id ?? "default";
-const otherStates = (manifest.states ?? []).slice(1).map((st) => st.id);
+// With --set, only the set's own showcase state besides the default.
+const showcase = options.set ? manifest.variantSets?.find((set) => set.component === options.set)?.state : null;
+const otherStates = options.set
+  ? (showcase && showcase !== firstState ? [showcase] : [])
+  : (manifest.states ?? []).slice(1).map((st) => st.id);
 const looksDir = join(logDir, "looks");
 mkdirSync(looksDir, { recursive: true });
 const jobs = [

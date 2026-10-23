@@ -106,8 +106,11 @@ This section applies to passes that create variants.
   selector; `begin` accepts the selector as it is. For `look --part`, use a
   marker name; when a part is reported missing, pick from the `marked` list
   the tool prints.
-- Then run `node <kit>/tools/previews.mjs <workspace>` once: it pictures every
-  variant from real renders and records each `preview` in the manifest.
+- After finishing the entry (with its showcase `state`, if any), run
+  `node <kit>/tools/previews.mjs <workspace> --set <component>` once: it
+  pictures this set's variants from real renders, in the default state and
+  the set's showcase state, and records each `preview` in the manifest.
+  Without `--set` it pictures every set in every state, which takes minutes.
 - Check the affected set's SVG previews together. They must be current,
   component-only, consistently framed and padded, and rendered on the page
   background.
