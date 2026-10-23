@@ -92,8 +92,22 @@ variants composer requests the first variants later in this same set.
 
 This section applies to passes that create variants.
 
-- Run `pnpm typecheck`. Verify the requested view and one unaffected existing
-  view through the already-running Vite server; let HMR carry source changes.
+- Run `pnpm typecheck`. Let HMR carry source changes to the already-running
+  Vite server.
+- Check that every new variant renders and switches with the kit's look tool,
+  which selects a variant the way the Frame does:
+  `node <kit>/tools/look.mjs <workspace> --variant <component>=<variant-id>`
+  (one call per variant; add `--state <id>` for another preview state, and
+  `--page` for one unaffected view). Look at each picture. This is the
+  switching check in `docs/variant-delivery.md`: never write your own
+  browser, screenshot or switching scripts, and never read the rig's source
+  to drive it.
+- The selected element's marker is the `data-proto-id` in the request's
+  selector; `begin` accepts the selector as it is. For `look --part`, use a
+  marker name; when a part is reported missing, pick from the `marked` list
+  the tool prints.
+- Then run `node <kit>/tools/previews.mjs <workspace>` once: it pictures every
+  variant from real renders and records each `preview` in the manifest.
 - Check the affected set's SVG previews together. They must be current,
   component-only, consistently framed and padded, and rendered on the page
   background.

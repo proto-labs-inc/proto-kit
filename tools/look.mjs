@@ -12,7 +12,8 @@
  * --variant is given (every region of a set that spans several), else
  * the whole page. Pictures go to the build
  * folder (<build>/looks/), never into public/. Prints one JSON line:
- * { seconds, pictures: [{ file, url, rect }], missing }.
+ * { seconds, pictures: [{ file, url, rect }], missing }. A missing part
+ * lists the parts the view does mark (`marked`), so a wrong name is cheap.
  */
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -77,7 +78,13 @@ try {
   if (part) {
     const mine = marks?.marks.filter((m) => m.id === part && !m.hidden && m.rect[2] > 0 && m.rect[3] > 0) ?? [];
     const drawn = mine.length ? await evaluate(opened.page, regionBox(part)) : null;
-    if (!drawn) missing.push({ part, why: marks === null ? "the app did not mount" : `nothing marked ${part} in this view` });
+    if (!drawn) {
+      // Name the parts this view does mark, so a wrong guess costs one call, not a detour.
+      const shown = [...new Set((marks?.marks ?? []).filter((m) => !m.hidden && m.rect[2] > 0 && m.rect[3] > 0).map((m) => m.id))];
+      missing.push(marks === null
+        ? { part, why: "the app did not mount" }
+        : { part, why: `nothing marked ${part} in this view`, marked: shown.slice(0, 80) });
+    }
     else {
       const [x0, y0, x1, y1] = JSON.parse(drawn);
       rect = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
