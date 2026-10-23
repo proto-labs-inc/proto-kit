@@ -6,7 +6,10 @@
  * own (Chrome's --screenshot mode does not exit, and opening the kit's
  * headless Chrome by hand disturbed the checks that use it).
  *
- * Usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> | --page] [--pad 24]
+ * Usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> [--markup] | --page] [--pad 24]
+ *
+ * --markup also writes the part's rendered markup, a tag per line, beside
+ * its picture (`markup` in the output): the element to design from.
  *
  * Without --part or --page it pictures the variant set's parts when a
  * --variant is given (every region of a set that spans several), else
@@ -15,7 +18,7 @@
  * { seconds, pictures: [{ file, url, rect }], missing }. A missing part
  * lists the parts the view does mark (`marked`), so a wrong name is cheap.
  */
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
@@ -23,13 +26,15 @@ import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
 import { launchedDisplayOr, regionBox, waitForMarkers } from "./views.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
+import { readableMarkup } from "./markup.mjs";
 
-const USAGE = "usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> | --page] [--pad 24]";
+const USAGE = "usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> [--markup] | --page] [--pad 24]";
 const args = process.argv.slice(2);
 const options = { variants: [], pad: "24" };
 const positional = [];
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === "--page") options.page = true;
+  else if (args[i] === "--markup") options.markup = true;
   else if (args[i] === "--variant") options.variants.push(args[++i]);
   else if (args[i].startsWith("--")) options[args[i].slice(2)] = args[++i];
   else positional.push(args[i]);
@@ -95,7 +100,15 @@ try {
   }
   if (!part || clip) {
     await stableShot(opened.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, file, clip);
-    pictures.push({ file, url, rect, ...(part ? { part } : {}) });
+    // --markup: the part as it renders, a tag per line, so a set's design
+    // starts from the real element whatever kind of copy the prototype is.
+    let markup = null;
+    if (options.markup && part) {
+      markup = join(looksDir, `${name}.html`);
+      const html = await evaluate(opened.page, `[...document.querySelectorAll(${JSON.stringify(`[data-proto-id=${JSON.stringify(part)}]`)})].map((e) => e.outerHTML).join("\n")`);
+      writeFileSync(markup, readableMarkup(html));
+    }
+    pictures.push({ file, url, rect, ...(part ? { part } : {}), ...(markup ? { markup } : {}) });
   }
   }
 } finally {

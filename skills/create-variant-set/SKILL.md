@@ -51,14 +51,20 @@ This order applies before writing preview metadata or delivering chat images.
    `node <kit>/tools/variant-set.mjs <workspace> <component> --expected <revision> ...`.
    The scaffolder updates that same empty building entry and returns a new
    revision; it never creates another set. Keep that revision for finishing.
-   Now read the selected component and current view. Preserve existing states,
+   Now see the selected component as it renders, in one call:
+   `node <kit>/tools/look.mjs <workspace> --part <marker> --markup` (add
+   `--state <id>` for the current view). Read its picture and its markup
+   file: that is the element to design from. Open source files only to wire
+   the set in, starting from the request's known source files; do not search
+   page snapshots or the rig for the element. Preserve existing states,
    variants, markers, dependencies, and shared styles.
 3. Before choosing or building directions, gather and inspect references using
    `docs/variant-references.md`. Use supplied references first and Mobbin's
    no-account web path, never the Mobbin MCP. This applies to every new set.
 4. Design the requested directions using those references. Keep each variant in
    its own module with scoped styles under
-   `src/variants/<component>/<variant-id>.*`. Shared files may contain only
+   `src/variants/<component>/<variant-id>.*`. Write every variant's files in
+   one message, as parallel writes, rather than one file per turn. Shared files may contain only
    invariant structure, design-system imports, and tokens. If delegating, give
    each builder its relevant local screenshots, source links, and notes before
    it starts. Inspect the screenshots before implementing, and preserve the
