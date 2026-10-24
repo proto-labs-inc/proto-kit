@@ -6,15 +6,19 @@
  * own (Chrome's --screenshot mode does not exit, and opening the kit's
  * headless Chrome by hand disturbed the checks that use it).
  *
- * Usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> | --page] [--pad 24]
+ * Usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> [--markup] | --page] [--pad 24]
+ *
+ * --markup also writes the part's rendered markup, a tag per line, beside
+ * its picture (`markup` in the output): the element to design from.
  *
  * Without --part or --page it pictures the variant set's parts when a
  * --variant is given (every region of a set that spans several), else
  * the whole page. Pictures go to the build
  * folder (<build>/looks/), never into public/. Prints one JSON line:
- * { seconds, pictures: [{ file, url, rect }], missing }.
+ * { seconds, pictures: [{ file, url, rect }], missing }. A missing part
+ * lists the parts the view does mark (`marked`), so a wrong name is cheap.
  */
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
@@ -22,13 +26,15 @@ import { headlessPage } from "./cdp/headless.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
 import { launchedDisplayOr, regionBox, waitForMarkers } from "./views.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
+import { readableMarkup } from "./markup.mjs";
 
-const USAGE = "usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> | --page] [--pad 24]";
+const USAGE = "usage: node tools/look.mjs <workspace> [--state <id>] [--variant <set>=<id>]... [--part <marker> [--markup] | --page] [--pad 24]";
 const args = process.argv.slice(2);
 const options = { variants: [], pad: "24" };
 const positional = [];
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === "--page") options.page = true;
+  else if (args[i] === "--markup") options.markup = true;
   else if (args[i] === "--variant") options.variants.push(args[++i]);
   else if (args[i].startsWith("--")) options[args[i].slice(2)] = args[++i];
   else positional.push(args[i]);
@@ -77,7 +83,13 @@ try {
   if (part) {
     const mine = marks?.marks.filter((m) => m.id === part && !m.hidden && m.rect[2] > 0 && m.rect[3] > 0) ?? [];
     const drawn = mine.length ? await evaluate(opened.page, regionBox(part)) : null;
-    if (!drawn) missing.push({ part, why: marks === null ? "the app did not mount" : `nothing marked ${part} in this view` });
+    if (!drawn) {
+      // Name the parts this view does mark, so a wrong guess costs one call, not a detour.
+      const shown = [...new Set((marks?.marks ?? []).filter((m) => !m.hidden && m.rect[2] > 0 && m.rect[3] > 0).map((m) => m.id))];
+      missing.push(marks === null
+        ? { part, why: "the app did not mount" }
+        : { part, why: `nothing marked ${part} in this view`, marked: shown.slice(0, 80) });
+    }
     else {
       const [x0, y0, x1, y1] = JSON.parse(drawn);
       rect = { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
@@ -88,7 +100,15 @@ try {
   }
   if (!part || clip) {
     await stableShot(opened.page, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, file, clip);
-    pictures.push({ file, url, rect, ...(part ? { part } : {}) });
+    // --markup: the part as it renders, a tag per line, so a set's design
+    // starts from the real element whatever kind of copy the prototype is.
+    let markup = null;
+    if (options.markup && part) {
+      markup = join(looksDir, `${name}.html`);
+      const html = await evaluate(opened.page, `[...document.querySelectorAll(${JSON.stringify(`[data-proto-id=${JSON.stringify(part)}]`)})].map((e) => e.outerHTML).join("\n")`);
+      writeFileSync(markup, readableMarkup(html));
+    }
+    pictures.push({ file, url, rect, ...(part ? { part } : {}), ...(markup ? { markup } : {}) });
   }
   }
 } finally {

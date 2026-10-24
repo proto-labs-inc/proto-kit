@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { writeVariantSet, readVariantSet, validateVariantSets, validatePublishedManifest, recordVariantPreviews } from './variant-manifest.mjs';
+import { markerOf, writeVariantSet, readVariantSet, validateVariantSets, validatePublishedManifest, recordVariantPreviews } from './variant-manifest.mjs';
 const tool = name => fileURLToPath(new URL(`./${name}.mjs`, import.meta.url));
 const loading = component => ({ component, title: component, status: 'building', variants: [], default: '' });
 const complete = component => ({ component, title: component, variants: [{ id: 'one', title: 'One', sourceFiles: [`src/variants/${component}/one.tsx`], preview: `previews/${component}.svg` }], default: 'one', state: 'detail' });
@@ -233,4 +233,10 @@ test('references-only completion requires usable visual references and an empty 
     }
     assert.throws(() => validateVariantSets({ variantSets: [{ ...set, default: 'absent' }] }), /empty default/);
     assert.throws(() => validateVariantSets({ variantSets: [{ ...set, references: [{ ...ref, variant: 'absent' }] }] }), /unknown variant/);
+});
+
+test('begin takes the marker from the selector the Frame sends', () => {
+  assert.equal(markerOf('[data-proto-id="page-heading"] > div > h1'), 'page-heading');
+  assert.equal(markerOf('[data-proto-id="section"] [data-proto-id="row"] span'), 'row');
+  assert.equal(markerOf('page-heading'), 'page-heading');
 });
