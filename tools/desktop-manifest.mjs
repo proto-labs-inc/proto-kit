@@ -35,11 +35,14 @@ export async function promoteRelease({ get, put, token, channel, staged, validat
     try {
       const result = await put(pathname, JSON.stringify(next, null, 2) + "\n", {
         token, access: "public", addRandomSuffix: false, contentType: "application/json", cacheControlMaxAge: 60,
-        allowOverwrite: Boolean(existing), ...(existing ? { ifMatch: existing.blob.etag } : {}),
+        // Public HTTP responses use W/ for transfer encoding; Blob's conditional
+        // write API requires the corresponding strong storage validator.
+        allowOverwrite: Boolean(existing), ...(existing ? { ifMatch: existing.blob.etag.replace(/^W\//, "") } : {}),
       });
       return { ...result, manifest: next };
     } catch (error) {
-      if (!["BlobPreconditionFailedError", "BlobAlreadyExistsError"].includes(error.name)) throw error;
+      // The SDK subclasses Error without overriding Error.name.
+      if (error.constructor?.name !== "BlobPreconditionFailedError") throw error;
     }
   }
   throw new Error("The release manifest kept changing. Retry promotion; staged artifacts remain intact.");
