@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { registerRelease } from "./register-release.mjs";
+
+test("kit release workflow registers GitHub releases without a desktop publishing dependency", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/register-release.yml", import.meta.url), "utf8");
+  const steps = workflow.split(/^      - /m).slice(1);
+  const publication = steps.findIndex(step => step.includes("run: node tools/publish-release.mjs"));
+  const registration = steps.findIndex(step => step.includes("run: node tools/register-release.mjs"));
+  assert.ok(publication >= 0, "generate and publish the release first");
+  assert.equal(registration, publication + 1, "register immediately after GitHub publication");
+  assert.match(steps[registration], /if: github.ref == 'refs\/heads\/main'/);
+  assert.match(steps[registration], /PROTO_RELEASE_SHA: \$\{\{ steps.release.outputs.commit \}\}/);
+  assert.doesNotMatch(workflow, /DESKTOP_|publish-desktop|@vercel\/blob/);
+});
 
 const input = { app: "https://proto.test", token: "test-only", commit: "a".repeat(40), version: "0.1.0+codex.20261002000000" };
 test("release registration sends the verified pair and requires confirmation", async () => {

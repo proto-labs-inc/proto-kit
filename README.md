@@ -312,6 +312,11 @@ Failures before the release push leave the previous package available. Cloud
 registration happens afterward in the same workflow; if it fails, the package
 is available but cloud update notices lag. Rerun that workflow to retry.
 
+The app's `kit_releases` table supplies the required version in agent prompts.
+Agents check their installed kit and use the update skill to install from GitHub
+when needed. Kit publication does not upload to a desktop channel or require
+desktop storage credentials, signing keys, or a desktop release.
+
 Activation: merge this workflow into main, allow its `contents: write` token
 to create/update release, and verify the first run. Existing
 `PROTO_APP_URL` and `PROTO_KIT_RELEASE_TOKEN` configure cloud registration.

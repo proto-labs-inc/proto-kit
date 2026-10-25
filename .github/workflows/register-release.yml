@@ -27,26 +27,8 @@ jobs:
       - name: Generate version and advance release branch
         id: release
         run: node tools/publish-release.mjs
-      # Main releases must be downloadable and verified before the app requires them.
-      # Missing configuration and failed uploads fail this job; they cannot skip publication.
-      - name: Publish and verify generated kit in desktop channel
-        if: github.ref == 'refs/heads/main'
-        shell: bash
-        env:
-          PROTO_RELEASE_SHA: ${{ steps.release.outputs.commit }}
-          DESKTOP_BLOB_READ_WRITE_TOKEN: ${{ secrets.DESKTOP_BLOB_READ_WRITE_TOKEN }}
-          DESKTOP_ARTIFACT_PRIVATE_KEY: ${{ secrets.DESKTOP_ARTIFACT_PRIVATE_KEY }}
-          DESKTOP_RELEASE_MANIFEST_URL: ${{ vars.DESKTOP_RELEASE_MANIFEST_URL }}
-          DESKTOP_RELEASE_CHANNEL: ${{ vars.DESKTOP_RELEASE_CHANNEL }}
-        run: |
-          kit="$RUNNER_TEMP/desktop-kit"
-          sdk="$RUNNER_TEMP/desktop-blob-sdk"
-          mkdir -p "$kit" "$sdk"
-          git archive "$PROTO_RELEASE_SHA" | tar -x -C "$kit"
-          npm install --prefix "$sdk" --no-package-lock --ignore-scripts @vercel/blob@2.8.0
-          DESKTOP_BLOB_SDK="$sdk" node tools/publish-desktop-release.mjs "$kit"
-
-      # Runs only after kit publication succeeds. Failed releases keep the app on its previous version.
+      # GitHub hosts the kit. Register the verified release with the app so its
+      # prompts tell agents which version to check and install.
       - name: Verify published manifest and record release
         if: github.ref == 'refs/heads/main'
         env:
