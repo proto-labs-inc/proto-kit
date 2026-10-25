@@ -94,6 +94,8 @@ Parts (`t`), each also taking `id`, `hl`, `note`, `grow`, `w`, `h` and
 
 Rules that make a wireframe say something:
 
+- **No gray framing.** Draw wireframes edge to edge on a white or transparent canvas. Do not add gray backgrounds, gray insets, outer mats, or decorative page frames. Do not wrap the root in a soft box or add padding to simulate an inset page.
+
 - **Colour only when it is the point.** A wireframe is ink and one accent.
   When the brief or a note is about colour ("Restore is red"), give that
   part `tone` (`red`, `green`, `amber`, `blue`): it is drawn in that

@@ -19,6 +19,7 @@ Create or revise only the implementation plan for an existing Proto prototype. T
 - Order entries by dependency. Prefer independent slices; when one depends on another, describe that dependency so the implementation PRs can be stacked intentionally.
 - For each entry, provide a concise title and implementation-oriented description, an existing state id that demonstrates the area, an existing `data-proto-id` as `targetId`, and a contextual wireframe asset path.
 - Create simple wireframes in `public/wireframes/` that show the affected region in enough page context to orient a reviewer and highlight that region consistently with the Proto accent color.
+- Draw wireframes edge to edge on a white or transparent canvas. Do not add gray backgrounds, gray insets, outer mats, or decorative page frames.
 - Validate every referenced state, target marker, and asset path. Preserve unrelated prototype metadata and entry ordering unless the user asks to revise them.
 
 Write the entries to `prPlan.entries` in `public/prototype.json`, then use the prototype's established serve/register workflow so the plan appears in the Frame. Do not create implementation branches or PRs in this skill. Report the planned slices and their dependency order; point implementation requests to `implement-pr-plan`.

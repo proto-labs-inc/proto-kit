@@ -27,20 +27,11 @@ jobs:
       - name: Generate version and advance release branch
         id: release
         run: node tools/publish-release.mjs
-      # GITHUB_TOKEN pushes do not trigger another push workflow.
-      - name: Verify published manifest and record release
+      # Main releases must be downloadable and verified before the app requires them.
+      # Missing configuration and failed uploads fail this job; they cannot skip publication.
+      - name: Publish and verify generated kit in desktop channel
         if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PROTO_RELEASE_SHA: ${{ steps.release.outputs.commit }}
-          PROTO_APP_URL: ${{ vars.PROTO_APP_URL }}
-          PROTO_KIT_RELEASE_TOKEN: ${{ secrets.PROTO_KIT_RELEASE_TOKEN }}
-        run: node tools/register-release.mjs
-
-      # Enable only as part of the separately approved production rollout.
-      # Artifacts are uploaded and verified before the current manifest changes.
-      - name: Publish generated kit to desktop Blob channel
-        if: github.ref == 'refs/heads/main' && vars.PROTO_DESKTOP_RELEASES_ENABLED == 'true'
+        shell: bash
         env:
           PROTO_RELEASE_SHA: ${{ steps.release.outputs.commit }}
           DESKTOP_BLOB_READ_WRITE_TOKEN: ${{ secrets.DESKTOP_BLOB_READ_WRITE_TOKEN }}
@@ -54,3 +45,13 @@ jobs:
           git archive "$PROTO_RELEASE_SHA" | tar -x -C "$kit"
           npm install --prefix "$sdk" --no-package-lock --ignore-scripts @vercel/blob@2.8.0
           DESKTOP_BLOB_SDK="$sdk" node tools/publish-desktop-release.mjs "$kit"
+
+      # Runs only after kit publication succeeds. Failed releases keep the app on its previous version.
+      - name: Verify published manifest and record release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROTO_RELEASE_SHA: ${{ steps.release.outputs.commit }}
+          PROTO_APP_URL: ${{ vars.PROTO_APP_URL }}
+          PROTO_KIT_RELEASE_TOKEN: ${{ secrets.PROTO_KIT_RELEASE_TOKEN }}
+        run: node tools/register-release.mjs

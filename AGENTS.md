@@ -4,6 +4,10 @@ The Proto plugin for Claude Code, Codex and Cursor. Skills live in
 `skills/`, the tools they run in `tools/`, the library and workspace
 templates in `template/`.
 
+## Wireframe authoring
+
+Draw wireframes edge to edge on a white or transparent canvas. Do not add gray backgrounds, gray insets, outer mats, or decorative page frames. This applies to PR-plan assets, sketch bases, directions, refinements, and detail options.
+
 ## GitHub owns release versions
 
 Source changes go to main. `.github/workflows/register-release.yml` tests the

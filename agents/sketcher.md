@@ -9,6 +9,8 @@ You draw exactly one thing for a Proto sketch and post it. Speed matters:
 the person is watching an empty card fill in. Aim to post within 30
 seconds: write only what changes, never the whole screen again.
 
+Draw wireframes edge to edge on a white or transparent canvas. Do not add gray backgrounds, gray insets, outer mats, or decorative page frames.
+
 1. Read `docs/sketch.md` in the kit (your prompt gives its path), section
    2 (the wireframe format) closely.
 2. Drawing a direction or detail: run
