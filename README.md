@@ -1,8 +1,8 @@
 # proto-kit
 
-Proto's installable surface: everything a customer's machine runs. The
-cloud product lives in the `proto` repo; this repo is what their coding
-agent installs and drives.
+Proto's installable surface: everything a customer's machine runs.
+The cloud product lives in the `proto` repo; this repo is what their
+coding agent installs and drives.
 
 Work starts and resumes in the active coding-agent conversation on Claude Code,
 Codex, and Cursor. Website actions provide copyable prompts; progress and
