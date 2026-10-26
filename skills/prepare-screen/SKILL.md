@@ -19,6 +19,17 @@ Keep all components, fixtures and assets self-contained for later customer use.
 
 ## Inspect before copying
 
+Use the run key `<indexId>-<version>-<entryId>` from the start, including inspection.
+Run `node <kit>/tools/cdp/product-page.mjs '<exact-live-url>' --codebase <codebase>
+--run <runKey>` and retain its `browserSession` path. Each entry gets its own source
+window; never borrow a same-origin tab from another preparation or prototype.
+Pass `--browser-session <browserSession>` to responsive-css, container-applicability,
+CDP capture, and verification helpers. For custom CDP scripts set
+`PROTO_BROWSER_SESSION=<browserSession>` and use the kit's `connect` helper; close
+one source connection before opening another. Only the session's target may be
+resized, scrolled or navigated. After recovery, repeat the interrupted inspection
+and replace evidence from the previous session generation.
+
 Use the signed-in live page and source to record every visible control, its
 expected local outcome, enabled/disabled state, meaningful URL states and CSS
 breakpoints. Exercise only nonmutating actions on the live product; determine
@@ -100,6 +111,11 @@ from prototype.json so the Frame actually resizes the responsive screen. Preserv
 controls. No live-product requests, navigation, authentication or writes.
 For destinations not included in this screen, show a local state reading
 "This screen isn’t included in this prototype" with a working return action.
+Record it as a `prototype-boundary` verification state with its entry control,
+destination, return control and source return state. Test entry and return by
+pointer and keyboard, direct URLs, reload and responsive layout. Return must work
+without prior browser history. These states need local evidence, not live-source
+screenshots. Copied product states remain `source` states with full visual checks.
 Do not create a user's prototype or serve one for the baseline.
 
 ## Keep independent work moving
@@ -143,3 +159,8 @@ old screen remains unavailable; repair it through a new approved revision.
 Never rebuild a starter during selection. Cloning checks current eligibility and
 performs a load/asset/initial-state/rig smoke check. Continue the serve skill's
 publish before reporting the prototype available.
+
+After upload and verification succeed, release this preparation's source window
+with `node <kit>/tools/cdp/product-page.mjs release --codebase <codebase> --run <runKey>`.
+Explicit cancellation also releases it. Failure or interruption retains it for
+resume. Release only after all workers using its source have finished.

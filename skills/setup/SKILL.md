@@ -448,13 +448,13 @@ browser. Set that up once per machine, here:
    the login is one-time.
 2. The document's `productUrl`, or saved `source.liveUrl`, is the product page to parse; with
    neither, ask the user for the URL of a page in their product. Run
-   `node tools/cdp/product-page.mjs '<productUrl>'` after starting the
-   Proto window. It reuses an open page of that product, navigates a
-   blank tab when no product page is open, and creates a background tab
-   only when Chrome has no tabs at all. If only another site is open,
-   ask the user to show the product in that window and retry; do not
-   treat the other site as the product. Use the command's returned
-   `url` as the actual page URL. Read that page (`evaluate`) for a
+   `node tools/cdp/product-page.mjs '<productUrl>' --codebase <codebase>
+   --run setup-library` after starting Proto Chrome. It acquires a window owned by
+   this setup run in the shared signed-in profile. Keep its `browserSession` path;
+   pass `--browser-session <browserSession>` to each independent source tool and
+   propagate `PROTO_BROWSER_SESSION` to child processes. Reuse only this owned
+   target on resume, never another build's same-origin page. The requested URL
+   must match before capture. Read the owned page (`evaluate`) for a
    signed-in marker: the user's name in a greeting or menu, an account
    control, no sign-in form. Use the debug port to inspect and interact
    with the product's page controls; do not drive Chrome's address bar

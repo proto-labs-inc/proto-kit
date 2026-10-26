@@ -346,8 +346,8 @@ export const PALETTE_SAMPLER = `(() => {
 async function palette(flags) {
   if (typeof flags.page !== "string") throw new Error("--page <the reference page address, or a part of it> is required");
   const port = Number(flags.port ?? 9333);
-  const tabs = await (await fetch(`http://localhost:${port}/json/list`)).json().catch(() => []);
-  const tab = tabs.find((t) => t.type === "page" && t.url.includes(flags.page));
+  const { findPage } = await import("./cdp/attach.mjs");
+  const tab = await findPage(flags.page, port);
   if (!tab) throw new Error(`no tab in Proto Chrome (port ${port}) shows ${flags.page}: the wireframes keep their own colours`);
   const { connect, evaluate } = await import("./cdp/cdp.mjs");
   const page = await connect(tab.webSocketDebuggerUrl);

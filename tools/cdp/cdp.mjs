@@ -1,3 +1,8 @@
+import { dirname, join } from "node:path";
+import { browserSessionPath, readSession } from "./session-context.mjs";
+import { acquireProcessLock } from "../process-lock.mjs";
+let ownedConnections = 0;
+export const sourceConnectionHeld = () => ownedConnections > 0;
 // Minimal CDP client over Node's built-in WebSocket. No dependencies.
 //
 // Every command is bounded: a reply that does not come within
@@ -11,8 +16,24 @@
 // waits fifteen seconds in the page; nothing legitimate takes longer.
 export const COMMAND_TIMEOUT_MS = 30_000;
 
-export function connect(wsUrl, { openTimeoutMs = 10_000 } = {}) {
-  const ws = new WebSocket(wsUrl);
+export async function connect(wsUrl, { openTimeoutMs = 10_000 } = {}) {
+  const sessionPath = browserSessionPath();
+  const session = readSession(sessionPath);
+  let release;
+  if (session && new URL(wsUrl).port === String(session.port) && new URL(wsUrl).pathname === `/devtools/page/${session.targetId}`) {
+    release = await acquireProcessLock(join(dirname(sessionPath), "source-interaction.lock"));
+    ownedConnections += 1;
+  }
+  let released = false;
+  const releaseSource = () => {
+    if (!release || released) return;
+    released = true;
+    ownedConnections -= 1;
+    void release();
+  };
+  let ws;
+  try { ws = new WebSocket(wsUrl); }
+  catch (error) { releaseSource(); throw error; }
   let nextId = 1;
   const pending = new Map();
   const listeners = new Map();
@@ -40,6 +61,7 @@ export function connect(wsUrl, { openTimeoutMs = 10_000 } = {}) {
     if (hs) for (const h of hs) h(m.params);
   };
   ws.onclose = () => {
+    releaseSource();
     closed = "the CDP connection closed under a pending command (the tab or its Chrome is gone)";
     failPending(closed);
   };
@@ -75,14 +97,16 @@ export function connect(wsUrl, { openTimeoutMs = 10_000 } = {}) {
   return new Promise((resolve, reject) => {
     const opening = setTimeout(() => {
       ws.close();
+      releaseSource();
       reject(new Error(`websocket did not open within ${openTimeoutMs / 1000} s: ${wsUrl}`));
     }, openTimeoutMs);
     opening.unref?.();
     ws.onopen = () => {
       clearTimeout(opening);
-      resolve({ send, on, once, close: () => ws.close() });
+      resolve({ send, on, once, close: () => { ws.close(); releaseSource(); } });
     };
     ws.onerror = () => {
+      releaseSource();
       clearTimeout(opening);
       // An error after the open closes the socket; onclose fails what is pending.
       reject(new Error("websocket failed: " + wsUrl));

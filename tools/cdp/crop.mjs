@@ -1,3 +1,4 @@
+import { browserArguments } from "./session-context.mjs";
 // Crop an element from the live page at 2x, for a skipped component's
 // card (MAA-164): the product itself stands in where a replica could
 // not be built. Reads the tab in the visible Proto window; never
@@ -10,7 +11,7 @@ import { findPage } from "./attach.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./capture.mjs";
 import { connect } from "./cdp.mjs";
 
-const [match, rectArg, out, portArg] = process.argv.slice(2);
+const [match, rectArg, out, portArg] = browserArguments();
 const rect = (rectArg ?? "").split(",").map(Number);
 if (!match || !out || rect.length !== 4 || rect.some((n) => !Number.isFinite(n))) {
   console.error("usage: node tools/cdp/crop.mjs <live-tab-url> <x,y,w,h> <out.png> [port]");

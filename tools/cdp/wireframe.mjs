@@ -1,3 +1,4 @@
+import { browserArguments } from "./session-context.mjs";
 // Point this at any open tab. It reads the layout tree and writes a
 // wireframe page: one labeled, depth-colored box per element, with a
 // depth slider. This is the first artifact of every run. It shows the
@@ -23,9 +24,8 @@ const GRAB = `(() => {
   return JSON.stringify({ viewport: [innerWidth, innerHeight], tree: grab(document.body)[0] });
 })()`;
 
-const match = process.argv[2];
-const out = process.argv[3] || "wireframe.html";
-const port = Number(process.argv[4] || 9333);
+const [match, out = "wireframe.html", portArg = "9333"] = browserArguments();
+const port = Number(portArg);
 if (!match) {
   console.error("Usage: node tools/wireframe.mjs <tab-url-substring> [out.html] [port]");
   process.exit(1);

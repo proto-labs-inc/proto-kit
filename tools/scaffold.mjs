@@ -41,7 +41,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { workspaceIdentity, IDENTITY_FILE } from "./dev-server.mjs";
 import { frameOrigin } from "./frame-origin.mjs";
-import { pickPort } from "./ports.mjs";
+import { reservePort } from "./ports.mjs";
 import { requireScreenApproval } from "./screen-approval.mjs";
 import { protoHome } from "./proto-home.mjs";
 
@@ -109,7 +109,7 @@ if (fresh) {
 
 // ---- names and port ----
 const title = options.title ?? slug;
-const port = fresh ? await pickPort() : JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8")).port;
+const port = fresh ? await reservePort({ owner: join(workspace, "public", "prototype.json") }) : JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8")).port;
 editJson(join(workspace, "package.json"), (pkg) => ({ ...pkg, name: slug }));
 // The workspace's own token, served from its public/ folder: what the
 // dev server on its port must answer with before any check renders in it.

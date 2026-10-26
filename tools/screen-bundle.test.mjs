@@ -124,8 +124,8 @@ test("fresh and cached copies have independent editable files and fresh identiti
   screen.index_id = "b7247cd5-15d8-47a0-a508-dd0e259108a6";
   screen.source_url = "https://source.invalid/users";
   screen.metadata.verification = {
-    version: 3, sourceChecksum: screen.bundle_checksum, buildChecksum: screen.metadata.preparedBuild.checksum,
-    inventory: { sourceUrl: screen.source_url, capturedAt: new Date().toISOString(), controls: [], states: ["default"], breakpoints: [] },
+    version: 4, sourceChecksum: screen.bundle_checksum, buildChecksum: screen.metadata.preparedBuild.checksum,
+    inventory: { sourceUrl: screen.source_url, capturedAt: new Date().toISOString(), controls: [], states: [{ id: "default", kind: "source" }], breakpoints: [] },
     scenarios: widthsFor({ breakpoints: [] }).flatMap(width => ["visual","responsive","state","isolation"].map(category => ({
       id: `${category}-${width}`, category, target: "default", viewport: {width,height:900}, ...(category === "responsive" ? { resizedFrom: width < 1024 ? 1440 : 390 } : {}), outcome: "passed", problems: [],
       evidence: [`screen-indexes/${screen.index_id}/${"a".repeat(64)}.png`],

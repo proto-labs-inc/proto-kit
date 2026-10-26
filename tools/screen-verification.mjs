@@ -1,5 +1,5 @@
 /** Current starter acceptance contract. Kept in parity with cloud screen-verification.ts. */
-export const VERSION = 3;
+export const VERSION = 4;
 /** Test the source boundaries plus endpoints and a sample in each fluid interval. */
 export function widthsFor(inventory) {
   const points = new Set([320, 1440]);
@@ -56,7 +56,7 @@ export function validateVerification(report, screen) {
     fail("Missing verification scenarios.");
   for (const ids of [
     inventory.controls.map((c) => c.id),
-    inventory.states,
+    inventory.states.map(state => state?.id),
     report.scenarios.map((s) => s.id),
   ]) {
     if (
@@ -75,7 +75,17 @@ export function validateVerification(report, screen) {
     )
   )
     fail("Invalid controls.");
+  validateStateInventory(inventory);
   for (const s of report.scenarios) {
+    const controlScenario = ["interaction", "keyboard"].includes(s.category);
+    if (controlScenario) {
+      if (!inventory.controls.some(control => control.id === s.target)) fail("Unknown control target.");
+    } else {
+      const state = inventory.states.find(state => state.id === s.target);
+      if (!state) fail("Unknown state target.");
+      if (state.kind === "prototype-boundary" && s.category === "visual")
+        fail("Boundary states use behavioral checks, not source visual comparisons.");
+    }
     if (s.category === "responsive" && s.resizedFrom !== resizeOrigin(s.viewport?.width))
       fail("Responsive evidence must include a live resize from the opposite layout.");
     if (
@@ -117,14 +127,51 @@ export function validateVerification(report, screen) {
         s.viewport.width === width,
     );
   for (const width of widthsFor(inventory)) {
-    for (const state of inventory.states)
-      for (const category of ["visual", "responsive", "state", "isolation"])
-        if (!has(category, state, width))
-          fail(`Missing ${category} check for ${state} at ${width}px.`);
+    for (const state of inventory.states) {
+      const categories = state.kind === "source"
+        ? ["visual", "responsive", "state", "isolation"]
+        : ["responsive", "state", "isolation"];
+      for (const category of categories)
+        if (!has(category, state.id, width))
+          fail(`Missing ${category} check for ${state.id} at ${width}px.`);
+    }
     for (const control of inventory.controls)
       for (const category of ["interaction", "keyboard"])
         if (!has(category, control.id, width))
           fail(`Missing ${category} check for ${control.id} at ${width}px.`);
   }
   return report;
+}
+
+export function validateStateInventory(inventory) {
+  const states = inventory?.states;
+  if (!Array.isArray(states) || !states.length || states.length > 300
+    || states.some(state => !state || typeof state.id !== "string" || !state.id
+      || !["source", "prototype-boundary"].includes(state.kind))
+    || new Set(states.map(state => state.id)).size !== states.length)
+    throw new Error("Supply unique typed verification states.");
+  if (!states.some(state => state.kind === "source")) throw new Error("At least one source state is required.");
+  for (const state of states) {
+    const keys = state.kind === "source" ? ["id", "kind"]
+      : ["id", "kind", "originatingControl", "destination", "returnControl", "returnState"];
+    if (Object.keys(state).some(key => !keys.includes(key))
+      || keys.some(key => typeof state[key] !== "string" || !state[key]))
+      throw new Error("Invalid verification state declaration.");
+    if (state.kind !== "prototype-boundary") continue;
+    if (!inventory.controls?.some(control => control.id === state.originatingControl && control.state === "enabled")
+      || !inventory.controls?.some(control => control.id === state.returnControl && control.state === "enabled")
+      || state.originatingControl === state.returnControl
+      || !states.some(target => target.id === state.returnState && target.kind === "source"))
+      throw new Error("Boundary states need enabled entry and return controls and a source return state.");
+  }
+}
+
+// Resolve policy from the inventory, never from a scenario-authored skip flag.
+export function comparisonState(inventory, scenario) {
+  validateStateInventory(inventory);
+  const state = inventory.states.find(state => state.id === scenario.target);
+  if (!state) throw new Error("Unknown state target.");
+  if (scenario.category === "visual" && state.kind !== "source")
+    throw new Error("Boundary states use behavioral checks, not source visual comparisons.");
+  return state;
 }

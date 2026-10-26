@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { buildSessionPath } from "./cdp/session-context.mjs";
+import { releaseSourceSession } from "./cdp/source-session.mjs";
 /**
  * Publish a prototype's built files (MAA-132, the publish half of
  * ADR 0001). This tool uploads a folder, nothing more: the session
@@ -374,6 +376,7 @@ if (progress) {
   await progress.flush();
   const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" }, targetFor(readConfig(), { codebase }));
   if (completed?.isError) throw new Error(completed.content?.[0]?.text ?? "Completion report failed");
+  await releaseSourceSession(buildSessionPath(codebase, progressBuild.briefId)).catch(error => console.error(`Published, but source-window cleanup needs retry: ${error.message}`));
 }
 } catch (error) {
   if (progress) {

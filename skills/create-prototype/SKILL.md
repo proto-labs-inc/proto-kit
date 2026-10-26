@@ -137,15 +137,18 @@ used the wrong display and disturbed the checks running beside them).
    from Build. Capture, curation, replication, and the copy-quality gate all
    report `copy`; report `build` only after the gate allows the requested
    change. The live URL is the visual source of truth.
-   Before opening a browser or tab, inspect readable existing tabs in the
-   in-app browser, the user's Chrome, and Proto Chrome on port 9333. Prefer an
-   exact `referenceUrl` match, then the same path, then the same origin, and
-   reuse a signed-in tab that provides the DOM and capture access needed. Only
-   start Proto Chrome or open a duplicate after those checks; ask the user to
-   sign in only when no readable context has a usable session. If the URL still
-   cannot be read, stop rather than inventing the page from source or memory.
+   Acquire this build's source window with
+   `node tools/cdp/product-page.mjs '<referenceUrl>' --codebase <id> --run <briefId>`.
+   This starts Proto Chrome when needed and creates one owned window in its shared
+   signed-in profile. Keep the returned `browserSession` path. Never reuse another
+   build's window, choose a tab by origin, or navigate an unrelated existing tab.
+   For standalone inspection commands pass `--browser-session <browserSession>`;
+   for custom CDP scripts set `PROTO_BROWSER_SESSION` to that path and use the kit's
+   `connect` helper so source interactions hold the session lease. Do not nest two
+   connections to the owned source tab; close one before opening the next.
+   Ask for sign-in only in this owned window when the exact URL redirects to login.
    `node tools/proto-build.mjs <briefId> --codebase <id> --page
-   <referenceUrl substring> --slug <slug> --title "<title>"`.
+   '<complete-referenceUrl>' --slug <slug> --title "<title>"`.
    It **freezes** the page (the default, `--copy freeze`): it reads the
    page, names its boxes from the read without stopping, scaffolds the
    workspace, and lifts the rendered page into it as it is: the DOM after
@@ -443,3 +446,17 @@ an older rig than this kit, `screen-bundle.mjs` updates its rig dependencies,
 installs them and rebuilds that copy before its normal smoke check. This is the
 exception to the unchanged-copy no-install/no-build fast path. Copies already
 on the current rig keep the prepared build fast path.
+
+## Source-window lifecycle
+
+Build-aware tools restore the session from codebase and brief ID; child processes
+inherit it. Pass the browser-session path to any independently launched helper.
+A closed source window is recreated only for this run. Repeat interrupted source
+inspection after recovery; do not reuse snapshots or DOM selectors from the old
+generation. `proto-build` repeats unfinished inspection on resume. Completed copies retain
+their immutable reference evidence and implementation; new live captures use the
+new source generation.
+Successful publication closes this build's owned source tab and renderer. After
+explicit cancellation use `node tools/cdp/product-page.mjs release --codebase <id>
+--run <briefId>`. Failure and interruption retain the window. Never quit the shared
+Chrome process or close an entire window containing tabs you did not create.

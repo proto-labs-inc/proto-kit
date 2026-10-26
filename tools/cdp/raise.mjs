@@ -1,3 +1,4 @@
+import { browserArguments } from "./session-context.mjs";
 // Bring the Proto window to the front on the tab that needs the user,
 // for the one moment they must act in it (signing in to their product).
 // The kit otherwise never raises the window: it reads it from behind.
@@ -8,16 +9,17 @@
 //   on the port) in front. Fails soft: if the system will not raise it,
 //   the tab is still the active one when the user switches to it.
 import { execFileSync } from "node:child_process";
-import { browser, findPage } from "./attach.mjs";
+import { browser } from "./attach.mjs";
+import { acquireSourceSession } from "./source-session.mjs";
 import { connect } from "./cdp.mjs";
 
-const [match, portArg] = process.argv.slice(2);
+const [match, portArg] = browserArguments();
 if (!match) {
   console.error("usage: node tools/cdp/raise.mjs <url-substring> [port]");
   process.exit(1);
 }
 const port = Number(portArg || 9333);
-const tab = await findPage(match, port);
+const { tab } = await acquireSourceSession(undefined, port);
 if (!tab) {
   console.error(`no open tab matches "${match}" on port ${port}`);
   process.exit(1);

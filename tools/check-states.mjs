@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { useBuildSession, browserSessionPath } from "./cdp/session-context.mjs";
+import { stopSessionRenderer } from "./cdp/headless.mjs";
 /**
  * Every view of a prototype loaded and measured, so the agent learns
  * what broke from numbers, not from reading screenshots: each preview
@@ -59,6 +61,9 @@ const step = (line) => console.error(`… ${line}`);
 
 const manifest = JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8"));
 const build = buildOfWorkspace(workspace);
+if (build) useBuildSession(build.codebase, build.briefId);
+else if (options.codebase && options.brief) useBuildSession(options.codebase, options.brief);
+else process.env.PROTO_BROWSER_SESSION = join(workspace, ".proto-checks", "browser-session.json");
 const { rects: readRects, nodeIds } = markerRects(build);
 const viewport = build?.tree?.viewport ?? { width: 1280, height: 800 };
 const display = launchedDisplayOr(viewport);
@@ -288,4 +293,5 @@ console.log(JSON.stringify({ ok: problems === 0, problems, seconds: Math.round((
   throw error;
 } finally {
   dev?.stop();
+  await stopSessionRenderer(browserSessionPath()).catch(error => console.error(`Renderer cleanup: ${error.message}`));
 }

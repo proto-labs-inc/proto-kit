@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { join, dirname, resolve, relative, posix } from "node:path";
 import { unpackScreenBuild } from "./screen-build.mjs";
-import { pickPort } from "./ports.mjs";
+import { reservePort } from "./ports.mjs";
 
 const LIMIT = SCREEN_EXPANDED_LIMIT;
 const EXCLUDED =
@@ -179,7 +179,7 @@ export async function cloneScreen(
         .port,
     };
   }
-  const selectedPort = port ?? (await pickPort({ from: 5173, to: 5999 }));
+  const selectedPort = port ?? (await reservePort({ owner: join(destination, "public", "prototype.json"), from: 5173, to: 5999 }));
   const staging = `${destination}.clone-${randomBytes(6).toString("hex")}`;
   try {
     const prepared = screen.metadata?.preparedBuild;

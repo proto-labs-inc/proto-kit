@@ -11,68 +11,28 @@
 // and the resting page is captured once (`takeFrame`) and cut from for
 // every state that holds no pseudo-class (`frameCrop`). Only held
 // states capture the live page again, one at a time.
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./capture.mjs";
-import { evaluate } from "./cdp.mjs";
+import { evaluate, sourceConnectionHeld } from "./cdp.mjs";
 import { decodePng, encodePng } from "./png.mjs";
 import { protoHome } from "../proto-home.mjs";
+import { dirname } from "node:path";
+import { browserSessionPath, sourceIdentity } from "./session-context.mjs";
+import { withProcessLock } from "../process-lock.mjs";
 
-const LOCK = join(protoHome(), ".live-lock");
-// The lock folder names its holder, so a lock whose process is gone
-// (a lane import.mjs stopped after two minutes, a crashed tool) is
-// taken over at once instead of holding every other lane behind it.
-const HOLDER = join(LOCK, "pid");
-// A read takes well under a second, a held state's capture a few; a
-// lock this old with a live holder belongs to a process that hung.
-const STALE_MS = 30_000;
-// The resting page is trusted this long; after it, captures go live again.
 const FRAME_MAX_AGE_MS = 10 * 60_000;
-
-// Whether the process that took the lock is still running. A lock
-// without its pid yet was taken a moment ago and is treated as held.
-function holderAlive() {
-  let pid;
-  try {
-    pid = Number(readFileSync(HOLDER, "utf8"));
-  } catch {
-    return true;
-  }
-  if (!Number.isInteger(pid) || pid <= 0) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code !== "ESRCH";
-  }
-}
-
-/** Run `work` while holding the Proto window's read lock. */
 export async function withLive(work) {
-  for (;;) {
-    try {
-      mkdirSync(LOCK);
-      writeFileSync(HOLDER, String(process.pid));
-      break;
-    } catch {
-      let age = 0;
-      try {
-        age = Date.now() - statSync(LOCK).mtimeMs;
-      } catch {}
-      if (!holderAlive() || age > STALE_MS) rmSync(LOCK, { recursive: true, force: true });
-      else await new Promise((r) => setTimeout(r, 40));
-    }
-  }
-  try {
-    return await work();
-  } finally {
-    rmSync(LOCK, { recursive: true, force: true });
-  }
+  if (sourceConnectionHeld()) return work();
+  const session = browserSessionPath();
+  const lock = session ? join(dirname(session), "source-interaction.lock") : join(protoHome(), "source-interaction.lock");
+  return withProcessLock(lock, work);
 }
 
 /** Where a codebase's resting frame lives: the picture and what it was taken at. */
 export const framePaths = (codebase) => {
-  const run = join(protoHome(), codebase, "run");
+  const session = browserSessionPath();
+  const run = session ? dirname(session) : join(protoHome(), codebase, "run");
   return { png: join(run, "live-frame.png"), pixels: join(run, "live-frame.rgba"), meta: join(run, "live-frame.json") };
 };
 
@@ -80,7 +40,7 @@ export const framePaths = (codebase) => {
 const HOVERED = "[...document.querySelectorAll(':hover')].filter((e) => !e.querySelector(':hover') && e !== document.body && e !== document.documentElement).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })";
 
 // Where the page stands: a frame is only good for the same viewport and scroll.
-const STANDING = "JSON.stringify([innerWidth, innerHeight, scrollX, scrollY, devicePixelRatio])";
+const STANDING = "JSON.stringify([innerWidth, innerHeight, scrollX, scrollY, devicePixelRatio, location.href, performance.timeOrigin])";
 
 /**
  * Capture the resting page once: every CSS transition on it finished
@@ -96,18 +56,20 @@ export async function takeFrame(live, codebase, { also } = {}) {
   await withLive(async () => {
     // A build's one read of the page runs under this same lock, just
     // before the shot, so the frame and the read see the same page.
+    const document = await evaluate(live, "JSON.stringify([location.href, performance.timeOrigin])");
     if (also) read = await also();
     await evaluate(live, "(() => { for (const a of document.getAnimations()) if (a instanceof CSSTransition) a.finish(); return true; })()");
     await stableShot(live, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, paths.png);
     // Kept as raw pixels too: every resting state is cut from them by
     // reading only its rows, never by decoding the whole page again.
+    if (await evaluate(live, "JSON.stringify([location.href, performance.timeOrigin])") !== document) throw new Error("Source navigated while reading; repeat this inspection stage");
     const decoded = decodePng(readFileSync(paths.png));
     writeFileSync(paths.pixels, decoded.data);
     const standing = await evaluate(live, STANDING);
     // Anything the pointer rests on shows its hover look in the frame: a
     // resting state is never cut from there (frameCrop captures it live).
     hovered = await evaluate(live, HOVERED);
-    writeFileSync(paths.meta, JSON.stringify({ standing, hovered, size: [decoded.width, decoded.height], at: Date.now() }) + "\n");
+    writeFileSync(paths.meta, JSON.stringify({ source: sourceIdentity(), standing, hovered, size: [decoded.width, decoded.height], at: Date.now() }) + "\n");
   });
   return { ...paths, hovered, read };
 }
@@ -122,6 +84,7 @@ export async function frameCrop(live, codebase, clip, out) {
   const paths = framePaths(codebase);
   if (!existsSync(paths.png) || !existsSync(paths.meta)) return false;
   const meta = JSON.parse(readFileSync(paths.meta, "utf8"));
+  if (meta.source !== sourceIdentity()) return false;
   if (Date.now() - meta.at > FRAME_MAX_AGE_MS) return false;
   if ((await evaluate(live, STANDING)) !== meta.standing) return false;
   const overlaps = ([x, y, w, h]) => x < clip.x + clip.width && clip.x < x + w && y < clip.y + clip.height && clip.y < y + h;

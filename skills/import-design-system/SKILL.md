@@ -3,6 +3,16 @@ name: import-design-system
 description: Import your product's design system into Proto. Reads a live page of your product in your own browser, and fills the library with its light-mode colours, type styles and components, each written from the product's own rendering and checked against it pixel for pixel, so prototypes are built from the real thing. Use when setting up a codebase's library, when the user asks to import or sync their design system, or when the library page shows nothing imported.
 ---
 
+Before inspecting the live page, acquire `setup-library` for this codebase with
+`node <kit>/tools/cdp/product-page.mjs '<source.liveUrl>' --codebase <codebase>
+--run setup-library`. Keep the returned `browserSession` path and pass
+`--browser-session <browserSession>` to independently launched source tools;
+propagate `PROTO_BROWSER_SESSION` to child processes and workers. Source URLs
+validate that target; they never select another tab. Close a source connection
+before opening a second one. Library preparation has one writer per codebase;
+concurrent prototypes read the existing library and never re-import into it.
+
+
 For a staff site preparation, `codebase.json` has `source.kind: "site"` and
 `source.liveUrl`. Use that URL as the library init source argument; there is no
 customer repository to inspect or request. Keep all generated dependencies,

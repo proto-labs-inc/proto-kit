@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+import { browserArguments } from "./cdp/session-context.mjs";
 /** Read the live browser's compiled styles, independent of its CSS authoring framework. */
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { connect, evaluate } from "./cdp/cdp.mjs";
-import { listPages } from "./cdp/attach.mjs";
+import { findPage } from "./cdp/attach.mjs";
 import { widthsFor } from "./screen-verification.mjs";
 
 export function mediaBreakpoints(medias, initialFontSize) {
@@ -117,12 +118,11 @@ export async function discoverResponsiveCss(page) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [url, output, port = "9333"] = process.argv.slice(2);
+  const [url, output, port = "9333"] = browserArguments();
   if (!url || !output) throw new Error("usage: responsive-css.mjs <exact-live-url> <output.json> [cdp-port]");
-  const tabs = await listPages(Number(port));
-  const matches = tabs.filter(tab => tab.url === url);
-  if (matches.length !== 1) throw new Error("Expected one existing tab at the exact live URL; select the source tab explicitly.");
-  const page = await connect(matches[0].webSocketDebuggerUrl);
+  const tab = await findPage(url, Number(port));
+  if (!tab) throw new Error("Source tab not found; supply --browser-session for this run");
+  const page = await connect(tab.webSocketDebuggerUrl);
   try {
     const report = await discoverResponsiveCss(page);
     writeFileSync(output, JSON.stringify(report, null, 2) + "\n");

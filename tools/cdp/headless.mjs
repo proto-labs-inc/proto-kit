@@ -1,31 +1,14 @@
-// The headless Chrome the kit renders replicas and diffs in (MAA-163).
-// Nothing rendered here ever appears on screen: the visible Proto
-// window (tools/cdp/chrome.mjs, port 9333) is only for the product
-// page the user is signed into, and only ever read from.
-//
-// It must draw exactly like the visible window, or every diff carries
-// the difference between two renderers instead of the replica's own.
-// Two launch settings decide that, so the headless Chrome is launched
-// with the live window's display and relaunched when it changes:
-//   - the device scale factor, as a real one (--force-device-scale-factor).
-//     Emulating it (Emulation.setDeviceMetricsOverride) lays out in CSS
-//     pixels and snaps every fractional edge a device pixel away from
-//     where a real 2x screen paints it (docs/cdp-traps.md).
-//   - the colour profile (--force-color-profile). A Retina window draws
-//     in Display P3; headless defaults to sRGB, so every saturated
-//     colour lands a few levels off.
-//
-// Usage: node tools/cdp/headless.mjs [start|stop] [port]
-//   start (the default) finds or starts it at the Proto window's display
-//   and prints the port; stop ends it. Its profile is ~/.proto/chrome-headless.
-//
-// From code: `headlessPage(url, { width, height, display })` opens a
-// fresh tab at that viewport on a Chrome launched for that display,
-// waits for the load event and for the document's fonts, and returns
-// the connected page (call `close()`). `displayOf(page)` reads a live
-// page's display.
+import { dirname } from "node:path";
+import { browserSessionPath, browserArguments, readSession, writeSession } from "./session-context.mjs";
+import { withProcessLock } from "../process-lock.mjs";
+import { reservePort, releasePort } from "../ports.mjs";
+// Each owned source session gets a renderer process/profile and reserved port.
+// Its captured display determines rasterization. Parallel captures in that run
+// use separate windows; cleanup never stops another run's renderer.
+// Standalone library preview rendering retains the default renderer on 9444.
+// CLI: headless.mjs [start|stop] [port] [--browser-session <path>]
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect, evaluate } from "./cdp.mjs";
@@ -91,7 +74,7 @@ async function runningDisplay(port) {
       await browser.send("Target.closeTarget", { targetId }).catch(() => {});
     }
   } catch {
-    return launchedDisplay();
+    return null;
   } finally {
     browser?.close();
   }
@@ -107,26 +90,36 @@ async function openPages(port) {
   }
 }
 
-/**
- * Find or start the one headless Chrome; resolves with { port, display }.
- * Its display is the Proto window's (theDisplay), whatever the caller
- * asks: every render compared with the live page needs that display, and
- * a caller's guess must not change it for the others. It is relaunched
- * only when the Proto window's display itself changed (another screen)
- * and nobody has a page open in it; while in use it carries on as it is.
- * Launched through `open`, like the visible window, so it belongs to
- * launchd and no shell waits on it.
- */
-export async function ensureHeadless(_callerDisplay, port = HEADLESS_PORT) {
-  const display = await theDisplay();
-  if (await version(port)) {
+/** Start or reuse this session's renderer, serialized against shutdown. */
+export async function ensureHeadless(callerDisplay, port = HEADLESS_PORT) {
+  const session = browserSessionPath();
+  const profile = session ? join(dirname(session), "chrome-headless") : PROFILE;
+  const rendererPath = join(profile, "renderer.json");
+  return withProcessLock(join(profile, "startup.lock"), async () => {
+    if (session) port = await reservePort({ owner: rendererPath, from: 19444, to: 20444 });
+    let display = callerDisplay;
+    if (!display || !Number.isFinite(display.dpr) || !display.colorProfile) {
+      if (session) {
+        const source = readSession(session);
+        display = source?.display ?? { dpr: 2, colorProfile: "srgb" };
+      } else display = await theDisplay();
+    }
+    return startHeadless(display, port, profile, rendererPath);
+  });
+}
+
+async function startHeadless(display, port, profile, rendererPath) {
+  const current = await version(port);
+  if (current) {
+    if (browserSessionPath() && readSession(rendererPath)?.browserId !== current.webSocketDebuggerUrl) throw new Error(`Renderer port ${port} belongs to another browser; it was left untouched`);
     const running = await runningDisplay(port);
-    if (sameDisplay(running, display) || (await openPages(port)) > 0) return { port, display: running ?? display };
+    if (sameDisplay(running, display)) return { port, display: running };
+    if ((await openPages(port)) > 0) throw new Error("Renderer display changed while captures are active; retry after they finish");
     await stopHeadless(port);
     // The port must be free before the launch, or the new Chrome dies on it and nothing comes up.
     for (let i = 0; i < 150 && (await version(port)); i++) await new Promise((r) => setTimeout(r, 100));
   }
-  mkdirSync(PROFILE, { recursive: true });
+  mkdirSync(profile, { recursive: true });
   execFileSync("open", [
     "-g",
     "-n",
@@ -134,7 +127,7 @@ export async function ensureHeadless(_callerDisplay, port = HEADLESS_PORT) {
     "--args",
     "--headless=new",
     `--remote-debugging-port=${port}`,
-    `--user-data-dir=${PROFILE}`,
+    `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-default-browser-check",
     "--hide-scrollbars",
@@ -145,7 +138,8 @@ export async function ensureHeadless(_callerDisplay, port = HEADLESS_PORT) {
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 250));
     if (await version(port)) {
-      writeFileSync(LAUNCHED, JSON.stringify(display) + "\n");
+      writeFileSync(join(profile, "display.json"), JSON.stringify(display) + "\n");
+      writeSession(rendererPath, { port, browserId: (await version(port)).webSocketDebuggerUrl });
       return { port, display };
     }
   }
@@ -171,7 +165,9 @@ export async function stopHeadless(port = HEADLESS_PORT) {
  * not race.
  */
 export async function headlessPage(url, { width, height, display: _asked }, port = HEADLESS_PORT) {
-  const { display } = await ensureHeadless(_asked, port);
+  const renderer = await ensureHeadless(_asked, port);
+  port = renderer.port;
+  const { display } = renderer;
   const info = await version(port);
   const browser = await connect(info.webSocketDebuggerUrl);
   // Its own window at the viewport's size: tabs sharing one window while
@@ -241,16 +237,37 @@ async function theDisplay() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const [command = "start", portArg] = process.argv.slice(2);
+  const [command = "start", portArg] = browserArguments();
   const port = Number(portArg || HEADLESS_PORT);
   if (command === "start") {
-    const { display } = await ensureHeadless(null, port);
-    console.log(`headless chrome on ${port} at ${display.dpr}x ${display.colorProfile}, profile ${PROFILE}`);
+    const renderer = await ensureHeadless(null, port);
+    console.log(`headless chrome on ${renderer.port} at ${renderer.display.dpr}x ${renderer.display.colorProfile}`);
   } else if (command === "stop") {
-    const stopped = await stopHeadless(port);
+    let stopped;
+    if (browserSessionPath()) { await stopSessionRenderer(browserSessionPath()); stopped = true; }
+    else stopped = await stopHeadless(port);
     console.log(stopped ? `stopped headless chrome on ${port}` : `nothing listening on ${port}`);
   } else {
     console.error("usage: node tools/cdp/headless.mjs [start|stop] [port]");
     process.exit(1);
   }
+}
+
+export async function stopSessionRenderer(sessionPath) {
+  const profile = join(dirname(sessionPath), "chrome-headless");
+  const path = join(profile, "renderer.json");
+  return withProcessLock(join(profile, "startup.lock"), async () => {
+    const renderer = readSession(path);
+    if (!renderer) { await releasePort(path); return; }
+    const current = await version(renderer.port);
+    if (current && current.webSocketDebuggerUrl !== renderer.browserId) throw new Error("Renderer identity changed; no unrelated browser was stopped");
+    if (current) {
+      if (await openPages(renderer.port) > 0) throw new Error("Renderer still has active captures; finish them before releasing this session");
+      await stopHeadless(renderer.port);
+      for (let i = 0; i < 40 && await version(renderer.port); i++) await new Promise(resolve => setTimeout(resolve, 100));
+      if (await version(renderer.port)) throw new Error("Renderer did not stop; reservation retained");
+    }
+    rmSync(path, { force: true });
+    await releasePort(path);
+  });
 }

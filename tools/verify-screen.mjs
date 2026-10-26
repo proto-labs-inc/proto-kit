@@ -12,7 +12,7 @@ import { resolve, join, extname } from "node:path";
 import { headlessPage } from "./cdp/headless.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { diffPngs } from "./cdp/diff.mjs";
-import { VERSION, widthsFor, resizeOrigin } from "./screen-verification.mjs";
+import { VERSION, widthsFor, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
 const mime = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -277,6 +277,7 @@ export async function runScenario(
   viewport,
   screenshotReference,
   captureMetadata = {},
+  inventory,
 ) {
   const capture = captureProfileFor({}, scenario);
   captureMetadata.profile = capture;
@@ -445,6 +446,8 @@ export async function runScenario(
     const shot = await page.send("Page.captureScreenshot", { format: "png" });
     writeFileSync(out, Buffer.from(shot.data, "base64"));
     if (["visual", "responsive"].includes(scenario.category)) {
+      const state = inventory ? comparisonState(inventory, scenario) : { kind: "source" };
+      if (state.kind === "prototype-boundary") return problems;
       if (!screenshotReference) throw new Error("Missing reference screenshot");
       const diff = await diffPngs(screenshotReference, out);
       if (
@@ -477,7 +480,8 @@ export function validateResponsivePlan(plan) {
       throw new Error("Inspect and document unresolved CSS: " + finding);
   for (const query of css.containerQueries || []) {
     if (hasCompleteAbsenceEvidence(plan, query)) continue;
-    const scenarios = plan.scenarios.filter(s => s.category === "responsive" && s.containerQuery === query.condition);
+    const scenarios = plan.scenarios.filter(s => s.category === "responsive" && s.containerQuery === query.condition
+      && plan.inventory.states.some(state => state.id === s.target && state.kind === "source"));
     if (!scenarios.some(s => s.steps?.some(step => step.kind === "resize-container")))
       throw new Error("Add explicit container-size scenarios for " + query.condition);
   }
@@ -485,6 +489,7 @@ export function validateResponsivePlan(plan) {
 export async function verifyBuild(folder, plan, screen, output) {
   if (!plan?.inventory || !Array.isArray(plan.scenarios))
     throw new Error("Supply the reference inventory and executable scenarios");
+  validateStateInventory(plan.inventory);
   validateResponsivePlan(plan);
   captureProfileFor(plan);
   for (const scenario of plan.scenarios) captureProfileFor(plan, scenario);
@@ -494,7 +499,7 @@ export async function verifyBuild(folder, plan, screen, output) {
   if (manifest.viewport)
     throw new Error("Responsive starters must not fix the Frame viewport.");
   for (const state of manifest.states || [])
-    if (!plan.inventory.states.includes(state.id))
+    if (!plan.inventory.states.some(entry => entry.id === state.id))
       throw new Error(`Missing declared state: ${state.id}`);
   mkdirSync(output, { recursive: true });
   const server = await serveBuild(folder);
@@ -537,6 +542,7 @@ export async function verifyBuild(folder, plan, screen, output) {
           viewport,
           scenario.references?.[width],
           capture,
+          plan.inventory,
         );
         scenarios.push({
           id,
@@ -549,6 +555,7 @@ export async function verifyBuild(folder, plan, screen, output) {
           problems,
           evidence:
             ["visual", "responsive"].includes(scenario.category)
+              && comparisonState(plan.inventory, scenario).kind === "source"
               ? [evidence, scenario.references?.[width]].filter(Boolean)
               : [evidence],
         });

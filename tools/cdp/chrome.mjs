@@ -1,3 +1,4 @@
+import { acquireProcessLock } from "../process-lock.mjs";
 // Start or find the debug Chrome without taking focus.
 // "open -g" launches the app in the background. The window opens behind
 // the user's current work and never becomes the front window.
@@ -29,6 +30,7 @@ async function alive() {
   }
 }
 
+const releaseStartup = await acquireProcessLock(join(protoHome(), `chrome-${port}.lock`));
 if (await alive()) {
   // One launched before the colour profile was forced keeps drawing through the screen's.
   let srgb = true;
@@ -36,6 +38,7 @@ if (await alive()) {
     srgb = execFileSync("ps", ["-ax", "-o", "command"], { encoding: "utf8" }).split("\n").filter((l) => l.includes(`--remote-debugging-port=${port}`) && !l.includes("--type=")).every((l) => l.includes("--force-color-profile=srgb"));
   } catch {}
   console.log(`chrome already listening on ${port}${srgb ? "" : "; it was launched without --force-color-profile=srgb, so its captures follow the screen's colour profile: quit it and run this again when no import is running"}`);
+  await releaseStartup();
   process.exit(0);
 }
 
@@ -57,8 +60,10 @@ for (let i = 0; i < 40; i++) {
   await new Promise((r) => setTimeout(r, 250));
   if (await alive()) {
     console.log(`chrome up on ${port}, profile ${profile}, launched in background`);
+    await releaseStartup();
     process.exit(0);
   }
 }
 console.error("chrome did not come up in 10s");
+await releaseStartup();
 process.exit(1);

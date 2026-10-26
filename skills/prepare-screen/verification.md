@@ -3,7 +3,7 @@
 Save a JSON object with `inventory`, `responsiveCss` (the responsive-css.mjs
 report), `height` (default 900) and `scenarios`.
 `inventory` contains `sourceUrl`, ISO `capturedAt`, `controls` (each has `id`,
-`expected`, and `state`: enabled or disabled), `states` (nonempty unique IDs),
+`expected`, and `state`: enabled or disabled), `states` (nonempty typed declarations with unique IDs),
 and numeric `breakpoints` (preserve fractional CSS values). Derive these from
 the live product, before copying. Include every extracted breakpoint; add observed
 JavaScript-driven transitions. For each warning or unresolved condition in the CSS
@@ -16,7 +16,7 @@ observations with `node <kit>/tools/container-applicability.mjs <exact-live-url>
 source state at each required width. Keep the source state visible and settled;
 do not rename a default-state observation as another state. Include the resulting
 array as `containerObservations` in the plan. The verifier exempts only rules with
-zero selector matches across every inventory state and width, captured after the
+zero selector matches across every source state and width, captured after the
 CSS report for its exact source URL. Dynamic, unsupported or empty selectors,
 missing observations, changed rules and any matching observation still require
 container tests. Preserve the compiled CSS report unchanged. Never hand-author
@@ -33,7 +33,8 @@ Each scenario has a unique filename-safe `id`, `category`, `target`, local
 Expressions run with the prototype's window, document and location in scope and
 must assert a visible expected outcome, not just that the page loaded.
 Use `interaction` and `keyboard` scenarios for every control; use `visual`,
-`responsive`, `state` and `isolation` for every state. The runner executes all
+`responsive`, `state` and `isolation` for every source state. Boundary states require
+`responsive`, `state` and `isolation`, but no `visual` scenario. The runner executes all
 scenarios at widthsFor(inventory): 320px and 1440px endpoints, each extracted
 CSS breakpoint and adjacent integer widths, and one midpoint in each interval.
 Fractional CSS boundaries use their floor/ceiling and adjacent integer widths. Responsive scenarios load at an opposite width, resize
@@ -42,7 +43,7 @@ assert again. Write width-dependent assertions for observed layout behavior
 (e.g. sidebar replaced by a menu, columns stack, text wraps, table scrolls).
 An assertion that only checks page existence does not verify responsiveness.
 Use the actual source behavior, including container-query transitions. Test
-short viewports separately when the source has height-dependent overlays. Each visual and responsive scenario's `references` maps each
+short viewports separately when the source has height-dependent overlays. Each source visual and responsive scenario's `references` maps each
 width to its captured local reference PNG. The fixed visual gate is at most 1%
 mismatched pixels using the kit's existing color threshold; do not loosen it to
 pass. Preserve original source screenshots, including their defects. Record small
@@ -51,7 +52,7 @@ never substitute a screenshot of the copy as the source reference. If an intenti
 repair still fails the pixel gate, report that specific verification limitation
 accurately and retain the repaired work; do not claim the source is unusable,
 undo the usability repair just to match its bug, or fabricate passing evidence.
-Responsive screenshots must match those same live-page references after
+Source-state responsive screenshots must match those same live-page references after
 resizing, even if the authored assertion passes. Read differences and correct the source.
 
 For animated sources, an optional plan-level `capture` profile may declare
@@ -110,3 +111,40 @@ For responsive tab orders, `{ "kind": "key", "key": "Tab", "until":
 "button[aria-label=Options]" }` presses actual Tab keys until that control is
 focused (bounded at 150 presses). Follow with Enter or Space and assert its
 visible outcome. It never sets focus programmatically and fails if unreachable.
+
+All live-source commands in this document must receive `--browser-session <browserSession>` from prepare-screen, including responsive and container inspection. Never select a source by URL when another build could have the same URL open.
+
+## Prototype boundary states (contract version 4)
+
+Declare copied product states as `{ "id": "default", "kind": "source" }`.
+Declare an uncopied destination separately:
+
+```json
+{
+  "id": "outside",
+  "kind": "prototype-boundary",
+  "originatingControl": "open-settings",
+  "destination": "/settings",
+  "returnControl": "return-to-screen",
+  "returnState": "default"
+}
+```
+
+Both controls must be enabled entries in `inventory.controls`; `returnState`
+must identify a source state. At least one source state is required. Use this
+kind only for the prescribed uncopied-destination notice, never for a copied
+menu, dialog, validation state, intentional repair or visual mismatch.
+
+At every required width, exercise entry and return using interaction and keyboard
+scenarios. Start return scenarios at the boundary's local URL so success cannot
+depend on previous browser history. State scenarios must assert that the boundary
+survives direct navigation and reload. Responsive scenarios must assert usable
+layout through live resizes. The runner retains local screenshots, geometry,
+asset, runtime, rig and isolation checks; it derives the absence of source pixel
+comparison from the inventory, never a scenario-authored skip flag. Do not supply
+source references or a visual scenario for a boundary. Source container-query
+observations cover source states only.
+
+Version 3 reports require reverification. Do not relabel old reports as version 4.
+Reverify the immutable archived build if it already behaves correctly; upload a
+new revision only if implementation changes are necessary.

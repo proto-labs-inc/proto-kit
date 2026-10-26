@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { useBuildSession } from "./cdp/session-context.mjs";
 /**
  * One part of a prototype build checked against the reference page,
  * with its passes streamed to the site: what a part-fixer unit runs
@@ -54,6 +55,7 @@ const fail = (message) => {
 if (!briefId || !slug || !options.codebase) fail(USAGE);
 
 const buildDir = buildFolder(options.codebase, briefId);
+useBuildSession(options.codebase, briefId);
 const need = (name) => {
   const path = join(buildDir, name);
   if (!existsSync(path)) fail(`${path} does not exist: run proto-build.mjs first`);
@@ -72,7 +74,7 @@ const unit = JSON.parse(readFileSync(unitPath, "utf8"));
 // A server another unit or the serve skill started is shared and left up; one started here stays up for the next check.
 const dev = await ensureDevServer({ workspace: workspace.path, logPath: join(buildDir, "dev.log"), keep: true });
 const out = join(buildDir, "checks", slug);
-const outcome = await checkComponent({ unit, slug, appUrl: dev.url, liveMatch: liveMatchOf(tree.url), out, codebase: options.codebase, port: Number(options.port) });
+const outcome = await checkComponent({ unit, slug, appUrl: dev.url, liveMatch: tree.url, out, codebase: options.codebase, port: Number(options.port) });
 
 const reporter = createReporter({ codebase: options.codebase, briefId, runDir: buildDir, sink: options.noSend ? "file" : "site" });
 const workflowPath = join(buildDir, "workflow.json");
