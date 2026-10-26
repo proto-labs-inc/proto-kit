@@ -291,6 +291,7 @@ Push or merge source changes to `main`. The Publish Proto release workflow
 runs checks, generates a fresh version, and advances `release` with a normal
 fast-forward push. No agent or developer has to bump a manifest. Main is the
 source branch; installations track release. Do not commit directly to release.
+Documentation-only commits pushed to `main` also publish a new kit version.
 
 CI stamps the Codex, portable, and Cursor manifests together and records the
 source commit and GitHub run ID in `.proto-release.json`. Versions retain the
