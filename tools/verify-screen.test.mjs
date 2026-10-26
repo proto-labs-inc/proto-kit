@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serveBuild, runScenario, smokeBuild, verifyBuild, validateResponsivePlan, captureProfileFor, applyCaptureMedia, sampleAnimations } from "./verify-screen.mjs";
+import { serveBuild, runScenario, smokeBuild, verifyBuild, validateMapStates, validateResponsivePlan, captureProfileFor, applyCaptureMedia, sampleAnimations } from "./verify-screen.mjs";
 import { validateVerification, widthsFor } from "./screen-verification.mjs";
 
 test("verification rejects absent evidence, stale artifacts and missing keyboard coverage", () => {
@@ -358,7 +358,7 @@ test("boundary browser checks allow no reference and catch broken returns and ov
   const server=await serveBuild(folder);t.after(()=>server.close());
   const inventory=boundaryReport().inventory;
   const boundary={target:"outside",path:"/?outside=1",assertion:"!!document.querySelector('#return')"};
-  writeFileSync(join(folder,"prototype.json"),JSON.stringify({states:inventory.states.map(state=>({id:state.id}))}));
+  writeFileSync(join(folder,"prototype.json"),JSON.stringify({states:inventory.states.filter(state=>state.kind==="source").map(state=>({id:state.id}))}));
   const report=await verifyBuild(folder,{
     inventory, responsiveCss:{sourceUrl:inventory.sourceUrl,breakpoints:[]},
     scenarios:[{...boundary,id:"boundary-responsive",category:"responsive"}],
@@ -380,4 +380,15 @@ test("boundary browser checks allow no reference and catch broken returns and ov
   assert.ok((await run(back)).some(p=>p.includes("Assertion timed out")));
   writeFileSync(join(folder,"index.html"),html.replace('<section>','<section style="width:2000px">'));
   assert.ok((await run({...boundary,category:"responsive"})).includes("Horizontal page overflow"));
+});
+
+ test("state maps exclude boundary fallbacks while retaining product states", () => {
+  const inventory = { states: [
+    { id: "default", kind: "source" },
+    { id: "error", kind: "source" },
+    { id: "outside", kind: "prototype-boundary" },
+  ] };
+  assert.doesNotThrow(() => validateMapStates({ states: [{ id: "default" }, { id: "error" }] }, inventory));
+  assert.throws(() => validateMapStates({ states: [{ id: "outside", title: "Not included" }] }, inventory), /must not appear/);
+  assert.throws(() => validateMapStates({ states: [{ id: "unknown" }] }, inventory), /Missing declared state/);
 });

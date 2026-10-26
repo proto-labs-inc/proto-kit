@@ -134,6 +134,10 @@ Both controls must be enabled entries in `inventory.controls`; `returnState`
 must identify a source state. At least one source state is required. Use this
 kind only for the prescribed uncopied-destination notice, never for a copied
 menu, dialog, validation state, intentional repair or visual mismatch.
+Boundary states belong in the verification inventory only, not in
+`public/prototype.json`'s `states` array. That array supplies the state map;
+the “Not included” fallback must remain reachable by local navigation and direct
+URL without appearing as a map node.
 
 At every required width, exercise entry and return using interaction and keyboard
 scenarios. Start return scenarios at the boundary's local URL so success cannot

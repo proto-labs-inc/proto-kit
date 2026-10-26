@@ -486,6 +486,15 @@ export function validateResponsivePlan(plan) {
       throw new Error("Add explicit container-size scenarios for " + query.condition);
   }
 }
+export function validateMapStates(manifest, inventory) {
+  for (const state of manifest.states || []) {
+    const declared = inventory.states.find(entry => entry.id === state.id);
+    if (!declared) throw new Error(`Missing declared state: ${state.id}`);
+    if (declared.kind === "prototype-boundary")
+      throw new Error(`Prototype boundary ${state.id} must not appear in prototype.json states (the state map). Keep it in the verification inventory only.`);
+  }
+}
+
 export async function verifyBuild(folder, plan, screen, output) {
   if (!plan?.inventory || !Array.isArray(plan.scenarios))
     throw new Error("Supply the reference inventory and executable scenarios");
@@ -498,9 +507,7 @@ export async function verifyBuild(folder, plan, screen, output) {
   );
   if (manifest.viewport)
     throw new Error("Responsive starters must not fix the Frame viewport.");
-  for (const state of manifest.states || [])
-    if (!plan.inventory.states.some(entry => entry.id === state.id))
-      throw new Error(`Missing declared state: ${state.id}`);
+  validateMapStates(manifest, plan.inventory);
   mkdirSync(output, { recursive: true });
   const server = await serveBuild(folder);
   const scenarios = [];

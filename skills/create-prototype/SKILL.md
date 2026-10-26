@@ -273,6 +273,10 @@ used the wrong display and disturbed the checks running beside them).
      backdrop with its shading accounted for. The
      rig owns the URL (`?state=<id>`); wire the product's own controls to
      move between states. Hover and focus are CSS, not states.
+     The “Not included” fallback for destinations outside the prototype is
+     also excluded from `public/prototype.json`'s `states` array and the state
+     map. Preserve its local navigation, direct URL and working return action;
+     keep boundary verification states in the verification inventory only.
    - Mock data reads as real (real names, real-looking numbers and
      dates); the source app's live data only when `useRealData` is true.
    - Carry both imported themes into the prototype. The rig sets

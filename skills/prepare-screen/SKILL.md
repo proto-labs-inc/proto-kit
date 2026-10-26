@@ -112,7 +112,10 @@ controls. No live-product requests, navigation, authentication or writes.
 For destinations not included in this screen, show a local state reading
 "This screen isn’t included in this prototype" with a working return action.
 Record it as a `prototype-boundary` verification state with its entry control,
-destination, return control and source return state. Test entry and return by
+destination, return control and source return state. Keep this fallback out of
+`public/prototype.json`'s `states` array: that array populates the state map and
+must contain only included product states. Keep the fallback URL-addressable
+in the app and declared in the verification inventory. Test entry and return by
 pointer and keyboard, direct URLs, reload and responsive layout. Return must work
 without prior browser history. These states need local evidence, not live-source
 screenshots. Copied product states remain `source` states with full visual checks.
