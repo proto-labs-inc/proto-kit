@@ -104,8 +104,9 @@ used the wrong display and disturbed the checks running beside them).
    decline, read the link in a browser. Only go straight to the browser when
    neither a callable connector nor a matching installable plugin exists.
    **Then sketch first** (`docs/sketch.md`) when `brief.inputs.sketch` is
-   true (the person chose "Sketch it first?"): show
-   the person references within a minute, wireframe the directions they
+   true (the person chose "Sketch it first?"): show references only when
+   explicitly requested (including `brief.inputs.references: true`), otherwise
+   start with wireframes. Wireframe the directions they
    steer you to, and build only once they press Build this (or skip).
    Do this before any title, slug, copy or serving: the sketch decides
    what is built. `get_brief`'s `sketch.spec` is the committed sketch;

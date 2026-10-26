@@ -5,6 +5,12 @@ description: Create a new variant set in an existing Proto prototype. Use when t
 
 # Create a variant set
 
+First follow [Choose how to iterate](../../docs/variant-iteration.md).
+
+Resolve whether the user wants a new set before registering one. Iteration on
+an existing set normally edits its variants in place with edit-variant; it does
+not create a fresh set or copy the variants to preserve earlier appearances.
+
 A website brief (action `add-variants`, the element in `section`) is read
 with `get_brief`; when its `inputs.references` is true, follow "References
 for variants" in `docs/sketch.md`: the person picks the references first,
@@ -53,10 +59,12 @@ This order applies before writing preview metadata or delivering chat images.
    revision; it never creates another set. Keep that revision for finishing.
    Now read the selected component and current view. Preserve existing states,
    variants, markers, dependencies, and shared styles.
-3. Before choosing or building directions, gather and inspect references using
-   `docs/variant-references.md`. Use supplied references first and Mobbin's
-   no-account web path, never the Mobbin MCP. This applies to every new set.
-4. Design the requested directions using those references. Keep each variant in
+3. Gather or present references only when explicitly requested by the user,
+   including `inputs.references: true`. In that case, follow
+   `docs/variant-references.md`. Otherwise skip research and reference selection
+   and build directly from the brief, product, and any supplied design context.
+   Preserve existing references without adding unsolicited reference deliverables.
+4. Design the requested directions using the brief and available design context. Keep each variant in
    its own module with scoped styles under
    `src/variants/<component>/<variant-id>.*`. Shared files may contain only
    invariant structure, design-system imports, and tokens. If delegating, give

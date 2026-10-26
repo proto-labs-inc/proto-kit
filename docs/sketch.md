@@ -1,7 +1,7 @@
 # Sketch first
 
 A new prototype is sketched with the person before it is built. They see
-references to react to within seconds, then a few low-fidelity wireframes
+references only when explicitly requested, then a few low-fidelity wireframes
 that each make one point about their brief, then the details inside the
 one they pick. When they press **Build this**, the sketch is committed and
 you build exactly that. The website draws all of it in its sketch studio
@@ -51,6 +51,12 @@ already did it, then go back to `wait`. Sketchers run in the background and post
 their own; you do not wait for them.
 
 ## 1. References
+
+This step is opt-in: run reference research and present references only when the
+user explicitly asks for them, including `brief.inputs.references: true`.
+Choosing "Sketch it first?" alone does not request references. Otherwise skip
+the reference workflow below and draw the base wireframe directly. Preserve
+supplied and saved references as context without posting an unsolicited batch.
 
 Reference retrieval now uses the server-side workflow in `docs/variant-references.md`.
 Register the variant set, capture the current product, and run `reference-research.mjs`.

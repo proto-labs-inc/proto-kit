@@ -1,9 +1,16 @@
 ---
 name: add-variants
-description: Add one or more new variants to an existing variant set in a Proto prototype. Use when both the prototype and target variant set already exist. Do not use to create a set or modify an existing variant.
+description: Add new options to an existing variant set only when the user wants additional alternatives. For refinements to existing alternates, including a whole set, use edit-variant in place instead. Do not treat alternates as immutable.
 ---
 
 # Add variants
+
+First follow [Choose how to iterate](../../docs/variant-iteration.md).
+
+Before adding anything, confirm from the user's request that new options are
+wanted. A refinement uses edit-variant even if this skill or an `add-variants`
+action was supplied. The preservation rules below apply only after choosing
+to add options; they must not force edits into new variants.
 
 For a website brief, read `docs/work-handoff.md`, fetch it with `get_brief`,
 verify its `add-variants` action and existing target, and preserve its ID. Report
