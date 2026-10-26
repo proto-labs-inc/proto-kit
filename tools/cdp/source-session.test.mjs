@@ -14,6 +14,45 @@ import { readSession } from "./session-context.mjs";
 const chrome = process.env.PROTO_TEST_CHROME;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+async function stopChrome(child, browser) {
+  // Listen before sending Browser.close: Chrome can exit before CDP replies.
+  const stopped = child.exitCode !== null || child.signalCode !== null
+    ? Promise.resolve() : once(child, "exit");
+  const killGroup = () => {
+    try { process.kill(-child.pid, "SIGKILL"); }
+    catch (error) { if (error.code !== "ESRCH") throw error; }
+  };
+  // A close acknowledgement is not proof that Chrome has stopped writing.
+  const forceStop = setTimeout(killGroup, 2000);
+  try {
+    if (browser) await browser.send("Browser.close", {}, { timeoutMs: 1000 }).catch(() => {});
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await stopped;
+  } finally {
+    clearTimeout(forceStop);
+    browser?.close();
+    // Chrome helpers can outlive the parent. Only signal this test's group.
+    killGroup();
+  }
+}
+
+test("browser teardown waits for a stubborn process and handles an already exited process", { timeout: 10_000 }, async () => {
+  const child = spawn(process.execPath, ["-e", `
+    process.on('SIGTERM', () => {});
+    setInterval(() => {}, 1000);
+    process.send('ready');
+  `], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: true });
+  try {
+    await once(child, "message");
+    await stopChrome(child);
+    assert.equal(child.signalCode, "SIGKILL");
+    // No new exit event will arrive on the second call.
+    await stopChrome(child);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) await stopChrome(child);
+  }
+});
+
 // Acceptance: concurrent Home, Playground, and identical-URL builds never share
 // a window, source state, or pixels. Closing one recovers it without touching others.
 test("owned source windows isolate simultaneous builds and recover independently", { skip: !chrome, timeout: 60_000 }, async () => {
@@ -31,7 +70,7 @@ test("owned source windows isolate simultaneous builds and recover independently
   await once(server, "listening");
   const origin = `http://127.0.0.1:${server.address().port}`;
   const profile = join(root, "chrome");
-  let child = spawn(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
+  let child = spawn(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore", detached: true });
   const a = join(root, "home", "browser-session.json");
   const b = join(root, "playground", "browser-session.json");
   const c = join(root, "same-url", "browser-session.json");
@@ -97,10 +136,9 @@ test("owned source windows isolate simultaneous builds and recover independently
     process.env.PROTO_BROWSER_SESSION = redirect;
     await assert.rejects(resolveSourceSession(`${origin}/redirect`, port), /expected.*redirect/);
     delete process.env.PROTO_BROWSER_SESSION;
-    const stopped = once(child, "exit");
-    await browser.send("Browser.close"); browser.close();
-    await stopped;
-    child = spawn(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
+    await stopChrome(child, browser);
+    browser = undefined;
+    child = spawn(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore", detached: true });
     for (let i = 0; i < 100; i++) {
       const current = await fetch(`http://localhost:${port}/json/version`).then(response => response.json()).catch(() => null);
       if (current && current.webSocketDebuggerUrl !== playground.session.browserId) break;
@@ -117,11 +155,9 @@ test("owned source windows isolate simultaneous builds and recover independently
     else process.env.PROTO_HOME = previousHome;
     if (previousSession === undefined) delete process.env.PROTO_BROWSER_SESSION;
     else process.env.PROTO_BROWSER_SESSION = previousSession;
-    if (browser) { await browser.send("Browser.close").catch(() => {}); browser.close(); }
-    child.kill();
+    await stopChrome(child, browser);
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
-    await Promise.race([once(child, "exit"), delay(2000)]);
     rmSync(root, { recursive: true, force: true, maxRetries: 15, retryDelay: 200 });
   }
 });
