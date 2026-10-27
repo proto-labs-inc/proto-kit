@@ -5,7 +5,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
 import { analyze, readTrace } from "./trace-read.mjs";
 
 const kit = fileURLToPath(new URL("../", import.meta.url));
@@ -211,28 +210,12 @@ test("a Cursor transcript takes its times and output from the hook's log", () =>
   assert.equal(analyze(trace).counts.personMessages, 1);
 });
 
-test("a downloaded debug report imports as a trace", () => {
-  const { h, env } = home();
-  const folder = join(h, "Downloads", "dbg_abc");
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, "session.jsonl.gz"), gzipSync(claudeSession()));
-  writeFileSync(join(folder, "session__subagents__agent-sub1.jsonl.gz"), gzipSync(subagent()));
-  writeFileSync(join(folder, "environment.json"), JSON.stringify({ harness: "claude-code", sessionId: id }));
-  writeFileSync(join(folder, `proto__traces__${id}__flags.json.gz`), gzipSync(JSON.stringify([{ id: "f1", target: "s2", kind: "error", note: "flagged on the laptop", by: "claude" }])));
-  const res = run(env, "import", folder);
-  assert.equal(res.status, 0, res.stderr);
-  const s = JSON.parse(readFileSync(join(h, ".proto", "traces", id, "summary.json"), "utf8"));
-  assert.equal(s.counts.subagents, 1);
-  assert.equal(s.counts.errors, 3);
-  assert.match(readFileSync(join(h, ".proto", "traces", id, "transcript.html"), "utf8"), /flagged on the laptop/);
-});
-
 test("a step counts as a kit tool only when it runs one", async () => {
   const { groupOf } = await import("./trace-read.mjs");
   const g = (command) => groupOf({ name: "Bash", input: { command } });
   assert.equal(g("node ~/kit/tools/proto-build.mjs b1 --codebase c"), "proto proto-build");
   assert.equal(g('cd /x && node "$K/tools/build-stream.mjs" phase read'), "proto build-stream phase");
-  assert.equal(g("node --test tools/debug-report.test.mjs"), "Bash");
+  assert.equal(g("node --test tools/trace.test.mjs"), "Bash");
   assert.equal(g("head -60 tools/serve.mjs"), "Bash");
   assert.equal(g("python3 - <<'EOF'\ns = 'node tools/migrate-rig.mjs plan'\nEOF"), "Bash");
   assert.equal(g("for i in $(seq 1 20); do curl -s x | grep -q ok && break; sleep 15; done"), "Bash (sleep/poll)");

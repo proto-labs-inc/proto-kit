@@ -44,7 +44,6 @@ Cursor; the core stays harness-neutral.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
 - `publish-library/`: publish the library on demand.
 - `update/`: update the plugin, then repair what the update leaves stale.
-- `debug/`: send Proto a debug report now, with a headline; the agent uses it on its own too.
 - `analyze-trace/`: read a session's debug trace, flag what went wrong or could be better, and say what to change in the kit.
 
 ### tools/
@@ -77,7 +76,6 @@ Serving and publishing:
 - `publish-library.mjs`: build and publish the library in one serialised call.
 - `auto-publish.mjs`: at the end of each agent turn, build and publish every served prototype and library that changed.
 - `health.mjs`: the session-start check, one line per codebase.
-- `debug-report.mjs`: session snapshots to Proto: `send` now, `watch` every ten minutes in the background.
 - `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 - `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
@@ -127,7 +125,7 @@ The subagent roles, one file per harness format.
 
 ### hooks/, codex-hooks/, cursor-hooks/
 
-- `hooks/hooks.json`, `codex-hooks/hooks.json`, `cursor-hooks/hooks.json`: the health line, marker check, debug reporting and trace sync, per harness.
+- `hooks/hooks.json`, `codex-hooks/hooks.json`, `cursor-hooks/hooks.json`: the health line, marker check, trace sync and auto-publish, per harness.
 
 ### docs/
 
@@ -264,17 +262,6 @@ node tools/fake-import/run.mjs /tmp/demo-library
 # open the URL Vite prints and watch it fill in; press "Queue it" on
 # the skipped card and the driver extracts it
 ```
-
-## Debug report destination
-
-Debug reports (automatic and manual) go to `https://prototypes.fun`, even
-when the linked product app or `PROTO_APP` points to a local development
-server. They use the existing laptop login; R2 storage credentials belong
-only on the hosted server. Reports remain available to authorized staff.
-Begin and finish use the same team credential throughout an upload. A login
-refused by the hosted service fails visibly in the telemetry log; it does
-not fall back to the development server. For isolated reporter tests only,
-`PROTO_REPORT_APP` explicitly selects a different reporting origin.
 
 ## License
 

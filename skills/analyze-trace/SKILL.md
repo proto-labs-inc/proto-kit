@@ -4,10 +4,9 @@ description: >-
   Read a debug trace of an agent session that used Proto, flag in it what
   went wrong, what was slow and what the kit's skills or tools could do
   better, and report back. Traces live in ~/.proto/traces/<session>/ (kept
-  by the kit's end-of-turn hook for every Proto session on this laptop) or
-  come from a debug report downloaded from /staff/debug-reports. Use when
-  asked to analyze, debug or review a trace, a session, a run or a debug
-  report, to find out why a Proto flow was slow or failed, "what happened
+  by the kit's end-of-turn hook for every Proto session on this laptop).
+  Use when asked to analyze, debug or review a trace, a session or a run,
+  to find out why a Proto flow was slow or failed, "what happened
   in that build", or to flag particular steps. For the Proto team.
 ---
 
@@ -28,7 +27,7 @@ directory.
 
 ```sh
 node <kit>/tools/trace.mjs list                         # newest first; --slug <s> or --codebase <cb> to narrow
-node <kit>/tools/trace.mjs import <session id | transcript path | unpacked debug report folder>
+node <kit>/tools/trace.mjs import <session id | transcript path>
 ```
 
 `latest` names the newest trace anywhere a session is asked for.

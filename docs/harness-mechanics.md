@@ -36,8 +36,6 @@ Resolve tool paths from the installed plugin root, not a guessed newest cache.
 - Session-start and post-edit hooks retain health and marker checks. Respect
   the host's hook trust/approval requirements; skipped hooks are not evidence
   of a broken service.
-- Debug reporting retains read-only transcript lookup and explicit consent,
-  without conversation binding or message delivery.
 
 ### Claude Code
 
