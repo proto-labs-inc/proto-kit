@@ -4,8 +4,7 @@
  * in ~/.proto/traces/<session>/ with what it took to read it.
  *
  * Every harness already writes the whole conversation to disk, every
- * message and every tool call with its input, output and time (the same
- * files debug reports send). `sync` copies the session's files into its
+ * message and every tool call with its input, output and time. `sync` copies the session's files into its
  * trace folder and works them up, so a trace survives the harness
  * pruning old sessions and sits beside the prototypes it built:
  *
@@ -39,9 +38,6 @@
  * Usage:
  *   node trace.mjs sync --transcript <path> [--session <id>] [--harness claude-code|codex|cursor]
  *   node trace.mjs import <transcript path | session id>   sync a past session by hand
- *   node trace.mjs import <folder>                         a debug report downloaded from
- *                                                          /staff/debug-reports (session.jsonl[.gz],
- *                                                          session/subagents/…, environment.json)
  *   node trace.mjs list [--codebase <cb>] [--slug <slug>]
  *   node trace.mjs report [<session> | latest] [--json]    work it up again and print it
  *   node trace.mjs show <session | latest> <step> [<step>…] [--full]   e.g. 12 or s12 or 10-14
@@ -55,10 +51,9 @@
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeFiles, codexFiles, codexRollout, sessionAt, usesProto } from "./debug-report.mjs";
+import { claudeFiles, codexFiles, codexRollout, sessionAt, usesProto } from "./transcripts.mjs";
 import { analyze, duration, readTrace, reportMarkdown } from "./trace-read.mjs";
 import { FLAG_KINDS, transcriptHtml, transcriptMarkdown } from "./trace-transcript.mjs";
 import { protoHome } from "./proto-home.mjs";
@@ -130,7 +125,7 @@ function touched(text) {
   for (const m of text.matchAll(BUILD_PATH)) builds.add(`${m[1]}/${m[2]}`);
   const codebases = new Set([...prototypes.values()].map((p) => p.codebase));
   for (const m of text.matchAll(/--codebase[ =\\"]+([A-Za-z0-9._-]+)/g)) codebases.add(m[1]);
-  for (const c of ["traces", "telemetry", "chrome", "chrome-headless", "config.json"]) codebases.delete(c);
+  for (const c of ["traces", "chrome", "chrome-headless", "config.json"]) codebases.delete(c);
   return { codebases: [...codebases], prototypes: [...prototypes.values()].filter((p) => codebases.has(p.codebase)), builds: [...builds] };
 }
 
@@ -162,8 +157,8 @@ export function sync(session, { force = false } = {}) {
   const dir = join(TRACES_DIR, session.id);
   const metaPath = join(dir, "meta.json");
   const text = readFileSync(session.path, "utf8");
-  // A Cursor install runs the kit from plugins/local/proto, which the
-  // debug reporter's test does not know; the hook's log is proof too.
+  // A Cursor install runs the kit from plugins/local/proto; the hook's
+  // log is proof too.
   const proto = usesProto(text) || /plugins\/local\/proto\/(tools|skills)\//.test(text) || existsSync(join(dir, "hooks.jsonl"));
   if (!existsSync(metaPath) && !force && !proto) return null;
   mkdirSync(dir, { recursive: true });
@@ -263,44 +258,6 @@ function prune() {
       if (statSync(join(dir, "meta.json")).mtimeMs < cutoff) rmSync(dir, { recursive: true, force: true });
     } catch {}
   }
-}
-
-/** A debug report someone downloaded, laid out as a trace. Its files
- *  keep the names the reporter gave them (session.jsonl, session/…,
- *  proto/…), gzipped or not, nested or flattened with "__". */
-function importReport(folder) {
-  const files = [];
-  const walk = (d) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
-      else files.push(p);
-    }
-  };
-  walk(folder);
-  const named = (p) => relative(folder, p).replaceAll("__", "/").replace(/\.gz$/, "");
-  const read = (p) => (p.endsWith(".gz") ? gunzipSync(readFileSync(p)) : readFileSync(p));
-  let env = {};
-  const envFile = files.find((p) => named(p).endsWith("environment.json"));
-  if (envFile) env = JSON.parse(read(envFile).toString("utf8"));
-  const id = env.sessionId ?? `report-${basename(folder)}`;
-  // The session's own trace files, when the laptop had a trace of it:
-  // its flags, and for Cursor its transcript and the hook's step log.
-  const own = (name) => files.find((p) => named(p).endsWith(`traces/${id}/${name}`));
-  const main = files.find((p) => /(^|\/)session\.jsonl$/.test(named(p))) ?? own("transcript.jsonl") ?? fail(`No session.jsonl in ${folder}.`);
-  const dir = join(TRACES_DIR, id);
-  mkdirSync(join(dir, "subagents"), { recursive: true });
-  writeFileSync(join(dir, "transcript.jsonl"), read(main));
-  for (const p of files) {
-    const n = named(p);
-    const m = /(?:^|\/)(?:session\/)?subagents\/([^/]+\.(?:jsonl|meta\.json))$/.exec(n);
-    if (m) writeFileSync(join(dir, "subagents", m[1]), read(p));
-  }
-  for (const name of ["flags.json", "hooks.jsonl"]) if (own(name)) writeFileSync(join(dir, name), read(own(name)));
-  const text = readFileSync(join(dir, "transcript.jsonl"), "utf8");
-  writeAtomic(join(dir, "meta.json"), JSON.stringify({ sessionId: id, harness: env.harness === "unknown" && own("hooks.jsonl") ? "cursor" : env.harness ?? "claude-code", source: null, report: folder, environment: env, ...touched(text), syncedAt: new Date().toISOString() }, null, 2) + "\n");
-  workUp(dir);
-  return dir;
 }
 
 // ---------------------------------------------------------------------
@@ -482,12 +439,6 @@ async function main() {
     if (args.includes("--background")) return syncInBackground(session);
     const dir = sync(session);
     if (dir && args.includes("--print")) console.log(dir);
-    return;
-  }
-  if (cmd === "import" && args[0] && existsSync(args[0]) && statSync(args[0]).isDirectory()) {
-    const dir = importReport(args[0]);
-    console.log(readFileSync(join(dir, "report.md"), "utf8"));
-    console.log(`Trace: ${dir}`);
     return;
   }
   if (cmd === "import") {
