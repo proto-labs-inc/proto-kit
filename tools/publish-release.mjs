@@ -59,7 +59,9 @@ export function prepareRelease({ cwd, source, previous, runId, now, channel = 'm
       const blob = git(['hash-object', '-w', '--stdin'], JSON.stringify(value, null, 2) + '\n');
       git(['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`]);
     };
-    for (const path of ['.codex-plugin/plugin.json', 'plugin.json', '.cursor-plugin/plugin.json']) {
+    // Every host manifest carries the release's version: a host that finds none (Claude Code) reports the
+    // git commit instead, which the Proto app's installed-kit check can never match.
+    for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'plugin.json', '.cursor-plugin/plugin.json']) {
       put(path, { ...read(source, path), version });
     }
     put('.proto-release.json', { sourceCommit: source, version, runId: String(runId), ...(channel === 'main' ? {} : { channel }) });
