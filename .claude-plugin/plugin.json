@@ -12,5 +12,6 @@
     "frontend",
     "claude-code"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "version": "0.1.0+codex.20261029014210"
 }
