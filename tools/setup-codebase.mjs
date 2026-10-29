@@ -46,7 +46,7 @@ export async function setupCodebase(options, deps = {}) {
   if (options.site || previous?.source?.kind === "site") {
     if (!id || options.source || options.remote) throw new Error("Site preparation needs its existing codebase ID and no repository source.");
     const result = await call("get_site_preparation", { codebase: id }, { app: config.app, secret: credential.secret });
-    if (result?.isError) throw new Error("Staff site preparation was refused.");
+    if (result?.isError) throw new Error("Site preparation was refused.");
     const row = JSON.parse(result.content[0].text);
     if (row.codebase !== id || row.team_id !== credential.team.id || !row.product_url) throw new Error("Unexpected site preparation or team.");
     const url = new URL(row.product_url);
