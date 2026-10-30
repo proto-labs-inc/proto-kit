@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { acquireProcessLock } from "./process-lock.mjs";
+import { assertMaintenanceAvailable } from "./maintenance-lock.mjs";
 /**
  * Process supervisor for a served prototype or library: keeps its dev
  * server alive, detached from any agent session.
@@ -28,6 +30,7 @@ if (!command || !dirArg) {
   process.exit(1);
 }
 const dir = resolve(dirArg);
+if (["start", "daemon"].includes(command)) assertMaintenanceAvailable(dir);
 const statePath = join(dir, "state.json");
 if (["start", "daemon", "stop"].includes(command) && isLegacyCourierRun(dir)) {
   console.error("This is a retired courier run. It cannot be started or repaired. Preview safe retirement with retire-legacy-runs.mjs.");
@@ -82,6 +85,8 @@ function isSupervisor(pid) {
 }
 
 if (command === "start") {
+  await acquireProcessLock(join(dir, "preview-start.lock"));
+  assertMaintenanceAvailable(dir);
   if (!hasOwner()) { console.error("Open this prototype's tab in Proto before starting its preview."); process.exit(1); }
   // Serialize competing desktop and agent starts, including the period before
   // the detached daemon has written its state.

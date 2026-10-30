@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assertMaintenanceAvailable } from "./maintenance-lock.mjs";
 /**
  * Publish every prototype and library the agent changed this turn, so the
  * copy everyone else sees follows the maker's within a turn. The maker sees
@@ -173,6 +174,7 @@ export const defaultSteps = {
 
 /** Publish one run that has something new; never throws. */
 export async function publishRun(run, steps = defaultSteps) {
+  try { assertMaintenanceAvailable(run.runDir); } catch { return; }
   const log = join(run.runDir, "publish.log");
   const note = (line) => appendFileSync(log, `${new Date().toISOString()} ${line}\n`);
   const recorded = join(run.runDir, "published.fingerprint");

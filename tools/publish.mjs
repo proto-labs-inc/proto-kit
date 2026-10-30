@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assertMaintenanceAvailable } from "./maintenance-lock.mjs";
 import { buildSessionPath } from "./cdp/session-context.mjs";
 import { releaseSourceSession } from "./cdp/source-session.mjs";
 /**
@@ -35,9 +36,9 @@ import { releaseSourceSession } from "./cdp/source-session.mjs";
  * at its end does that.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
-import { createRequire } from "node:module";
-import { join, resolve, relative, extname, sep } from "node:path";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync } from "node:fs";
+import { resolvedRigVersion } from "./rig-version.mjs";
+import { join, resolve, relative, extname, sep, dirname } from "node:path";
 import { workflowEvent, activityEvent } from "./workflow-report.mjs";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { createReporter } from "./build-report.mjs";
@@ -49,10 +50,17 @@ import { belowProtoHome, protoHome } from "./proto-home.mjs";
 import { takeRunLock } from "./run-lock.mjs";
 import { completePublishAttempt, failPublishAttempt, startPublishAttempt } from "./publish-status.mjs";
 
+function writeMaintenanceReceipt(file, value) {
+  const descriptor = openSync(file + ".tmp", "w", 0o600);
+  try { writeFileSync(descriptor, JSON.stringify(value)); fsyncSync(descriptor); }
+  finally { closeSync(descriptor); }
+  renameSync(file + ".tmp", file);
+}
+
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
 const KINDS = ["prototype", "library"];
-const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id"];
+const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id", "maintenance-job"];
 let publishAttempt = null;
 let attemptWorkspace = null;
 function recordFailure(error) {
@@ -115,6 +123,7 @@ if (kind === "prototype") {
 // Share the run's lock before preflight, so a waiting explicit publish cannot
 // replace the status of the automatic publisher still holding that lock.
 const runDir = kind === "prototype" && codebase && slug ? join(protoHome(), codebase, "run", slug) : null;
+if (runDir) assertMaintenanceAvailable(runDir);
 if (runDir && existsSync(runDir) && !options.auto && !dryRun) {
   const lock = join(runDir, "publish.lock");
   takeRunLock(lock, { wait: true });
@@ -353,7 +362,17 @@ if (failed.length > 0) {
 }
 
 const finishInput = { ...target, buildId };
+if (options["maintenance-job"]) {
+  const job = JSON.parse(readFileSync(options["maintenance-job"], "utf8"));
+  if (kind !== "prototype" || job.codebase !== codebase || job.slug !== slug || !Object.hasOwn(job, "expectedPublishedUrl")) throw new Error("Invalid maintenance publication");
+  finishInput.expectedPublishedUrl = job.expectedPublishedUrl;
+}
 if (kind === "prototype") finishInput.rigVersion = rigVersion;
+if (options["maintenance-job"]) {
+  // Persist the exact immutable build before advancing the cloud pointer.
+  const receipt = join(dirname(resolve(options["maintenance-job"])), "publish.json");
+  writeMaintenanceReceipt(receipt, finishInput);
+}
 const finished = unwrap(
   await callTool("finish_publish", finishInput).catch((e) => ({
     content: [{ text: e.message }],
@@ -361,6 +380,10 @@ const finished = unwrap(
 );
 if (!finished.publishedUrl) {
   throw new Error(`Could not verify publishing: ${finished.error ?? "the app did not confirm availability"}`);
+}
+if (options["maintenance-job"]) {
+  const resultFile = join(dirname(resolve(options["maintenance-job"])), "publish-result.json");
+  writeMaintenanceReceipt(resultFile, finished);
 }
 // Publication succeeded even if recording build-request progress later fails.
 if (publishAttempt) completePublishAttempt(workspace, publishAttempt.attemptId, finished.publishedUrl);
@@ -385,31 +408,4 @@ if (progress) {
     await callTool("report_progress", { briefId: progressBuild.briefId, status: "failed", message: error.message }, targetFor(readConfig(), { codebase })).catch(() => {});
   }
   throw error;
-}
-// The adapter is the workspace's own dependency; rig-core is the
-// adapter's, so it is resolved from there, wherever the package
-// manager put it.
-function resolvedRigVersion(workspace) {
-  const own = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8")).dependencies ?? {};
-  const adapter = ["@proto-labs-inc/rig", "@proto-labs-inc/rig-vue"].find((name) => name in own);
-  if (!adapter) fail(`${workspace}/package.json depends on neither @proto-labs-inc/rig nor @proto-labs-inc/rig-vue`);
-  try {
-    const adapterPackage = createRequire(join(workspace, "package.json")).resolve(`${adapter}/package.json`);
-    const corePackage = createRequire(adapterPackage).resolve("@proto-labs-inc/rig-core/package.json");
-    return JSON.parse(readFileSync(corePackage, "utf8")).version;
-  } catch {
-    // A starter copied unchanged ships its saved build without installing:
-    // its lockfile names the rig it was built with.
-    const locked = lockedRigCoreVersion(workspace);
-    if (locked) return locked;
-    fail(`@proto-labs-inc/rig-core does not resolve from ${workspace}; run pnpm install there first`);
-  }
-}
-
-/** The rig-core version a workspace's pnpm lockfile pins, or null. */
-function lockedRigCoreVersion(workspace) {
-  const lock = join(workspace, "pnpm-lock.yaml");
-  if (!existsSync(lock)) return null;
-  const versions = new Set([...readFileSync(lock, "utf8").matchAll(/^\s+'?@proto-labs-inc\/rig-core@(\d+\.\d+\.\d+)/gm)].map((m) => m[1]));
-  return versions.size === 1 ? [...versions][0] : null;
 }

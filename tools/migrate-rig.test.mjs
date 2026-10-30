@@ -112,7 +112,7 @@ test("already installed npm rigs still receive version upgrades", (t) => {
   writeFileSync(join(workspace, "package.json"), JSON.stringify(pkg));
   const plan = planWorkspace(workspace, kit);
   assert.equal(plan.needed, true);
-  assert.deepEqual(plan.missing, { "@proto-labs-inc/rig": "0.2.1", "@proto-labs-inc/wire": "0.2.0" });
+  assert.deepEqual(plan.missing, { "@proto-labs-inc/rig": "0.2.5", "@proto-labs-inc/wire": "0.2.4" });
   assert.deepEqual(plan.pkg, pkg);
   writeFileSync(join(workspace, "package.json"), JSON.stringify({ dependencies: plan.missing }));
   assert.equal(planWorkspace(workspace, kit).needed, false);

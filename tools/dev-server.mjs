@@ -1,3 +1,5 @@
+import { withProcessLock } from "./process-lock.mjs";
+import { assertMaintenanceAvailable } from "./maintenance-lock.mjs";
 /**
  * The workspace's dev server, for the build's tools: replicate.mjs
  * renders parts in it, check-states.mjs and previews.mjs load the
@@ -98,6 +100,7 @@ function describe(served, identityAnswer) {
  * reason is in there); `keep` leaves the server up after stop().
  */
 export async function ensureDevServer({ workspace, logPath, keep = false, timeoutMs = 30_000 }) {
+  assertMaintenanceAvailable(join(dirname(dirname(workspace)), "run", basename(workspace)));
   const manifest = JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8"));
   const url = `http://localhost:${manifest.port}`;
   const before = await whoAnswers(url, workspace);
@@ -122,6 +125,8 @@ export async function ensureDevServer({ workspace, logPath, keep = false, timeou
     }
     throw new Error("The tab's managed preview did not start. Check its run logs.");
   }
+  return withProcessLock(join(runDir, "preview-start.lock"), async () => {
+  assertMaintenanceAvailable(runDir);
   const log = openSync(logPath, "a");
   const child = spawn("pnpm", ["dev"], {
     cwd: workspace,
@@ -154,4 +159,5 @@ export async function ensureDevServer({ workspace, logPath, keep = false, timeou
   }
   process.on("exit", stop);
   return { url, port: manifest.port, started: true, stop };
+  });
 }

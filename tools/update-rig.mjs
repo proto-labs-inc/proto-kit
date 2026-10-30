@@ -1,8 +1,9 @@
 /** Keep a prototype on at least the rig version shipped by this kit. */
 import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { assertMaintenanceAvailable } from "./maintenance-lock.mjs";
 import { frameOrigin } from "./frame-origin.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -30,12 +31,14 @@ export function updateRigDependencies(pkg) {
 }
 
 export function upgradeRig(workspace, { run = spawnSync } = {}) {
+  assertMaintenanceAvailable(join(dirname(dirname(workspace)), "run", basename(workspace)));
   const path = join(workspace, "package.json");
   const original = readFileSync(path, "utf8");
   const pkg = JSON.parse(original);
   const updates = updateRigDependencies(pkg);
   // Rig 0.2.0 loads selection tools from the Frame the manifest names.
   const manifestPath = join(workspace, "public", "prototype.json");
+  const originalManifest = existsSync(manifestPath) ? readFileSync(manifestPath) : null;
   const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null;
   const origin = manifest ? frameOrigin(manifest) : {};
   if (origin.frameOrigin) writeFileSync(manifestPath, JSON.stringify({ ...manifest, ...origin }, null, 2) + "\n");
@@ -50,6 +53,7 @@ export function upgradeRig(workspace, { run = spawnSync } = {}) {
     const result = run(manager, command, { cwd: workspace, encoding: "utf8", env: { ...process.env, CI: "true" } });
     if (result.status !== 0) {
       writeFileSync(path, original);
+      if (originalManifest) writeFileSync(manifestPath, originalManifest);
       if (previousLock) writeFileSync(lockPath, previousLock);
       else rmSync(lockPath, { force: true });
       throw new Error(`Rig update failed in ${workspace}: ${manager} ${command.join(" ")}\n${result.stderr || result.stdout || result.error || "Unknown failure"}`);
