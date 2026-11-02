@@ -34,10 +34,30 @@ Expressions run with the prototype's window, document and location in scope and
 must assert a visible expected outcome, not just that the page loaded.
 Use `interaction` and `keyboard` scenarios for every control; use `visual`,
 `responsive`, `state` and `isolation` for every source state. Boundary states require
-`responsive`, `state` and `isolation`, but no `visual` scenario. The runner executes all
-scenarios at widthsFor(inventory): 320px and 1440px endpoints, each extracted
-CSS breakpoint and adjacent integer widths, and one midpoint in each interval.
-Fractional CSS boundaries use their floor/ceiling and adjacent integer widths. Responsive scenarios load at an opposite width, resize
+`responsive`, `state` and `isolation`, but no `visual` scenario. The runner picks each
+scenario's widths by category (`widthsForScenario` in screen-verification.mjs):
+
+- `visual` and `responsive` run at the layout-band set, widthsFor(inventory): 320px
+  and 1440px, both sides of each breakpoint, and one midpoint in each band between
+  them. A fractional boundary (767.98) uses its floor and ceiling; an integer one
+  (768) uses 767, 768 and 769, since either min- or max-width may have produced it.
+- `interaction` and `keyboard` run at 320px and 1440px. When a control changes form
+  inside a band (a menu that collapses, a toolbar that overflows), mark that band in
+  `inventory.interactionBands` as `[left, right]`, two neighbouring band edges
+  (320, a breakpoint or 1440), e.g. `[[767.98, 1024]]`; control checks then also run
+  at its midpoint.
+- `state` and `isolation` run once, at 1440px: reload and isolation do not depend
+  on width.
+- Container scenarios (a `containerQuery` or any `resize-container` step) run at the
+  full layout-band set whatever their category.
+
+Up to six scenarios run at once, each in its own fresh headless tab
+(`PROTO_VERIFY_CONCURRENCY`, 1–32). A failing check is retried once on its own
+before it counts; the report keeps both outcomes in `attempts` and the first try's
+screenshot as `<id>.first-try.png`. Each result is saved in `checkpoints/` beside
+the report, keyed by the build, the scenario as run, its width, its reference PNG
+and the runner's code; verifying the same build and plan again skips checks that
+already passed and reruns the rest. Responsive scenarios load at an opposite width, resize
 without reloading, run the actions and assertion, then resize away and back and
 assert again. Write width-dependent assertions for observed layout behavior
 (e.g. sidebar replaced by a menu, columns stack, text wraps, table scrolls).
@@ -139,7 +159,7 @@ Boundary states belong in the verification inventory only, not in
 the “Not included” fallback must remain reachable by local navigation and direct
 URL without appearing as a map node.
 
-At every required width, exercise entry and return using interaction and keyboard
+At the control widths, exercise entry and return using interaction and keyboard
 scenarios. Start return scenarios at the boundary's local URL so success cannot
 depend on previous browser history. State scenarios must assert that the boundary
 survives direct navigation and reload. Responsive scenarios must assert usable

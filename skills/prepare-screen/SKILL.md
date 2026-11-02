@@ -47,11 +47,15 @@ Run again after opening states that load additional styles and merge the finding
 Inspect every warning and unresolved query using the source/browser before
 proceeding. Width queries with fractional boundaries remain fractional.
 
-Use the returned `widths`: narrow/wide endpoints, each CSS boundary and adjacent
-integer widths, plus one sample inside each interval for fluid wrapping. Add any
+Use the returned `widths` (the layout-band set): 320 and 1440, both sides of each
+CSS boundary (floor and ceiling of a fractional one; b-1, b and b+1 of an integer
+one, whose direction is unknown), plus one midpoint inside each band. Add any
 JavaScript-driven transitions discovered in source to inventory.breakpoints and
 recompute widths with screen-verification.mjs's widthsFor. Capture reference PNGs
 at those widths using the same DPR and color profile as the headless renderer.
+Only visual and responsive checks sweep these widths. Interaction and keyboard
+checks run at 320 and 1440, plus the midpoint of each band listed in
+`inventory.interactionBands`; state and isolation checks run once at 1440.
 Container queries are listed separately with their names, conditions and selectors.
 They are not viewport breakpoints: inspect the actual query container at each
 layout, vary its available space to cross each threshold, and record the resulting
@@ -142,6 +146,8 @@ Read [verification.md](verification.md) for the executable scenario format.
 Inspect the actual output images at matching widths and exercise the responsive
 controls. A passing build or geometry report alone is not visual verification.
 After a layout fix, rerun the affected widths and interaction/state checks.
+`verify` saves each passed check under the screen cache; running it again for the
+same build and plan reruns only failed or changed checks.
 Report progress through screen_index. Upload with
 `screen-index.mjs upload <codebase> <indexId> <version> <entryId> <workspace>`.
 This archives source and compiles that exact archive once. Then run

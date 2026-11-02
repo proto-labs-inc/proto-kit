@@ -1,18 +1,61 @@
 /** Current starter acceptance contract. Kept in parity with cloud screen-verification.ts. */
 export const VERSION = 4;
-/** Test the source boundaries plus endpoints and a sample in each fluid interval. */
+/** Both sides of a CSS width boundary. A fractional boundary (max-width:
+ *  767.98px) switches between its floor and ceiling. An integer one switches
+ *  between b-1 and b (min-width) or b and b+1 (max-width); the inventory does
+ *  not record which, so both neighbours are the two possible sides. */
+export function boundarySides(boundary) {
+  const sides = Number.isInteger(boundary) ? [boundary - 1, boundary, boundary + 1]
+    : [Math.floor(boundary), Math.ceil(boundary)];
+  return sides.filter(width => width >= 1 && width <= 10000);
+}
+/** 320, each breakpoint inside the 320–1440 range, 1440: the edges of the layout bands. */
+function bandEdges(inventory) {
+  return [...new Set([320, ...inventory.breakpoints.filter(b => b > 320 && b < 1440), 1440])].sort((a, b) => a - b);
+}
+const bandMidpoint = (left, right) => Math.round((left + right) / 2);
+/** The layout-band widths visual and responsive checks run at: the 320 and
+ *  1440 endpoints, both sides of every breakpoint, and one midpoint per band. */
 export function widthsFor(inventory) {
   const points = new Set([320, 1440]);
-  const anchors = [320, ...inventory.breakpoints.filter(b => b > 320 && b < 1440), 1440].sort((a, b) => a - b);
-  for (const boundary of inventory.breakpoints) {
-    for (const width of [Math.floor(boundary) - 1, Math.floor(boundary), Math.ceil(boundary), Math.ceil(boundary) + 1])
-      if (width >= 1 && width <= 10000) points.add(width);
-  }
-  for (let i = 1; i < anchors.length; i++) {
-    const midpoint = Math.round((anchors[i - 1] + anchors[i]) / 2);
-    if (midpoint > anchors[i - 1] + 1 && midpoint < anchors[i] - 1) points.add(midpoint);
+  for (const boundary of inventory.breakpoints)
+    for (const width of boundarySides(boundary)) points.add(width);
+  const edges = bandEdges(inventory);
+  for (let i = 1; i < edges.length; i++) {
+    const midpoint = bandMidpoint(edges[i - 1], edges[i]);
+    if (midpoint > edges[i - 1] + 1 && midpoint < edges[i] - 1) points.add(midpoint);
   }
   return [...points].sort((a, b) => a - b);
+}
+/** Bands the plan marks for extra control checks (`inventory.interactionBands`,
+ *  each `[left, right]`: two neighbouring band edges, e.g. a breakpoint where a
+ *  control changes form). Throws on anything else. */
+export function interactionBands(inventory) {
+  const bands = inventory.interactionBands ?? [];
+  const edges = bandEdges(inventory);
+  if (!Array.isArray(bands) || bands.some(band => !Array.isArray(band) || band.length !== 2
+      || !edges.includes(band[0]) || edges[edges.indexOf(band[0]) + 1] !== band[1]))
+    throw new Error("interactionBands must list [left, right] pairs of neighbouring band edges (320, a breakpoint, 1440).");
+  return bands;
+}
+/** Widths a category must be checked at. Layout (visual, responsive) sweeps
+ *  the bands; controls run at one phone and one desktop width plus the middle
+ *  of each marked band; reload and isolation do not depend on width. */
+export function widthsForCategory(inventory, category) {
+  if (["visual", "responsive"].includes(category)) return widthsFor(inventory);
+  if (["interaction", "keyboard"].includes(category))
+    return [...new Set([320, 1440, ...interactionBands(inventory).map(([l, r]) => bandMidpoint(l, r))])].sort((a, b) => a - b);
+  if (["state", "isolation"].includes(category)) return [1440];
+  throw new Error("Invalid scenario category.");
+}
+/** A container scenario resizes its own container; it runs at every layout
+ *  width as authored, whatever its category. */
+export const isContainerScenario = (scenario) =>
+  typeof scenario.containerQuery === "string" || !!scenario.steps?.some(step => step?.kind === "resize-container");
+/** The widths the runner executes one plan scenario at. */
+export function widthsForScenario(inventory, scenario) {
+  if (isContainerScenario(scenario)) return widthsFor(inventory);
+  return widthsForCategory(inventory, scenario.category);
 }
 export const resizeOrigin = (width) => width < 1024 ? 1440 : 390;
 export function validateVerification(report, screen) {
@@ -119,27 +162,23 @@ export function validateVerification(report, screen) {
     )
       fail("Invalid scenario category.");
   }
-  const has = (category, target, width) =>
-    report.scenarios.some(
-      (s) =>
-        s.category === category &&
-        s.target === target &&
-        s.viewport.width === width,
-    );
-  for (const width of widthsFor(inventory)) {
-    for (const state of inventory.states) {
-      const categories = state.kind === "source"
-        ? ["visual", "responsive", "state", "isolation"]
-        : ["responsive", "state", "isolation"];
-      for (const category of categories)
+  const checked = new Set(report.scenarios.map(s => `${s.category}\0${s.target}\0${s.viewport.width}`));
+  const has = (category, target, width) => checked.has(`${category}\0${target}\0${width}`);
+  try { interactionBands(inventory); } catch (error) { fail(error.message); }
+  for (const state of inventory.states) {
+    const categories = state.kind === "source"
+      ? ["visual", "responsive", "state", "isolation"]
+      : ["responsive", "state", "isolation"];
+    for (const category of categories)
+      for (const width of widthsForCategory(inventory, category))
         if (!has(category, state.id, width))
           fail(`Missing ${category} check for ${state.id} at ${width}px.`);
-    }
-    for (const control of inventory.controls)
-      for (const category of ["interaction", "keyboard"])
+  }
+  for (const control of inventory.controls)
+    for (const category of ["interaction", "keyboard"])
+      for (const width of widthsForCategory(inventory, category))
         if (!has(category, control.id, width))
           fail(`Missing ${category} check for ${control.id} at ${width}px.`);
-  }
   return report;
 }
 

@@ -169,7 +169,8 @@ else if (command === "capture") {
   try {
     unpackScreenBuild(bytes, prepared.checksum, screen.bundle_checksum, join(temporary, "dist"));
     const report = await verifyBuild(join(temporary, "dist"), JSON.parse(readFileSync(planFile, "utf8")), screen, join(cache, "verification", prepared.checksum));
-    if (report.scenarios.some(s => s.outcome !== "passed")) throw new Error("Screen verification failed. Inspect the saved report and repair the source before uploading a new build.");
+    const failed = report.scenarios.filter(s => s.outcome !== "passed");
+    if (failed.length) throw new Error(`Screen verification failed ${failed.length} of ${report.scenarios.length} checks, each after one retry (${failed.slice(0, 5).map(s => s.id).join(", ")}${failed.length > 5 ? ", …" : ""}). Inspect the saved report and repair the source before uploading a new build. Passed checks are saved: verifying the same build and plan again reruns only the rest.`);
     for (const scenario of report.scenarios) {
       const keys = [];
       for (const path of scenario.evidence) {

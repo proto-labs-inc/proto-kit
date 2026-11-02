@@ -7,12 +7,14 @@ import {
   mkdirSync,
   statSync,
   existsSync,
+  copyFileSync,
 } from "node:fs";
 import { resolve, join, extname } from "node:path";
 import { headlessPage } from "./cdp/headless.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { diffPngs } from "./cdp/diff.mjs";
-import { VERSION, widthsFor, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
+import { createHash } from "node:crypto";
+import { VERSION, widthsForScenario, interactionBands, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
 const mime = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -489,7 +491,9 @@ export async function runScenario(
       writeFileSync(out, Buffer.from(shot.data, "base64"));
     } catch {}
   } finally {
-    await opened.close();
+    // The result is already recorded; a tab whose connection closed while
+    // closing (the flake that used to abort a whole sweep) changes nothing.
+    await opened.close().catch(() => {});
   }
   return problems;
 }
@@ -519,85 +523,169 @@ export function validateMapStates(manifest, inventory) {
   }
 }
 
-export async function verifyBuild(folder, plan, screen, output) {
+const CATEGORIES = ["visual", "interaction", "keyboard", "responsive", "state", "isolation"];
+
+/** Pages verified at once. Each scenario still gets its own fresh tab and window. */
+export function verifyConcurrency(value = process.env.PROTO_VERIFY_CONCURRENCY) {
+  if (value === undefined || value === "") return 6;
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 1 || count > 32)
+    throw new Error("PROTO_VERIFY_CONCURRENCY must be a whole number from 1 to 32.");
+  return count;
+}
+
+/** Run `work` over `items` with at most `limit` in flight; results keep item order. */
+export async function inPool(items, limit, work) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await work(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return results;
+}
+
+const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
+/** JSON with sorted keys, so one plan hashes the same however it was written. */
+function stable(value) {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+/** The runner's own code: a kit update that changes how checks run invalidates every checkpoint. */
+let runnerChecksum;
+function runner() {
+  runnerChecksum ??= sha(["./verify-screen.mjs", "./screen-verification.mjs", "./cdp/diff.mjs"]
+    .map(file => readFileSync(new URL(file, import.meta.url))).reduce((all, bytes) => Buffer.concat([all, bytes]), Buffer.alloc(0)));
+  return runnerChecksum;
+}
+/** One check's identity: the build, the scenario as run, its width and reference, the inventory it is judged against. */
+export function checkpointKey({ sourceChecksum, buildChecksum, inventory, scenario, viewport, reference }) {
+  const referenceChecksum = reference && existsSync(reference) ? sha(readFileSync(reference)) : null;
+  return sha(stable({ runner: runner(), sourceChecksum, buildChecksum, inventory, scenario, viewport, referenceChecksum }));
+}
+/** A passed result saved earlier for exactly this check, with its evidence still on disk and unchanged. */
+function resumed(file, key) {
+  try {
+    const saved = JSON.parse(readFileSync(file, "utf8"));
+    if (saved.key !== key || saved.result?.outcome !== "passed"
+        || !saved.result.evidence.every(path => path in saved.evidence)) return null;
+    for (const [path, checksum] of Object.entries(saved.evidence))
+      if (!existsSync(path) || sha(readFileSync(path)) !== checksum) return null;
+    return saved.result;
+  } catch {
+    return null;
+  }
+}
+
+/** One scenario at one width. A failure is run again once on its own, so a
+ *  renderer hiccup (screenshot timeout, closed target) does not fail the build;
+ *  both outcomes are kept. A check that passes on retry counts as passed. */
+export async function checkWithRetry(run) {
+  const attempt = async () => {
+    try {
+      return await run();
+    } catch (error) {
+      return [error.message];
+    }
+  };
+  const first = await attempt();
+  if (!first.length) return { problems: first };
+  const second = await attempt();
+  return {
+    problems: second,
+    attempts: [
+      { outcome: "failed", problems: first },
+      { outcome: second.length ? "failed" : "passed", problems: second },
+    ],
+  };
+}
+
+export async function verifyBuild(folder, plan, screen, output, options = {}) {
   if (!plan?.inventory || !Array.isArray(plan.scenarios))
     throw new Error("Supply the reference inventory and executable scenarios");
   validateStateInventory(plan.inventory);
   validateResponsivePlan(plan);
+  interactionBands(plan.inventory);
   captureProfileFor(plan);
-  for (const scenario of plan.scenarios) captureProfileFor(plan, scenario);
+  for (const scenario of plan.scenarios) {
+    captureProfileFor(plan, scenario);
+    if (!CATEGORIES.includes(scenario.category)) throw new Error("Unknown scenario category");
+    if (["interaction", "keyboard"].includes(scenario.category) && !scenario.steps?.length)
+      throw new Error("Controls need executable actions");
+    if (scenario.category === "keyboard" &&
+        (!scenario.steps.some((s) => s.kind === "key") || scenario.steps.some((s) => s.kind === "click")))
+      throw new Error("Keyboard checks must use keyboard input");
+  }
   const manifest = JSON.parse(
     readFileSync(join(folder, "prototype.json"), "utf8"),
   );
   if (manifest.viewport)
     throw new Error("Responsive starters must not fix the Frame viewport.");
   validateMapStates(manifest, plan.inventory);
-  mkdirSync(output, { recursive: true });
+  const sourceChecksum = screen.bundle_checksum;
+  const buildChecksum = screen.metadata.preparedBuild.checksum;
+  // Width-major, then plan order: the same report order however many lanes run.
+  const jobs = plan.scenarios
+    .flatMap((scenario, order) => widthsForScenario(plan.inventory, scenario).map(width => ({ scenario, order, width })))
+    .sort((a, b) => a.width - b.width || a.order - b.order);
+  for (const { scenario, width } of jobs)
+    if (!/^[a-zA-Z0-9_-]+$/.test(`${scenario.id}-${width}`))
+      throw new Error("Scenario IDs must be safe filenames");
+  const checkpoints = join(output, "checkpoints");
+  mkdirSync(checkpoints, { recursive: true });
   const server = await serveBuild(folder);
-  const scenarios = [];
+  const run = options.runScenario ?? runScenario;
+  let scenarios;
   try {
-    for (const width of widthsFor(plan.inventory))
-      for (const scenario of plan.scenarios) {
-        if (
-          ![
-            "visual",
-            "interaction",
-            "keyboard",
-            "responsive",
-            "state",
-            "isolation",
-          ].includes(scenario.category)
-        )
-          throw new Error("Unknown scenario category");
-        if (
-          ["interaction", "keyboard"].includes(scenario.category) &&
-          !scenario.steps?.length
-        )
-          throw new Error("Controls need executable actions");
-        if (
-          scenario.category === "keyboard" &&
-          (!scenario.steps.some((s) => s.kind === "key") ||
-            scenario.steps.some((s) => s.kind === "click"))
-        )
-          throw new Error("Keyboard checks must use keyboard input");
-        const viewport = { width, height: plan.height || 900 };
-        const id = `${scenario.id}-${width}`;
-        if (!/^[a-zA-Z0-9_-]+$/.test(id))
-          throw new Error("Scenario IDs must be safe filenames");
-        const evidence = join(output, id + ".png");
-        const capture = {};
-        const problems = await runScenario(
-          server.url,
-          { ...scenario, capture: captureProfileFor(plan, scenario) },
-          evidence,
-          viewport,
-          scenario.references?.[width],
-          capture,
-          plan.inventory,
-        );
-        scenarios.push({
-          id,
-          category: scenario.category,
-          target: scenario.target,
-          viewport,
-          capture,
-          ...(scenario.category === "responsive" ? { resizedFrom: resizeOrigin(width) } : {}),
-          outcome: problems.length ? "failed" : "passed",
-          problems,
-          evidence:
-            ["visual", "responsive"].includes(scenario.category)
-              && comparisonState(plan.inventory, scenario).kind === "source"
-              ? [evidence, scenario.references?.[width]].filter(Boolean)
-              : [evidence],
-        });
-      }
+    scenarios = await inPool(jobs, options.concurrency ?? verifyConcurrency(), async ({ scenario, width }) => {
+      const viewport = { width, height: plan.height || 900 };
+      const id = `${scenario.id}-${width}`;
+      const evidence = join(output, id + ".png");
+      const reference = scenario.references?.[width];
+      const effective = { ...scenario, capture: captureProfileFor(plan, scenario) };
+      const compared = ["visual", "responsive"].includes(scenario.category)
+        && comparisonState(plan.inventory, scenario).kind === "source";
+      const key = checkpointKey({ sourceChecksum, buildChecksum, inventory: plan.inventory, scenario: effective, viewport, reference });
+      const checkpoint = join(checkpoints, `${id}.json`);
+      const saved = resumed(checkpoint, key);
+      if (saved) return { ...saved, resumed: true };
+      const capture = {};
+      let tries = 0;
+      const { problems, attempts } = await checkWithRetry(async () => {
+        // Keep the failed first try's screenshot beside the retry's.
+        if (tries++ && existsSync(evidence)) copyFileSync(evidence, join(output, id + ".first-try.png"));
+        for (const key of Object.keys(capture)) delete capture[key];
+        return run(server.url, effective, evidence, viewport, reference, capture, plan.inventory);
+      });
+      const result = {
+        id,
+        category: scenario.category,
+        target: scenario.target,
+        viewport,
+        capture,
+        ...(scenario.category === "responsive" ? { resizedFrom: resizeOrigin(width) } : {}),
+        outcome: problems.length ? "failed" : "passed",
+        problems,
+        ...(attempts ? { attempts } : {}),
+        evidence: compared ? [evidence, reference].filter(Boolean) : [evidence],
+      };
+      const hashes = {};
+      for (const path of result.evidence) if (existsSync(path)) hashes[path] = sha(readFileSync(path));
+      writeFileSync(checkpoint, JSON.stringify({ key, result, evidence: hashes }, null, 2));
+      return result;
+    });
   } finally {
     await server.close();
   }
   const report = {
     version: VERSION,
-    sourceChecksum: screen.bundle_checksum,
-    buildChecksum: screen.metadata.preparedBuild.checksum,
+    sourceChecksum,
+    buildChecksum,
     inventory: plan.inventory,
     scenarios,
   };
