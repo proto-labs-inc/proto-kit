@@ -1,3 +1,6 @@
+import { writeSession } from "./cdp/session-context.mjs";
+import { existsSync } from "node:fs";
+import { withProcessLock } from "./process-lock.mjs";
 /**
  * Ports for the kit's dev servers, chosen so two of them never share
  * one. Two things went wrong before this file: a port was probed on
@@ -55,6 +58,14 @@ export function claimedPorts() {
     for (const workspace of dirs(join(codebase, "prototypes"))) {
       const port = readJson(join(workspace, "public", "prototype.json"))?.port;
       if (Number.isInteger(port)) claimed.add(port);
+    }
+    for (const index of dirs(join(codebase, "screens", "work"))) {
+      for (const version of dirs(index)) {
+        for (const workspace of dirs(version)) {
+          const port = readJson(join(workspace, "public", "prototype.json"))?.port;
+          if (Number.isInteger(port)) claimed.add(port);
+        }
+      }
     }
     for (const run of dirs(join(codebase, "run"))) {
       const spec = readJson(join(run, "spec.json"));
@@ -134,5 +145,43 @@ function answers(port, host) {
     socket.once("connect", () => done(true));
     socket.once("error", () => done(false));
     socket.once("timeout", () => done(false));
+  });
+}
+
+/** Reserve before a manifest or renderer is written, under one laptop-wide lock. */
+export async function reservePort({ owner, from = 5200, to = 5400 }) {
+  if (!owner) throw new Error("A port reservation needs its owning manifest path");
+  const record = join(protoHome(), "port-reservations.json");
+  return withProcessLock(`${record}.lock`, async () => {
+    let reservations = {};
+    try { reservations = JSON.parse(readFileSync(record, "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    for (const [key, reservation] of Object.entries(reservations)) {
+      if (existsSync(key)) continue;
+      try { process.kill(reservation.pid, 0); }
+      catch (error) { if (error.code === "ESRCH") delete reservations[key]; }
+    }
+    if (reservations[owner]) return reservations[owner].port;
+    const claimed = claimedPorts();
+    for (const reservation of Object.values(reservations)) claimed.add(reservation.port);
+    for (let port = from; port < to; port++) {
+      if (!claimed.has(port) && await portIsFree(port)) {
+        reservations[owner] = { port, pid: process.pid };
+        writeSession(record, reservations);
+        return port;
+      }
+    }
+    throw new Error(`No free reserved port between ${from} and ${to}`);
+  });
+}
+
+export async function releasePort(owner) {
+  const record = join(protoHome(), "port-reservations.json");
+  return withProcessLock(`${record}.lock`, async () => {
+    let reservations;
+    try { reservations = JSON.parse(readFileSync(record, "utf8")); }
+    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    delete reservations[owner];
+    writeSession(record, reservations);
   });
 }

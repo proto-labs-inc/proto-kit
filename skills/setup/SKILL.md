@@ -3,18 +3,21 @@ name: setup
 description: >-
   Connect a customer's computer and codebase, or prepare a customer's design
   system and starter screens from a live site as Proto staff. The setup document
-  explicitly selects connect, prepare or edit. Customer connection imports a design system when no staff assets are assigned, without reviewing screens; staff preparation needs no customer repository. Starts
+  explicitly selects connect, prepare, prepare-self or edit. Customer connection imports a design system when no staff assets are assigned, without reviewing screens; staff preparation needs no customer repository. Starts
   from "Set up Proto for" and continues in the active agent conversation.
   Also use when installing Proto or recovering its local connection records.
 ---
 
 # Setup
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 Setup has two explicit purposes: customer connection and staff preparation.
 For a customer, link the laptop, connect the repository and attach existing assets
 from the staff preparation codebase assigned to their email.
 For staff, link the staff laptop and prepare from the live site with no repository.
-Self-service customer setup imports only the design system. Never discover or prepare screens during self-service setup.
+Ordinary self-service connection (`connect`) imports only the design system. The explicit `prepare-self` purpose instead prepares the one customer-approved page and its design system without a repository.
 Staff preparation pauses for website coverage confirmation before preparing the library
 and reusable screens.
 It never starts a listener, binds a conversation, or waits for website commands.
@@ -82,9 +85,7 @@ Run `node <kit>/tools/link-laptop.mjs <app> <linkingCode> <account.id>`
 exactly once, substituting those three values from the document. The helper
 exchanges `linkingCode` for this laptop's token when needed, adds the token to
 `~/.proto/config.json`, and prints the linked identity and what linking
-changed. After a successful link (including reuse of an existing credential),
-it starts automatic debug reporting for the current chat if no reporter is
-already running. The code expires at `expiresAt`.
+changed. The code expires at `expiresAt`.
 If it says the code expired or was already used, tell the user to copy the
 setup prompt from the Proto site again and wait for the new prompt. The
 embedded setup document is JSON:
@@ -256,6 +257,26 @@ After the Machine steps, read `document.purpose`.
   its observed responsive layouts and mobile-only controls, repair small overflow
   defects, then visually inspect and verify the copy at matching widths.
   Mark the index complete; the cloud attaches it to the customer when they connect.
+- `prepare-self`: URL-only preparation, including an isolated guest workspace.
+  The preparation email is contact metadata, not account identity. Never look up
+  or connect an existing account by this email, and do not require website sign-in.
+  Use the account, team and linking code supplied in this document. Verify the connection and team
+  with `whoami`, linking with the setup document's one-time code if needed. Call
+  `get_site_preparation {codebase}` and require the returned indexId and product URL
+  to match `document.preparation`. Run `setup-codebase.mjs --codebase <id> --team
+  <team-id> --site <productUrl>`. Skip repository discovery and asset attachment.
+  Read the exact approved index and version from the document. Never discover other
+  pages, create another index, or ask for inventory review: the customer approved
+  this one URL on the website. Report the library phase on this index, import its
+  design system and finish through `finish-import`. Report the replicating phase
+  before copying the page. Capture the reference and fill only its missing screenshotKey
+  on the same inventory, preserving its approval. Use prepare-screen to copy and
+  verify this entry, including responsive layouts and interactions. Report real
+  screen build events and actual blockers through report_setup_action; clear blockers
+  when resolved. Upload immutable source, compiled build and verification evidence,
+  then mark this index complete. Resume the same index after interruption. A completed
+  index is verified and reported, never rebuilt automatically. Stop with the starter
+  ready: do not create, reserve, register, or publish a prototype.
 - `connect` (also the default for older documents): follow Codebase below, then
   Connection completion, which selects staff attachment or self-service import.
 - `edit` or a document naming `prototype`: follow Editing a prototype, preserving
@@ -448,13 +469,13 @@ browser. Set that up once per machine, here:
    the login is one-time.
 2. The document's `productUrl`, or saved `source.liveUrl`, is the product page to parse; with
    neither, ask the user for the URL of a page in their product. Run
-   `node tools/cdp/product-page.mjs '<productUrl>'` after starting the
-   Proto window. It reuses an open page of that product, navigates a
-   blank tab when no product page is open, and creates a background tab
-   only when Chrome has no tabs at all. If only another site is open,
-   ask the user to show the product in that window and retry; do not
-   treat the other site as the product. Use the command's returned
-   `url` as the actual page URL. Read that page (`evaluate`) for a
+   `node tools/cdp/product-page.mjs '<productUrl>' --codebase <codebase>
+   --run setup-library` after starting Proto Chrome. It acquires a window owned by
+   this setup run in the shared signed-in profile. Keep its `browserSession` path;
+   pass `--browser-session <browserSession>` to each independent source tool and
+   propagate `PROTO_BROWSER_SESSION` to child processes. Reuse only this owned
+   target on resume, never another build's same-origin page. The requested URL
+   must match before capture. Read the owned page (`evaluate`) for a
    signed-in marker: the user's name in a greeting or menu, an account
    control, no sign-in form. Use the debug port to inspect and interact
    with the product's page controls; do not drive Chrome's address bar

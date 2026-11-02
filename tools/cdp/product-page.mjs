@@ -1,21 +1,12 @@
 #!/usr/bin/env node
-// Prepare the product page in the dedicated Proto Chrome window.
-import { findOrOpenPage } from "./attach.mjs";
-
-const url = process.argv[2];
-if (!url) {
-  console.error("usage: node tools/cdp/product-page.mjs <product-url>");
-  process.exit(1);
-}
-
-try {
-  const result = await findOrOpenPage(url);
-  console.log(JSON.stringify({
-    url: result.tab.url,
-    targetId: result.tab.id,
-    action: result.created ? "opened" : result.navigated ? "navigated blank tab" : "reused",
-  }));
-} catch (error) {
-  console.error(error.message);
-  process.exit(1);
+import { acquireSourceSession, releaseSourceSession } from "./source-session.mjs";
+import { browserSessionPath, useBuildSession } from "./session-context.mjs";
+const args = process.argv.slice(2);
+const flag = name => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
+if (flag("--codebase") && flag("--run")) useBuildSession(flag("--codebase"), flag("--run"));
+if (!browserSessionPath()) throw new Error("usage: product-page.mjs <exact-url|release> --codebase <id> --run <runId> (or --browser-session <path>)");
+if (args[0] === "release") console.log(JSON.stringify({ released: await releaseSourceSession() }));
+else {
+  const result = await acquireSourceSession(args[0], Number(flag("--port") ?? 9333));
+  console.log(JSON.stringify({ url: result.tab.url, ...result.session, browserSession: browserSessionPath(), recovered: result.recovered }));
 }

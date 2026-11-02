@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { useBuildSession } from "./cdp/session-context.mjs";
 /**
  * Say why a component differs from the product, in concrete terms, so
  * a unit fixes the named value instead of guessing: for every state
@@ -657,6 +658,7 @@ const fail = (message) => {
 let target;
 let stopDev = () => {};
 if (options.build) {
+useBuildSession(codebase, options.build);
   const buildDir = buildFolder(codebase, options.build);
   const need = (name) => {
     const path = join(buildDir, name);
@@ -667,7 +669,7 @@ if (options.build) {
   const tree = need("tree.json");
   const dev = await ensureDevServer({ workspace: workspace.path, logPath: join(buildDir, "dev.log"), keep: true });
   stopDev = () => dev.stop();
-  target = { unitPath: join(workspace.path, "src", "parts", slug, "component.json"), appUrl: dev.url, liveMatch: liveMatchOf(tree.url), out: join(buildDir, "explain", slug) };
+  target = { unitPath: join(workspace.path, "src", "parts", slug, "component.json"), appUrl: dev.url, liveMatch: tree.url, out: join(buildDir, "explain", slug) };
 } else {
   const library = join(home, "library");
   const liveUrl = JSON.parse(readFileSync(join(home, "codebase.json"), "utf8")).source?.liveUrl;

@@ -79,6 +79,8 @@ ${structure}
 ## Styling
 
 ${styling}
+- Preserve the existing responsive rules as much as possible: inspect and reuse the source's breakpoints, fluid sizing, wrapping, overflow handling, and responsive visibility. Adapt them only where the requested direction requires it; do not turn a responsive component into a fixed-width mockup.
+- If the changed component repeats, apply the same change to every instance, preserving each instance's data and state. Unless the user explicitly limits the change to one instance, it must not affect only the selected occurrence. Update all occurrences within your module; tell the coordinator about occurrences outside your owned files so it can wire them to the same variant selection without you editing those files.
 
 ## What the page does not show
 
@@ -92,6 +94,8 @@ ready before running the capture command below. A stub or standalone mockup
 must never become a variant thumbnail. The coordinator must verify switching
 to your implementation in the running prototype before delivering the gallery;
 a successful capture alone does not prove that selection works.
+Have the coordinator verify the integrated variant at the existing narrow and
+wide layouts and confirm every repeated instance updates when switching variants.
 
 1. \`pnpm typecheck\` in the workspace; fix what it names.
 2. \`node ${join(KIT_TOOLS, "previews.mjs")} ${workspace} --only ${component}=${variant.id}\` pictures your variant in every preview state in about a second${multi ? ", every region separately" : ""}. Its output also lists${multi ? ", per region" : ""}:

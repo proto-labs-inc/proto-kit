@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { browserSessionPath, useBuildSession } from "./cdp/session-context.mjs";
+import { stopSessionRenderer } from "./cdp/headless.mjs";
 import {
   readFileSync,
   writeFileSync,
@@ -157,6 +159,7 @@ else if (command === "capture") {
   answer = { ...prepared, status: answer.screen.status };
 } else if (command === "verify" || command === "reverify") {
   const [screenId, planFile] = rest;
+  if (!browserSessionPath()) useBuildSession(codebase, `verify-${screenId}`);
   const { screen, buildDownloadUrl } = await invoke({ operation: "inspect", screenId });
   if (screen.codebase !== codebase || !buildDownloadUrl) throw new Error("Prepare this screen's compiled build first.");
   const cache = join(protoHome(), codebase, "screens", screenId);
@@ -179,9 +182,13 @@ else if (command === "capture") {
     }
     validateVerification(report, screen);
     answer = await invoke({ operation: command === "reverify" ? "reverify" : "finish", screenId, verification: report });
-  } finally { rmSync(temporary, { recursive: true, force: true }); }
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+    await stopSessionRenderer(browserSessionPath());
+  }
 } else if (command === "clone" || command === "prepare") {
   const [screenId, slug, briefId] = rest;
+  if (command === "clone") useBuildSession(codebase, briefId);
   const { screen, downloadUrl, buildDownloadUrl } = await invoke({
     operation: command === "clone" ? "download" : "inspect",
     screenId,
@@ -215,7 +222,8 @@ else if (command === "capture") {
       briefId,
       buildBytes,
     });
-    await smokeBuild(join(answer.path, "dist"), screen.initial_state);
+    try { await smokeBuild(join(answer.path, "dist"), screen.initial_state); }
+    finally { await stopSessionRenderer(browserSessionPath()); }
   }
 } else throw new Error("Unknown screen-index command.");
 console.log(JSON.stringify(answer, null, 2));

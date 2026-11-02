@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { useBuildSession } from "./cdp/session-context.mjs";
 /**
  * An exact copy of the reference page in the prototype workspace, in
  * one call, from the build's read: every leaf of the curation becomes a
@@ -107,6 +108,7 @@ setTimeout(() => {
 
 const home = join(protoHome(), codebase);
 const buildDir = join(home, "run", "builds", briefId);
+useBuildSession(codebase, briefId);
 const need = (name, hint) => {
   const path = join(buildDir, name);
   if (!existsSync(path)) fail(`${path} does not exist: ${hint}`);
@@ -122,7 +124,7 @@ if (workspace.screenIndex) {
 }
 const library = join(home, "library");
 const appUrl = `http://localhost:${workspace.port}`;
-const liveMatch = liveMatchOf(tree.url);
+const liveMatch = tree.url;
 const checksDir = join(buildDir, "checks");
 const partsDir = join(workspace.path, "src", "parts");
 const reporter = createReporter({ codebase, briefId, runDir: buildDir, sink: options.noSend ? "file" : "site" });

@@ -1,11 +1,17 @@
 ---
 name: edit-variant
-description: Edit one existing variant in a Proto prototype. Use when the prototype, variant set, and target variant already exist and the user wants that single variant changed. Do not use to create a set or add a new variant.
+description: Edit one or more existing variants in a Proto prototype in place. For iteration on an alternate or set of alternates, use judgment to choose in-place edits or new options based on user intent. Do not use to create a set or add a new variant.
 ---
 
 # Edit a variant
 
-Work only in the existing prototype workspace, variant set, and variant named
+First follow [Choose how to iterate](../../docs/variant-iteration.md).
+
+Alternates are mutable. Refine each targeted alternate in place with the same
+ID; update its source and preview without adding a replacement alternate or
+set. Keep the variant count unchanged unless the user also requests new options.
+
+Work only in the existing prototype workspace, variant set, and variants targeted
 by the request. This is an incremental edit: do not scaffold a prototype, run
 create-prototype or the full serve workflow, gather references, or register
 the prototype.
@@ -19,6 +25,9 @@ This order applies before writing preview metadata or delivering chat images.
 
 ## Make the edit
 
+Apply the steps below to each targeted variant when the request covers multiple
+alternates or a whole set. Preserve all variants outside that scope.
+
 Preserve the prototype's light and dark behavior. The rig supplies
 `data-proto-theme="light|dark"` and `.dark` on the document root. Use the
 imported token value for each theme rather than adding one-theme literal
@@ -29,7 +38,7 @@ colours, and verify the edited variant in both themes.
    references as design context; inspect relevant screenshots before editing
    and pass their paths, links, and notes to any builder. Do not gather new ones.
 2. Change only the target variant's module and scoped styles. Preserve its ID,
-   every sibling variant, preview state, component marker, URL behavior, and
+   every untargeted sibling variant, preview state, component marker, URL behavior, and
    shared design-system token unless the brief explicitly requires a related
    metadata change.
 3. If the target still lives in a shared file, extract only the touched

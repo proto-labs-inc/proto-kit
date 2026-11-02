@@ -1,3 +1,4 @@
+const release = { schemaVersion: 1, packages: { "@proto-labs-inc/rig-core": "0.3.1", "@proto-labs-inc/rig": "0.3.1", "@proto-labs-inc/rig-vue": "0.3.1", "@proto-labs-inc/wire": "0.3.0" } };
 import { randomBytes } from "node:crypto";
 import { isBase64, SCREEN_ARTIFACT_LIMIT } from "./screen-archive.mjs";
 import { widthsFor } from "./screen-verification.mjs";
@@ -25,6 +26,9 @@ import {
 } from "./screen-bundle.mjs";
 
 function fixture(t) {
+  // These prepared starters already use the current rig; cloning must not
+  // trigger a real dependency install or build in this portable-copy test.
+  const rigDependencies = { "@proto-labs-inc/rig": release.packages["@proto-labs-inc/rig"], "@proto-labs-inc/wire": release.packages["@proto-labs-inc/wire"] };
   const root = mkdtempSync(join(tmpdir(), "proto-screen-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, "source");
@@ -33,7 +37,7 @@ function fixture(t) {
     join(source, "package.json"),
     JSON.stringify({
       name: "original",
-      dependencies: {},
+      dependencies: rigDependencies,
       scripts: { dev: "vite" },
     }),
   );
@@ -124,8 +128,8 @@ test("fresh and cached copies have independent editable files and fresh identiti
   screen.index_id = "b7247cd5-15d8-47a0-a508-dd0e259108a6";
   screen.source_url = "https://source.invalid/users";
   screen.metadata.verification = {
-    version: 3, sourceChecksum: screen.bundle_checksum, buildChecksum: screen.metadata.preparedBuild.checksum,
-    inventory: { sourceUrl: screen.source_url, capturedAt: new Date().toISOString(), controls: [], states: ["default"], breakpoints: [] },
+    version: 4, sourceChecksum: screen.bundle_checksum, buildChecksum: screen.metadata.preparedBuild.checksum,
+    inventory: { sourceUrl: screen.source_url, capturedAt: new Date().toISOString(), controls: [], states: [{ id: "default", kind: "source" }], breakpoints: [] },
     scenarios: widthsFor({ breakpoints: [] }).flatMap(width => ["visual","responsive","state","isolation"].map(category => ({
       id: `${category}-${width}`, category, target: "default", viewport: {width,height:900}, ...(category === "responsive" ? { resizedFrom: width < 1024 ? 1440 : 390 } : {}), outcome: "passed", problems: [],
       evidence: [`screen-indexes/${screen.index_id}/${"a".repeat(64)}.png`],
@@ -133,6 +137,7 @@ test("fresh and cached copies have independent editable files and fresh identiti
   };
   const one = {
     buildBytes,
+    resolveRigRelease: async () => release,
     destination: join(root, "one"),
     slug: "one",
     codebase: "example",
@@ -141,6 +146,7 @@ test("fresh and cached copies have independent editable files and fresh identiti
   };
   const two = {
     buildBytes,
+    resolveRigRelease: async () => release,
     destination: join(root, "two"),
     slug: "two",
     codebase: "example",

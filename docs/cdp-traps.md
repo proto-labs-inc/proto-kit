@@ -99,3 +99,20 @@ Traps we hit, so you don't:
 - The library app's stylesheets set some inherited properties on tags themselves: preflight's `strong { font-weight: bolder }`, `kbd { font-family: monospace }`, the UA's `a { cursor: pointer }`. A component's `<strong>` whose product weight equals its parent's inherited nothing in the library and came out bold; a `<kbd>` came out in the monospace face three pixels taller. The baseline measures which inherited properties each tag sets on its own (`own` in `appBaseline`) and the writer states those outright, whatever the parent has.
 - The library app reloaded every open page five times per component the import wrote: Vite takes a new file under src/ that is not a module (notes.md, a font, a picture) as a reason for a full reload, and a new folder that changes an `import.meta.glob` as another. Every render tab the checks and fits held open in the headless Chrome died with "Inspected target navigated or closed" or a null document. The library's Vite config now ignores those files in its watcher and the render route accepts its globs' updates as hot updates, as the prototype workspace template already did.
 - With a dozen lanes writing at once the dev server reloads the render route mid-mount or answers late, and a look whose fit render did not come back kept its computed sizes only (a 16px icon span at the line box's 20px). The fit renders a look twice before giving up, and the writer names what it could not fit (`unfitted`) so the import log says so.
+
+
+## Concurrent prototype creation
+
+Source identity is an owned browser session, not a URL selector. Each build or
+screen-preparation run owns one source window in the shared signed-in profile.
+Acquire it with product-page and pass its session path to independent helpers.
+Build-aware tools derive that path from the codebase/run identity. Full URLs retain
+query and fragment. Login redirects are not a substitute reference screen.
+
+The kit CDP connection holds the source-interaction lease until close. Do not
+nest two source connections: close the first before asking for another. Headless
+renderers, resting-frame caches and screenshot metadata are scoped to the run;
+source document and session generation are part of cache validity. A live lock
+owner cannot be evicted merely because a capture is slow. Success and explicit
+cancellation close owned targets only; interrupted or failed runs keep their
+windows. Shared cookies and storage still represent one account.

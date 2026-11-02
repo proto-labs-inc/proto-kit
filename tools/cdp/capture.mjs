@@ -19,6 +19,7 @@ import { cropPng, decodePng, encodePng, scalePng } from "./png.mjs";
 // device pixels per CSS px the file should have (default: the tab's
 // own devicePixelRatio).
 export async function stableShot(page, probeExpr, outPath, clip) {
+  const document = await evaluate(page, "JSON.stringify([location.href, performance.timeOrigin])");
   for (let attempt = 0; attempt < 15; attempt++) {
     const before = await evaluate(page, probeExpr);
     await new Promise((r) => setTimeout(r, 350));
@@ -28,6 +29,7 @@ export async function stableShot(page, probeExpr, outPath, clip) {
     const shot = await page.send("Page.captureScreenshot", { format: "png", fromSurface: true });
     const after = await evaluate(page, probeExpr);
     if (after !== before) continue;
+    if (await evaluate(page, "JSON.stringify([location.href, performance.timeOrigin])") !== document) throw new Error("Source navigated during capture; repeat this inspection stage");
     let image = Buffer.from(shot.data, "base64");
     if (clip) {
       let decoded = cropPng(decodePng(image), {
@@ -58,6 +60,7 @@ export const rectOf = (selector) =>
  * tab of the visible window (see stableShot).
  */
 export async function stableClip(page, probeExpr, outPath, clip) {
+  const document = await evaluate(page, "JSON.stringify([location.href, performance.timeOrigin])");
   for (let attempt = 0; attempt < 15; attempt++) {
     const before = await evaluate(page, probeExpr);
     await new Promise((r) => setTimeout(r, 100));
@@ -66,6 +69,7 @@ export async function stableClip(page, probeExpr, outPath, clip) {
     const shot = await page.send("Page.captureScreenshot", { format: "png", fromSurface: true, clip });
     const after = await evaluate(page, probeExpr);
     if (after !== before) continue;
+    if (await evaluate(page, "JSON.stringify([location.href, performance.timeOrigin])") !== document) throw new Error("Source navigated during capture; repeat this inspection stage");
     writeFileSync(outPath, Buffer.from(shot.data, "base64"));
     return JSON.parse(before);
   }

@@ -16,8 +16,10 @@ test('release snapshots preserve source, reuse retries, advance without manual b
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
   git('init', '-q'); git('config', 'user.email', 'test@example.test'); git('config', 'user.name', 'Test');
-  for (const path of ['.codex-plugin', '.cursor-plugin']) mkdirSync(join(cwd, path));
+  for (const path of ['.codex-plugin', '.cursor-plugin', '.claude-plugin']) mkdirSync(join(cwd, path));
   for (const path of ['.codex-plugin/plugin.json', '.cursor-plugin/plugin.json', 'plugin.json']) writeFileSync(join(cwd, path), JSON.stringify({ name: 'proto', version: '0.1.0+codex.20261001000000' }));
+  // As in the kit's source, Claude Code's manifest names no version until a release stamps one.
+  writeFileSync(join(cwd, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'proto' }));
   writeFileSync(join(cwd, 'code.txt'), 'one'); git('add', '.'); git('commit', '-qm', 'first');
   const remote = join(cwd, 'remote.git');
   git('init', '--bare', '-q', remote);
@@ -27,6 +29,7 @@ test('release snapshots preserve source, reuse retries, advance without manual b
   git('push', '-q', remote, `${first.commit}:refs/heads/release`);
   assert.equal(git('show', `${first.commit}:code.txt`), 'one');
   assert.equal(JSON.parse(git('show', `${first.commit}:plugin.json`)).version, first.version);
+  assert.equal(JSON.parse(git('show', `${first.commit}:.claude-plugin/plugin.json`)).version, first.version, 'Claude Code reports the release version, not a commit');
   assert.equal(JSON.parse(git('show', `${source}:plugin.json`)).version, '0.1.0+codex.20261001000000');
   assert.equal(prepareRelease({ cwd, source, previous: first.commit, runId: 2 }).commit, first.commit);
   writeFileSync(join(cwd, 'code.txt'), 'two'); git('add', 'code.txt'); git('commit', '-qm', 'second, no version bump');
@@ -54,8 +57,9 @@ test('a branch release records its branch and survives a rebase without force pu
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
   git('init', '-q'); git('config', 'user.email', 'test@example.test'); git('config', 'user.name', 'Test');
-  for (const path of ['.codex-plugin', '.cursor-plugin']) mkdirSync(join(cwd, path));
+  for (const path of ['.codex-plugin', '.cursor-plugin', '.claude-plugin']) mkdirSync(join(cwd, path));
   for (const path of ['.codex-plugin/plugin.json', '.cursor-plugin/plugin.json', 'plugin.json']) writeFileSync(join(cwd, path), JSON.stringify({ name: 'proto', version: '0.1.0+codex.20261001000000' }));
+  writeFileSync(join(cwd, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'proto' }));
   writeFileSync(join(cwd, 'code.txt'), 'base'); git('add', '.'); git('commit', '-qm', 'base');
   const base = git('rev-parse', 'HEAD');
   const remote = join(cwd, 'remote.git'); git('init', '--bare', '-q', remote);

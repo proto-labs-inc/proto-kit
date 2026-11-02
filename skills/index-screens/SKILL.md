@@ -5,6 +5,9 @@ description: Discover and review screenshots during codebase setup, then prepare
 
 # Screenshot-first screen indexing
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 Use the installed kit root for `tools/…`. All work happens in this conversation;
 never start a listener or wait for website commands. Website review is a real
 approval boundary, including when setup was requested end to end.
@@ -114,7 +117,7 @@ Never create a replacement screen or reconstruct the product to backfill a build
 ## Rig compatibility when copying starters
 
 Cloning preserves the verified starter artifacts. If the independent copy pins
-an older rig than this kit, `screen-bundle.mjs` updates its rig dependencies,
+an older rig than the connected cloud app advertises, `screen-bundle.mjs` updates its rig dependencies,
 installs them and rebuilds that copy before its normal smoke check. This is the
 exception to the unchanged-copy no-install/no-build fast path. Copies already
 on the current rig keep the prepared build fast path.

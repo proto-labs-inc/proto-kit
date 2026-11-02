@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+import { browserArguments } from "./cdp/session-context.mjs";
 /** Capture conservative live-source evidence; never infer absence from one viewport. */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { connect, evaluate } from "./cdp/cdp.mjs";
-import { listPages } from "./cdp/attach.mjs";
+import { findPage } from "./cdp/attach.mjs";
 import { widthsFor } from "./screen-verification.mjs";
 
 export function queryKey(query) {
@@ -49,7 +50,7 @@ export async function captureContainerObservation(page, css, state) {
 }
 
 export function hasCompleteAbsenceEvidence(plan, query) {
-  const states = plan.inventory?.states;
+  const states = plan.inventory?.states?.filter(state => state.kind === "source").map(state => state.id);
   if (!Array.isArray(states) || !states.length || !query.source || !query.selectors?.length) return false;
   const observations = plan.containerObservations;
   if (!Array.isArray(observations)) return false;
@@ -65,12 +66,12 @@ export function hasCompleteAbsenceEvidence(plan, query) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [url, cssFile, state, output, port = "9333"] = process.argv.slice(2);
+  const [url, cssFile, state, output, port = "9333"] = browserArguments();
   if (!url || !cssFile || !state || !output) throw new Error("usage: container-applicability.mjs <exact-live-url> <responsive-css.json> <state> <observations.json> [cdp-port]");
   const css = JSON.parse(readFileSync(cssFile, "utf8"));
-  const tabs = (await listPages(Number(port))).filter(tab => tab.url === url);
-  if (tabs.length !== 1) throw new Error("Select one existing tab at the exact live URL.");
-  const page = await connect(tabs[0].webSocketDebuggerUrl);
+  const tab = await findPage(url, Number(port));
+  if (!tab) throw new Error("Source not found; supply --browser-session");
+  const page = await connect(tab.webSocketDebuggerUrl);
   try {
     const observation = await captureContainerObservation(page, css, state);
     const observations = existsSync(output) ? JSON.parse(readFileSync(output, "utf8")) : [];

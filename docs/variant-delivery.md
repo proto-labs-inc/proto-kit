@@ -3,6 +3,18 @@
 For passes that create or change variants, use this order. References-only
 passes do not implement variants or produce variant thumbnails.
 
+Preserve the existing responsive rules as much as possible: reuse the source's
+breakpoints, fluid sizing, wrapping, overflow handling, and responsive visibility.
+Adapt them only where the requested direction requires it, and check the result
+at the existing narrow and wide layouts.
+
+When the changed component repeats, apply the selected variant consistently to
+every instance throughout the prototype, not just the selected occurrence.
+Inspect its usages before implementation and use shared rendering where possible.
+Keep each instance's own data and state. Unless the user explicitly limits the
+change to one instance, the coordinator must wire all occurrences to the same
+variant selection and verify they all update when switching variants.
+
 1. Implement each variant in its source module and wire it into the actual
    prototype component through the rig's variant selection. Register its
    identity and required ancestors with the guarded manifest writer so it can

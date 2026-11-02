@@ -51,6 +51,12 @@ function update(workspace, change) {
     const next = change(readPublishStatus(workspace));
     if (!next) return null;
     writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+    if (next.requestId) {
+      const requestFile = join(directory, `publish-request-${next.requestId}.json`);
+      const requestTemporary = `${temporary}.request`;
+      writeFileSync(requestTemporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+      renameSync(requestTemporary, requestFile);
+    }
     renameSync(temporary, publishStatusPath(workspace));
     return next;
   } finally {
@@ -61,15 +67,17 @@ function update(workspace, change) {
 
 /** The automatic publisher passes its attempt to its upload child. The parent
  * stays alive through building and upload, so its pid owns that entire attempt. */
-export function startPublishAttempt(workspace, attemptId = null) {
+export function startPublishAttempt(workspace, attemptId = null, requestId = null) {
+  if (requestId !== null && (typeof requestId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(requestId))) throw new Error("Invalid publication request ID");
   return update(workspace, (current) => {
     if (attemptId) {
       if (current?.attemptId !== attemptId || current.status !== "publishing") {
         throw new Error("This publishing attempt was replaced; run publishing again");
       }
+      if (requestId && current.requestId !== requestId) throw new Error("This publishing attempt belongs to another request");
       return current;
     }
-    return { version: 1, attemptId: randomUUID(), status: "publishing", startedAt: new Date().toISOString(), pid: process.pid };
+    return { ...(requestId ? { requestId } : {}), version: 1, attemptId: randomUUID(), status: "publishing", startedAt: new Date().toISOString(), pid: process.pid };
   });
 }
 

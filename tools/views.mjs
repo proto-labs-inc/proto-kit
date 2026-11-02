@@ -1,3 +1,5 @@
+import { browserSessionPath, readSession } from "./cdp/session-context.mjs";
+import { dirname } from "node:path";
 /**
  * The views a prototype has, from its manifest, and the page-side
  * reads the checks share: check-states.mjs loads every view, previews.mjs
@@ -51,7 +53,10 @@ export function viewsOf(manifest, appUrl) {
  * reuses it instead of relaunching; the common Retina display otherwise.
  */
 export function launchedDisplayOr(viewport) {
-  const path = join(protoHome(), "chrome-headless", "display.json");
+  const session = browserSessionPath();
+  const source = readSession(session);
+  if (source?.display) return source.display;
+  const path = session ? join(dirname(session), "chrome-headless", "display.json") : join(protoHome(), "chrome-headless", "display.json");
   if (existsSync(path)) {
     try {
       return JSON.parse(readFileSync(path, "utf8"));

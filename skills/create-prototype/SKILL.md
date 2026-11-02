@@ -5,6 +5,9 @@ description: Build a new prototype from your product's own code in a single dire
 
 # Create a prototype
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 A prototype is an exact copy of one screen of the user's product with
 the brief's change built on top of it: a standalone Vite app in
 `~/.proto/<codebase>/prototypes/<slug>/`, naked except for the rig (the
@@ -104,8 +107,9 @@ used the wrong display and disturbed the checks running beside them).
    decline, read the link in a browser. Only go straight to the browser when
    neither a callable connector nor a matching installable plugin exists.
    **Then sketch first** (`docs/sketch.md`) when `brief.inputs.sketch` is
-   true (the person chose "Sketch it first?"): show
-   the person references within a minute, wireframe the directions they
+   true (the person chose "Sketch it first?"): show references only when
+   explicitly requested (including `brief.inputs.references: true`), otherwise
+   start with wireframes. Wireframe the directions they
    steer you to, and build only once they press Build this (or skip).
    Do this before any title, slug, copy or serving: the sketch decides
    what is built. `get_brief`'s `sketch.spec` is the committed sketch;
@@ -137,15 +141,18 @@ used the wrong display and disturbed the checks running beside them).
    from Build. Capture, curation, replication, and the copy-quality gate all
    report `copy`; report `build` only after the gate allows the requested
    change. The live URL is the visual source of truth.
-   Before opening a browser or tab, inspect readable existing tabs in the
-   in-app browser, the user's Chrome, and Proto Chrome on port 9333. Prefer an
-   exact `referenceUrl` match, then the same path, then the same origin, and
-   reuse a signed-in tab that provides the DOM and capture access needed. Only
-   start Proto Chrome or open a duplicate after those checks; ask the user to
-   sign in only when no readable context has a usable session. If the URL still
-   cannot be read, stop rather than inventing the page from source or memory.
+   Acquire this build's source window with
+   `node tools/cdp/product-page.mjs '<referenceUrl>' --codebase <id> --run <briefId>`.
+   This starts Proto Chrome when needed and creates one owned window in its shared
+   signed-in profile. Keep the returned `browserSession` path. Never reuse another
+   build's window, choose a tab by origin, or navigate an unrelated existing tab.
+   For standalone inspection commands pass `--browser-session <browserSession>`;
+   for custom CDP scripts set `PROTO_BROWSER_SESSION` to that path and use the kit's
+   `connect` helper so source interactions hold the session lease. Do not nest two
+   connections to the owned source tab; close one before opening the next.
+   Ask for sign-in only in this owned window when the exact URL redirects to login.
    `node tools/proto-build.mjs <briefId> --codebase <id> --page
-   <referenceUrl substring> --slug <slug> --title "<title>"`.
+   '<complete-referenceUrl>' --slug <slug> --title "<title>"`.
    It **freezes** the page (the default, `--copy freeze`): it reads the
    page, names its boxes from the read without stopping, scaffolds the
    workspace, and lifts the rendered page into it as it is: the DOM after
@@ -270,6 +277,10 @@ used the wrong display and disturbed the checks running beside them).
      backdrop with its shading accounted for. The
      rig owns the URL (`?state=<id>`); wire the product's own controls to
      move between states. Hover and focus are CSS, not states.
+     The “Not included” fallback for destinations outside the prototype is
+     also excluded from `public/prototype.json`'s `states` array and the state
+     map. Preserve its local navigation, direct URL and working return action;
+     keep boundary verification states in the verification inventory only.
    - Mock data reads as real (real names, real-looking numbers and
      dates); the source app's live data only when `useRealData` is true.
    - Carry both imported themes into the prototype. The rig sets
@@ -401,7 +412,7 @@ prototype or library under `~/.proto` claims, in `vite.config.ts` and
 `public/__proto-workspace.json`, which every tool reads back from the
 port before rendering in it; the page's tokens, fonts and body base in
 `src/`; Tailwind when the source uses it; `pnpm install` from the
-shared store. The rig is a dependency the template pins to one exact
+shared store. The rig is a dependency the connected cloud app pins to one exact
 version: `@proto-labs-inc/rig` (React) or `@proto-labs-inc/rig-vue`
 (Vue), with `@proto-labs-inc/wire` for the manifest's types, all from
 npm. Never vendor the rig or change its version by hand;
@@ -439,7 +450,21 @@ copying all components.
 ## Rig compatibility when copying starters
 
 Cloning preserves the verified starter artifacts. If the independent copy pins
-an older rig than this kit, `screen-bundle.mjs` updates its rig dependencies,
+an older rig than the connected cloud app advertises, `screen-bundle.mjs` updates its rig dependencies,
 installs them and rebuilds that copy before its normal smoke check. This is the
 exception to the unchanged-copy no-install/no-build fast path. Copies already
 on the current rig keep the prepared build fast path.
+
+## Source-window lifecycle
+
+Build-aware tools restore the session from codebase and brief ID; child processes
+inherit it. Pass the browser-session path to any independently launched helper.
+A closed source window is recreated only for this run. Repeat interrupted source
+inspection after recovery; do not reuse snapshots or DOM selectors from the old
+generation. `proto-build` repeats unfinished inspection on resume. Completed copies retain
+their immutable reference evidence and implementation; new live captures use the
+new source generation.
+Successful publication closes this build's owned source tab and renderer. After
+explicit cancellation use `node tools/cdp/product-page.mjs release --codebase <id>
+--run <briefId>`. Failure and interruption retain the window. Never quit the shared
+Chrome process or close an entire window containing tabs you did not create.

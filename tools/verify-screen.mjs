@@ -12,7 +12,7 @@ import { resolve, join, extname } from "node:path";
 import { headlessPage } from "./cdp/headless.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { diffPngs } from "./cdp/diff.mjs";
-import { VERSION, widthsFor, resizeOrigin } from "./screen-verification.mjs";
+import { VERSION, widthsFor, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
 const mime = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -23,14 +23,34 @@ const mime = {
   ".woff2": "font/woff2",
   ".jpg": "image/jpeg",
 };
+/** The Frame origin each served build may reach, by the build's address. */
+const runtimeOrigins = new Map();
+
+/** Where the build's rig fetches its runtime: the Frame origin the build's
+ *  prototype.json records (rig 0.3 and later). Null when it records none. */
+export function runtimeSource(folder) {
+  const manifest = join(folder, "prototype.json");
+  if (!existsSync(manifest)) return null;
+  const configured = JSON.parse(readFileSync(manifest, "utf8")).frameOrigin;
+  if (typeof configured !== "string") return null;
+  const url = new URL(configured);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.origin !== configured || (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)))
+    throw new Error(`Invalid frameOrigin in prototype.json: ${configured}`);
+  return url.origin;
+}
+
 export async function serveBuild(folder) {
   const root = resolve(folder);
+  // The build may request only itself and the Frame origin its rig loads the runtime from.
+  const runtime = runtimeSource(root);
+  const connect = runtime ? `connect-src 'self' ${runtime}` : "connect-src 'self'";
   const server = createServer((req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
       res.setHeader(
         "Content-Security-Policy",
-        "connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'",
+        `${connect}; form-action 'self'; object-src 'none'; base-uri 'self'`,
       );
       if (url.pathname === "/__proto_verify_frame") {
         const target = url.searchParams.get("target") || "/";
@@ -59,10 +79,13 @@ export async function serveBuild(folder) {
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = `http://127.0.0.1:${server.address().port}`;
+  if (runtime) runtimeOrigins.set(address, runtime);
   return {
-    url: `http://127.0.0.1:${server.address().port}`,
+    url: address,
     close: () =>
       new Promise((resolve) => {
+        runtimeOrigins.delete(address);
         server.close(resolve);
         server.closeAllConnections();
       }),
@@ -277,6 +300,7 @@ export async function runScenario(
   viewport,
   screenshotReference,
   captureMetadata = {},
+  inventory,
 ) {
   const capture = captureProfileFor({}, scenario);
   captureMetadata.profile = capture;
@@ -324,6 +348,7 @@ export async function runScenario(
       let operation;
       if (
         address.origin === new URL(url).origin ||
+        address.origin === runtimeOrigins.get(new URL(url).origin) ||
         ["data:", "blob:"].includes(address.protocol)
       )
         operation = page.send("Fetch.continueRequest", {
@@ -355,7 +380,7 @@ export async function runScenario(
     );
     await until(page, `window.messages?.some(m=>m.type==='hello')`);
     if (scenario.category === "keyboard") {
-      await page.send("Page.bringToFront");
+      await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
       await evaluate(
         page,
         "document.querySelector('iframe').contentWindow.focus()",
@@ -445,6 +470,8 @@ export async function runScenario(
     const shot = await page.send("Page.captureScreenshot", { format: "png" });
     writeFileSync(out, Buffer.from(shot.data, "base64"));
     if (["visual", "responsive"].includes(scenario.category)) {
+      const state = inventory ? comparisonState(inventory, scenario) : { kind: "source" };
+      if (state.kind === "prototype-boundary") return problems;
       if (!screenshotReference) throw new Error("Missing reference screenshot");
       const diff = await diffPngs(screenshotReference, out);
       if (
@@ -477,14 +504,25 @@ export function validateResponsivePlan(plan) {
       throw new Error("Inspect and document unresolved CSS: " + finding);
   for (const query of css.containerQueries || []) {
     if (hasCompleteAbsenceEvidence(plan, query)) continue;
-    const scenarios = plan.scenarios.filter(s => s.category === "responsive" && s.containerQuery === query.condition);
+    const scenarios = plan.scenarios.filter(s => s.category === "responsive" && s.containerQuery === query.condition
+      && plan.inventory.states.some(state => state.id === s.target && state.kind === "source"));
     if (!scenarios.some(s => s.steps?.some(step => step.kind === "resize-container")))
       throw new Error("Add explicit container-size scenarios for " + query.condition);
   }
 }
+export function validateMapStates(manifest, inventory) {
+  for (const state of manifest.states || []) {
+    const declared = inventory.states.find(entry => entry.id === state.id);
+    if (!declared) throw new Error(`Missing declared state: ${state.id}`);
+    if (declared.kind === "prototype-boundary")
+      throw new Error(`Prototype boundary ${state.id} must not appear in prototype.json states (the state map). Keep it in the verification inventory only.`);
+  }
+}
+
 export async function verifyBuild(folder, plan, screen, output) {
   if (!plan?.inventory || !Array.isArray(plan.scenarios))
     throw new Error("Supply the reference inventory and executable scenarios");
+  validateStateInventory(plan.inventory);
   validateResponsivePlan(plan);
   captureProfileFor(plan);
   for (const scenario of plan.scenarios) captureProfileFor(plan, scenario);
@@ -493,9 +531,7 @@ export async function verifyBuild(folder, plan, screen, output) {
   );
   if (manifest.viewport)
     throw new Error("Responsive starters must not fix the Frame viewport.");
-  for (const state of manifest.states || [])
-    if (!plan.inventory.states.includes(state.id))
-      throw new Error(`Missing declared state: ${state.id}`);
+  validateMapStates(manifest, plan.inventory);
   mkdirSync(output, { recursive: true });
   const server = await serveBuild(folder);
   const scenarios = [];
@@ -537,6 +573,7 @@ export async function verifyBuild(folder, plan, screen, output) {
           viewport,
           scenario.references?.[width],
           capture,
+          plan.inventory,
         );
         scenarios.push({
           id,
@@ -549,6 +586,7 @@ export async function verifyBuild(folder, plan, screen, output) {
           problems,
           evidence:
             ["visual", "responsive"].includes(scenario.category)
+              && comparisonState(plan.inventory, scenario).kind === "source"
               ? [evidence, scenario.references?.[width]].filter(Boolean)
               : [evidence],
         });

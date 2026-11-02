@@ -1,4 +1,5 @@
 import { upgradeRig } from "./update-rig.mjs";
+import { fetchRigRelease } from "./rig-release.mjs";
 import { SCREEN_ARTIFACT_LIMIT, SCREEN_EXPANDED_LIMIT, isBase64 } from "./screen-archive.mjs";
 import { validateVerification } from "./screen-verification.mjs";
 import { createHash, randomBytes } from "node:crypto";
@@ -15,7 +16,7 @@ import {
 } from "node:fs";
 import { join, dirname, resolve, relative, posix } from "node:path";
 import { unpackScreenBuild } from "./screen-build.mjs";
-import { pickPort } from "./ports.mjs";
+import { reservePort } from "./ports.mjs";
 
 const LIMIT = SCREEN_EXPANDED_LIMIT;
 const EXCLUDED =
@@ -160,7 +161,7 @@ export function unpackScreen(bytes, checksum, destination) {
 export async function cloneScreen(
   bytes,
   screen,
-  { destination, slug, codebase, briefId, port, buildBytes },
+  { destination, slug, codebase, briefId, port, buildBytes, resolveRigRelease = fetchRigRelease },
 ) {
   validateVerification(screen.metadata?.verification, screen);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug) || !briefId)
@@ -179,7 +180,7 @@ export async function cloneScreen(
         .port,
     };
   }
-  const selectedPort = port ?? (await pickPort({ from: 5173, to: 5999 }));
+  const selectedPort = port ?? (await reservePort({ owner: join(destination, "public", "prototype.json"), from: 5173, to: 5999 }));
   const staging = `${destination}.clone-${randomBytes(6).toString("hex")}`;
   try {
     const prepared = screen.metadata?.preparedBuild;
@@ -250,7 +251,7 @@ export async function cloneScreen(
     );
     // Old prepared builds embed the old rig. Upgrade the independent copy,
     // leaving the verified starter artifacts untouched. Current builds stay fast.
-    upgradeRig(staging);
+    upgradeRig(staging, { release: await resolveRigRelease() });
     mkdirSync(dirname(destination), { recursive: true });
     renameSync(staging, destination);
     return {

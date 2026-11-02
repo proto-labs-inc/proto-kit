@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { updatePlugin } from './update-plugin.mjs';
 const v = '0.1.0+codex.20261007220000';
 function put(root, version = v) { mkdirSync(join(root, '.codex-plugin'), { recursive: true }); writeFileSync(join(root, '.codex-plugin/plugin.json'), JSON.stringify({ version })); }
-for (const host of ['codex', 'claude']) test(`${host} migrates local registration and verifies the actual copy`, () => {
+for (const host of ['codex', 'claude']) test(`${host} updates its supported registration and verifies the actual copy`, () => {
   const home = mkdtempSync(join(tmpdir(), 'proto-test-')); const calls = [];
   const root = host === 'codex' ? join(home, '.codex/plugins/cache/proto-kit/proto', v) : join(home, 'claude-installed');
   put(root);
@@ -15,7 +15,7 @@ for (const host of ['codex', 'claude']) test(`${host} migrates local registratio
     const run = (cmd, args) => {
       calls.push([cmd, ...args]);
       if (cmd === 'git' && args[0] === 'clone') put(args.at(-1));
-      if (args.join(' ') === 'plugin marketplace list --json') return JSON.stringify(host === 'codex' ? { marketplaces: [{ name: 'proto-kit', marketplaceSource: { sourceType: 'local' } }] } : [{ name: 'proto-kit', source: 'directory' }]);
+      if (args.join(' ') === 'plugin marketplace list --json') return JSON.stringify(host === 'codex' ? { marketplaces: [{ name: 'proto-kit', marketplaceSource: { sourceType: 'git' } }] } : [{ name: 'proto-kit', source: 'directory' }]);
       if (args[1] === 'list') return JSON.stringify(host === 'codex' ? { installed: [{ pluginId: 'proto@proto-kit', version: v }] } : [{ id: 'proto@proto-kit', installPath: root }]);
       return '';
     };
@@ -24,6 +24,31 @@ for (const host of ['codex', 'claude']) test(`${host} migrates local registratio
     assert.ok(calls.some(c => c.join(' ').includes(host === 'codex' ? '--ref release' : 'proto-kit#release')));
     assert.equal(calls.some(c => c.includes('main')), false);
   } finally { rmSync(home, { recursive: true, force: true }); }
+});
+test('Codex preserves local and unverifiable registrations before downloading or mutating', () => {
+  const registrations = [
+    { marketplaceSource: { sourceType: 'local', source: '/local/proto-kit' } },
+    {},
+    { marketplaceSource: { sourceType: 'unknown' } },
+  ];
+  for (const registration of registrations) {
+    const home = mkdtempSync(join(tmpdir(), 'proto-test-'));
+    const codexHome = join(home, '.codex');
+    const root = join(codexHome, 'plugins/cache/proto-kit/proto', v);
+    const calls = [];
+    put(root);
+    try {
+      const run = (cmd, args) => {
+        calls.push([cmd, ...args]);
+        if (cmd === 'git' && args[0] === 'clone') put(args.at(-1));
+        if (args.join(' ') === 'plugin marketplace list --json') return JSON.stringify({ marketplaces: [{ name: 'proto-kit', ...registration }] });
+        if (args[1] === 'list') return JSON.stringify({ installed: [{ pluginId: 'proto@proto-kit', version: v }] });
+        return '';
+      };
+      assert.throws(() => updatePlugin('codex', { run, home, codexHome }), /local source; preserved|Cannot verify the Proto marketplace source/);
+      assert.deepEqual(calls, [['codex', 'plugin', 'marketplace', 'list', '--json']]);
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  }
 });
 for (const host of ['codex', 'claude']) test(`${host} installs a branch build from preview/<branch>`, () => {
   const home = mkdtempSync(join(tmpdir(), 'proto-test-')); const calls = [];
@@ -80,8 +105,8 @@ test('unsafe branch names are refused before anything runs', () => {
 });
 test('unavailable release fails before any host mutation', () => {
   const calls = [];
-  assert.throws(() => updatePlugin('codex', { run(cmd) { calls.push(cmd); throw new Error('offline'); } }), /offline/);
-  assert.deepEqual(calls, ['git']);
+  assert.throws(() => updatePlugin('codex', { run(cmd) { calls.push(cmd); if (cmd === 'codex') return JSON.stringify({ marketplaces: [] }); throw new Error('offline'); } }), /offline/);
+  assert.deepEqual(calls, ['codex', 'git']);
 });
 test('dirty Cursor checkout is preserved', () => {
   const home = mkdtempSync(join(tmpdir(), 'proto-test-')); put(join(home, '.cursor/plugins/local/proto')); const calls = [];

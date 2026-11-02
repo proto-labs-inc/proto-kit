@@ -1,6 +1,14 @@
 # References for new variant sets
 
-Use supplied references first. Before choosing directions for a new variant set,
+References are opt-in. Gather or present references only when the user explicitly
+asks for them, including a website brief with `inputs.references: true`. A request
+for a prototype, sketch, alternates, or iteration alone is not a reference request.
+When references are not requested, skip research, reference galleries and selection
+steps, and reference-only deliverables; proceed with the requested design work.
+Preserve existing references and use supplied or existing design context internally
+without presenting an unsolicited reference batch. Do not remove saved references.
+
+When references are requested, use supplied references first. For a new variant set,
 request ranked references from Proto's server-side research service. Do not use
 local Mobbin page parsing, local Recent searches, web-search scraping, or ask
 customers for provider accounts. Adding or editing variants reuses the set's

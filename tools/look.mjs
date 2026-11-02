@@ -18,11 +18,10 @@
  * { seconds, pictures: [{ file, url, rect }], missing }. A missing part
  * lists the parts the view does mark (`marked`), so a wrong name is cheap.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { buildOfWorkspace } from "./build-folder.mjs";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./cdp/capture.mjs";
-import { headlessPage } from "./cdp/headless.mjs";
+import { headlessPage, stopSessionRenderer } from "./cdp/headless.mjs";
+import { browserSessionPath, buildSessionPath, readSession, writeSession } from "./cdp/session-context.mjs";
 import { ensureDevServer } from "./dev-server.mjs";
 import { launchedDisplayOr, regionBox, waitForMarkers } from "./views.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
@@ -47,10 +46,7 @@ if (!workspace || !existsSync(join(workspace, "public", "prototype.json"))) {
 const started = Date.now();
 const build = buildOfWorkspace(workspace);
 const viewport = build?.tree?.viewport ?? { width: 1280, height: 800 };
-const display = launchedDisplayOr(viewport);
 const looksDir = join(build ? build.dir : join(workspace, ".proto-checks"), "looks");
-mkdirSync(looksDir, { recursive: true });
-const dev = await ensureDevServer({ workspace, logPath: join(looksDir, "..", "dev.log") });
 
 const query = new URLSearchParams();
 if (options.state) query.set("state", options.state);
@@ -62,7 +58,6 @@ for (const v of options.variants) {
   }
   query.set(`v.${set}`, id);
 }
-const url = `${dev.url}/${query.size ? `?${query}` : ""}`;
 // A --variant pictures every region of its set (manifest `regions`).
 const manifest = JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8"));
 const setOf = (key) => manifest.variantSets?.find((set) => set.component === key);
@@ -72,8 +67,27 @@ const pad = Number(options.pad);
 
 const missing = [];
 const pictures = [];
-const opened = await headlessPage(url, { ...viewport, display });
+let opened;
+let dev;
+let ownedSession;
+const previousSession = process.env.PROTO_BROWSER_SESSION;
 try {
+  // A plain edit may have no source-browser session. Give each look its own
+  // renderer so an active capture in another chat never blocks it. Explicit
+  // caller sessions keep their display, lifetime and ownership unchanged.
+  if (!browserSessionPath()) {
+    const parent = build?.dir ?? join(workspace, ".proto-checks");
+    mkdirSync(parent, { recursive: true });
+    ownedSession = join(mkdtempSync(join(parent, ".look-")), "browser-session.json");
+    const source = build ? readSession(buildSessionPath(build.codebase, build.briefId)) : null;
+    if (source?.display) writeSession(ownedSession, { display: source.display });
+    process.env.PROTO_BROWSER_SESSION = ownedSession;
+  }
+  const display = launchedDisplayOr(viewport);
+  mkdirSync(looksDir, { recursive: true });
+  dev = await ensureDevServer({ workspace, logPath: join(looksDir, "..", "dev.log") });
+  const url = `${dev.url}/${query.size ? `?${query}` : ""}`;
+  opened = await headlessPage(url, { ...viewport, display });
   const marks = await waitForMarkers(opened.page);
   for (const part of parts) {
   const name = [part ?? "page", ...options.variants.map((v) => v.replace("=", "-")), options.state ?? "default"].join("--").replace(/[^a-z0-9.-]+/gi, "-");
@@ -112,8 +126,25 @@ try {
   }
   }
 } finally {
-  await opened.close().catch(() => {});
-  dev.stop();
+  try {
+    await opened?.close().catch(() => {});
+  } finally {
+    try {
+      dev?.stop();
+    } finally {
+      if (ownedSession) {
+        try {
+          await stopSessionRenderer(ownedSession);
+          rmSync(dirname(ownedSession), { recursive: true, force: true });
+        } catch (error) {
+          console.error(`Renderer cleanup: ${error.message}`);
+        } finally {
+          if (previousSession === undefined) delete process.env.PROTO_BROWSER_SESSION;
+          else process.env.PROTO_BROWSER_SESSION = previousSession;
+        }
+      }
+    }
+  }
 }
 console.log(JSON.stringify({ seconds: Math.round((Date.now() - started) / 100) / 10, pictures, missing }));
 process.exit(0);

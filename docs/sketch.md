@@ -1,7 +1,7 @@
 # Sketch first
 
 A new prototype is sketched with the person before it is built. They see
-references to react to within seconds, then a few low-fidelity wireframes
+references only when explicitly requested, then a few low-fidelity wireframes
 that each make one point about their brief, then the details inside the
 one they pick. When they press **Build this**, the sketch is committed and
 you build exactly that. The website draws all of it in its sketch studio
@@ -52,6 +52,12 @@ their own; you do not wait for them.
 
 ## 1. References
 
+This step is opt-in: run reference research and present references only when the
+user explicitly asks for them, including `brief.inputs.references: true`.
+Choosing "Sketch it first?" alone does not request references. Otherwise skip
+the reference workflow below and draw the base wireframe directly. Preserve
+supplied and saved references as context without posting an unsolicited batch.
+
 Reference retrieval now uses the server-side workflow in `docs/variant-references.md`.
 Register the variant set, capture the current product, and run `reference-research.mjs`.
 Show its progress, inspect the ranked selection and register the saved references in
@@ -93,6 +99,8 @@ Parts (`t`), each also taking `id`, `hl`, `note`, `grow`, `w`, `h` and
 | `avatar`, `icon`, `divider`, `spacer` | | `spacer` pushes siblings apart |
 
 Rules that make a wireframe say something:
+
+- **No gray framing.** Draw wireframes edge to edge on a white or transparent canvas. Do not add gray backgrounds, gray insets, outer mats, or decorative page frames. Do not wrap the root in a soft box or add padding to simulate an inset page.
 
 - **Colour only when it is the point.** A wireframe is ink and one accent.
   When the brief or a note is about colour ("Restore is red"), give that

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { restartCopy } from "./build-folder.mjs";
+import { acquireSourceSession } from "./cdp/source-session.mjs";
+import { sourceIdentity } from "./cdp/session-context.mjs";
+import { useBuildSession } from "./cdp/session-context.mjs";
 import { workflowEvent } from "./workflow-report.mjs";
 // Streams a prototype build to the Proto site as it happens, so the user
 // watches it in New prototype: the reference page captured, its tree read
@@ -18,7 +22,7 @@ import { workflowEvent } from "./workflow-report.mjs";
 // Nothing after `read` reads the live page again except the checks.
 //
 // Usage:
-//   node tools/build-stream.mjs read     <briefId> --codebase <id> --page <url-substring> [--port 9333]
+//   node tools/build-stream.mjs read     <briefId> --codebase <id> --page <exact-source-url> [--port 9333]
 //   node tools/build-stream.mjs curate   <briefId> --codebase <id>
 //   node tools/build-stream.mjs title    <briefId> --codebase <id> "<prototype title>"
 //   node tools/build-stream.mjs name     <briefId> --codebase <id> <curation.json>
@@ -49,7 +53,6 @@ import { workflowEvent } from "./workflow-report.mjs";
 // Questions are answered explicitly in the current conversation.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { findPage } from "./cdp/attach.mjs";
 import { connect } from "./cdp/cdp.mjs";
 import { takeFrame } from "./cdp/live.mjs";
 import { answeredInTerminal, ask, waitForAnswer } from "./ask.mjs";
@@ -105,6 +108,7 @@ const codebase = flags.codebase;
 if (!codebase) fail("--codebase is required: it chooses this laptop's credential for the build");
 
 const runDir = join(protoHome(), codebase, "run", "builds", briefId);
+useBuildSession(codebase, briefId);
 const treePath = join(runDir, "tree.json");
 const readPath = join(runDir, "read.json");
 const curationPath = join(runDir, "curation.json");
@@ -127,13 +131,26 @@ function readTree() {
 switch (command) {
   case "read": {
     const match = flags.page;
-    if (!match) fail("--page <url-substring> names the reference tab in the Proto window");
+    if (!match) fail("--page <exact-source-url> names the source URL for this build’s owned window");
     const port = Number(flags.port ?? 9333);
     const started = Date.now();
     const took = () => `${((Date.now() - started) / 1000).toFixed(1)} s`;
     await report([workflowEvent(runDir, "copy", "Accessing the reference screen")]);
-    const tab = await findPage(match, port).catch(() => null);
+    const { tab } = await acquireSourceSession(match, port);
+    if (tab.url !== new URL(match).href) fail(`Owned source is at ${tab.url}; expected ${match}`);
     if (!tab) fail(`no tab in the Proto window (port ${port}) matches "${match}"`);
+    if (existsSync(treePath)) {
+      const previous = JSON.parse(readFileSync(treePath, "utf8"));
+      if (previous.sourceIdentity !== sourceIdentity()) {
+        const stepsPath = join(runDir, "steps.json");
+        const steps = existsSync(stepsPath) ? JSON.parse(readFileSync(stepsPath, "utf8")) : {};
+        if (existsSync(join(runDir, "freeze.json")) || steps.gate?.outcome === "proceed") {
+          fail("This copy is complete; preserve its reference evidence and use a new inspection session for new work");
+        }
+        restartCopy(runDir, steps);
+        writeFileSync(stepsPath, JSON.stringify(steps, null, 2) + "\n");
+      }
+    }
     const page = await connect(tab.webSocketDebuggerUrl);
     mkdirSync(runDir, { recursive: true });
     // One lock, one frame: the resting page is captured for the checks
@@ -155,6 +172,7 @@ switch (command) {
     }
     writeFileSync(join(runDir, "reference.png"), readFileSync(frame.png));
     const image = await uploadCapture(readFileSync(frame.png));
+    read.tree.sourceIdentity = sourceIdentity();
     writeFileSync(treePath, JSON.stringify(read.tree, null, 2));
     writeFileSync(readPath, JSON.stringify(read.read));
     const { viewport, nodes } = read.tree;

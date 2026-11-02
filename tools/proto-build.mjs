@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { acquireSourceSession } from "./cdp/source-session.mjs";
+import { readSession, sourceIdentity } from "./cdp/session-context.mjs";
+import { useBuildSession } from "./cdp/session-context.mjs";
 /**
  * The whole copy of the reference page in one command, so the agent
  * runs one tool before writing the change: the read of the page, the
@@ -7,7 +10,7 @@
  * that takes it. Prints the parts list the agent edits from.
  *
  * Usage:
- *   node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>"
+ *   node tools/proto-build.mjs <briefId> --codebase <id> --page <exact-source-url> --slug <slug> --title "<title>"
  *                              [--copy freeze|rebuild] [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send] [--port 9333]
  *
  * --copy freeze (the default) lifts the page as it renders into the
@@ -79,7 +82,7 @@ const started = Date.now();
 // turn, a toast leaving) to finish before it is captured again.
 const SETTLE_MS = 3_000;
 
-const USAGE = 'usage: node tools/proto-build.mjs <briefId> --codebase <id> --page <url-substring> --slug <slug> --title "<title>" [--copy freeze|rebuild] [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send]';
+const USAGE = 'usage: node tools/proto-build.mjs <briefId> --codebase <id> --page <exact-source-url> --slug <slug> --title "<title>" [--copy freeze|rebuild] [--accept-curation] [--again] [--keep-dev] [--lanes 12] [--retry-mode full|failing] [--no-send]';
 
 const options = { lanes: "12", port: "9333", "retry-mode": "failing", copy: "freeze" };
 const positional = [];
@@ -105,6 +108,7 @@ if (!["freeze", "rebuild"].includes(options.copy)) fail("--copy must be freeze o
 if (options.copy === "freeze") options["accept-curation"] = true;
 const codebase = options.codebase;
 const buildDir = buildFolder(codebase, briefId);
+useBuildSession(codebase, briefId);
 const at = (name) => join(buildDir, name);
 const stepsPath = at("steps.json");
 const steps = existsSync(stepsPath) ? JSON.parse(readFileSync(stepsPath, "utf8")) : {};
@@ -129,10 +133,23 @@ const remember = (step) => {
 };
 const stream = (command, ...rest) => run("build-stream.mjs", [command, briefId, "--codebase", codebase, ...rest]);
 
+const previousTree = existsSync(at("tree.json")) ? JSON.parse(readFileSync(at("tree.json"), "utf8")) : null;
+const sourceUrl = options.page ?? readSession()?.requestedUrl ?? previousTree?.url;
+if (!sourceUrl) fail("--page requires the complete source URL");
+await acquireSourceSession(sourceUrl, Number(options.port));
+options.page = sourceUrl;
+const completedCopy = existsSync(at("freeze.json")) || steps.gate?.outcome === "proceed";
+if (previousTree && previousTree.sourceIdentity !== sourceIdentity() && !completedCopy) {
+  restartCopy(buildDir, steps);
+  writeFileSync(stepsPath, JSON.stringify(steps, null, 2) + "\n");
+  say("source window recovered: repeating unfinished inspection and curation together");
+}
+
+
 // ---- --again: the copy starts over from a fresh read of the page ----
 if (options.again) {
   const previous = existsSync(at("tree.json")) ? JSON.parse(readFileSync(at("tree.json"), "utf8")).url : null;
-  if (!options.page && previous) options.page = liveMatchOf(previous);
+  if (!options.page && previous) options.page = previous;
   restartCopy(buildDir, steps);
   writeFileSync(stepsPath, JSON.stringify(steps, null, 2) + "\n");
   say("--again: starting the copy over: the page is read afresh, the curation drafted again for review, then copied");
@@ -140,7 +157,7 @@ if (options.again) {
 
 // ---- read ----
 if (!existsSync(at("tree.json"))) {
-  if (!options.page) fail("--page <url-substring> names the reference tab in the Proto window (the build has no read yet)");
+  if (!options.page) fail("--page <exact-source-url> names the source URL for this build’s owned window (the build has no read yet)");
   say("reading the page");
   stream("read", "--page", options.page, "--port", options.port);
 } else say("read: tree.json exists, kept");
@@ -333,7 +350,7 @@ console.log(JSON.stringify({ ...printed, timings: { ...timings, total: Math.roun
 async function settlePage() {
   await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
   const url = JSON.parse(readFileSync(at("tree.json"), "utf8")).url;
-  const tab = await findPage(liveMatchOf(url), Number(options.port)).catch(() => null);
+  const tab = await findPage(url, Number(options.port));
   if (!tab) fail(`the reference page (${liveMatchOf(url)}) is not open in the Proto window`);
   const page = await connect(tab.webSocketDebuggerUrl);
   try {

@@ -9,10 +9,6 @@
           },
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/tools/hooks/telemetry-start.mjs\""
-          },
-          {
-            "type": "command",
             "command": "node \"$PLUGIN_ROOT/tools/hooks/retire-tunnels.mjs\""
           }
         ]
@@ -38,10 +34,6 @@
           },
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/tools/hooks/telemetry-turn.mjs\""
-          },
-          {
-            "type": "command",
             "command": "node \"$PLUGIN_ROOT/tools/hooks/auto-publish-turn.mjs\""
           }
         ]
@@ -53,10 +45,6 @@
           {
             "type": "command",
             "command": "node \"$PLUGIN_ROOT/tools/hooks/trace-hook.mjs\""
-          },
-          {
-            "type": "command",
-            "command": "node \"$PLUGIN_ROOT/tools/hooks/telemetry-stop.mjs\""
           }
         ]
       }
@@ -64,10 +52,6 @@
     "UserPromptSubmit": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$PLUGIN_ROOT/tools/hooks/telemetry-start.mjs\""
-          },
           {
             "type": "command",
             "command": "node \"$PLUGIN_ROOT/tools/hooks/turn-start.mjs\""

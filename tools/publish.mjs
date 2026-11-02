@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { buildSessionPath } from "./cdp/session-context.mjs";
+import { releaseSourceSession } from "./cdp/source-session.mjs";
 /**
  * Publish a prototype's built files (MAA-132, the publish half of
  * ADR 0001). This tool uploads a folder, nothing more: the session
@@ -15,7 +17,7 @@
  * path is ever overwritten.
  *
  * Usage:
- *   node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
+ *   node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run] [--request-id <id>]
  *   node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]
  *
  * --kind is required and names what is published. For a prototype,
@@ -47,10 +49,10 @@ import { belowProtoHome, protoHome } from "./proto-home.mjs";
 import { takeRunLock } from "./run-lock.mjs";
 import { completePublishAttempt, failPublishAttempt, startPublishAttempt } from "./publish-status.mjs";
 
-const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
+const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run] [--request-id <id>]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
 const KINDS = ["prototype", "library"];
-const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id"];
+const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id", "request-id"];
 let publishAttempt = null;
 let attemptWorkspace = null;
 function recordFailure(error) {
@@ -120,7 +122,7 @@ if (runDir && existsSync(runDir) && !options.auto && !dryRun) {
 }
 if (kind === "prototype" && !dryRun) {
   attemptWorkspace = workspace;
-  publishAttempt = startPublishAttempt(workspace, options["attempt-id"] ?? null);
+  publishAttempt = startPublishAttempt(workspace, options["attempt-id"] ?? null, options["request-id"] ?? null);
   process.on("exit", (code) => {
     if (code !== 0) recordFailure("Publishing was interrupted before it finished");
   });
@@ -374,6 +376,7 @@ if (progress) {
   await progress.flush();
   const completed = await callTool("report_progress", { briefId: progressBuild.briefId, status: "done", prototypeSlug: slug, message: "Published and verified" }, targetFor(readConfig(), { codebase }));
   if (completed?.isError) throw new Error(completed.content?.[0]?.text ?? "Completion report failed");
+  await releaseSourceSession(buildSessionPath(codebase, progressBuild.briefId)).catch(error => console.error(`Published, but source-window cleanup needs retry: ${error.message}`));
 }
 } catch (error) {
   if (progress) {

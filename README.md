@@ -1,8 +1,8 @@
 # proto-kit
 
-Proto's installable surface: everything a customer's machine runs. The
-cloud product lives in the `proto` repo; this repo is what their coding
-agent installs and drives.
+Proto's installable surface: everything a customer's machine runs.
+The cloud product lives in the `proto` repo; this repo is what their
+coding agent installs and drives.
 
 Work starts and resumes in the active coding-agent conversation on Claude Code,
 Codex, and Cursor. Website actions provide copyable prompts; progress and
@@ -44,7 +44,6 @@ Cursor; the core stays harness-neutral.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
 - `publish-library/`: publish the library on demand.
 - `update/`: update the plugin, then repair what the update leaves stale.
-- `debug/`: send Proto a debug report now, with a headline; the agent uses it on its own too.
 - `analyze-trace/`: read a session's debug trace, flag what went wrong or could be better, and say what to change in the kit.
 
 ### tools/
@@ -77,7 +76,6 @@ Serving and publishing:
 - `publish-library.mjs`: build and publish the library in one serialised call.
 - `auto-publish.mjs`: at the end of each agent turn, build and publish every served prototype and library that changed.
 - `health.mjs`: the session-start check, one line per codebase.
-- `debug-report.mjs`: session snapshots to Proto: `send` now, `watch` every ten minutes in the background.
 - `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 - `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
@@ -127,7 +125,7 @@ The subagent roles, one file per harness format.
 
 ### hooks/, codex-hooks/, cursor-hooks/
 
-- `hooks/hooks.json`, `codex-hooks/hooks.json`, `cursor-hooks/hooks.json`: the health line, marker check, debug reporting and trace sync, per harness.
+- `hooks/hooks.json`, `codex-hooks/hooks.json`, `cursor-hooks/hooks.json`: the health line, marker check, trace sync and auto-publish, per harness.
 
 ### docs/
 
@@ -265,17 +263,6 @@ node tools/fake-import/run.mjs /tmp/demo-library
 # the skipped card and the driver extracts it
 ```
 
-## Debug report destination
-
-Debug reports (automatic and manual) go to `https://prototypes.fun`, even
-when the linked product app or `PROTO_APP` points to a local development
-server. They use the existing laptop login; R2 storage credentials belong
-only on the hosted server. Reports remain available to authorized staff.
-Begin and finish use the same team credential throughout an upload. A login
-refused by the hosted service fails visibly in the telemetry log; it does
-not fall back to the development server. For isolated reporter tests only,
-`PROTO_REPORT_APP` explicitly selects a different reporting origin.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
@@ -291,6 +278,7 @@ Push or merge source changes to `main`. The Publish Proto release workflow
 runs checks, generates a fresh version, and advances `release` with a normal
 fast-forward push. No agent or developer has to bump a manifest. Main is the
 source branch; installations track release. Do not commit directly to release.
+Documentation-only commits pushed to `main` also publish a new kit version.
 
 CI stamps the Codex, portable, and Cursor manifests together and records the
 source commit and GitHub run ID in `.proto-release.json`. Versions retain the
@@ -311,6 +299,11 @@ both repos uses the same branch name in both.
 Failures before the release push leave the previous package available. Cloud
 registration happens afterward in the same workflow; if it fails, the package
 is available but cloud update notices lag. Rerun that workflow to retry.
+
+The app's `kit_releases` table supplies the required version in agent prompts.
+Agents check their installed kit and use the update skill to install from GitHub
+when needed. Kit publication does not upload to a desktop channel or require
+desktop storage credentials, signing keys, or a desktop release.
 
 Activation: merge this workflow into main, allow its `contents: write` token
 to create/update release, and verify the first run. Existing

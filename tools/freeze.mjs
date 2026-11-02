@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { useBuildSession } from "./cdp/session-context.mjs";
 /**
  * The copy of the reference page, frozen as it renders: the live tab's
  * DOM after its scripts ran, the page's own stylesheets as written, and
@@ -61,6 +62,7 @@ const fail = (message) => {
 if (!briefId || !options.codebase) fail("usage: node tools/freeze.mjs <briefId> --codebase <id> [--port 9333] [--keep-dev] [--no-send]");
 const codebase = options.codebase;
 const buildDir = buildFolder(codebase, briefId);
+useBuildSession(codebase, briefId);
 const say = (line) => console.error(`freeze: ${line}`);
 const began = Date.now();
 const timings = {};
@@ -272,8 +274,8 @@ const SERIALIZE = (markList) => `(async () => {
   });
 })()`;
 
-const tab = await findPage(liveMatchOf(tree.url), Number(options.port)).catch(() => null);
-if (!tab) fail(`the reference page (${liveMatchOf(tree.url)}) is not open in the Proto window`);
+const tab = await findPage(tree.url, Number(options.port));
+if (!tab) fail(`the reference page (${tree.url}) is not open in the Proto window`);
 const live = await connect(tab.webSocketDebuggerUrl);
 await live.send("Page.enable");
 const display = await displayOf(live);
