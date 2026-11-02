@@ -7,12 +7,12 @@ import { updateRigDependencies, upgradeRig } from "./update-rig.mjs";
 
 test("upgrades pinned and vendored rigs without downgrading newer packages", () => {
   const pkg = { dependencies: { "@proto-labs-inc/rig": "0.1.0", "@proto-labs-inc/wire": "0.2.0", react: "19" } };
-  assert.deepEqual(updateRigDependencies(pkg), { "@proto-labs-inc/rig": "0.2.1" });
-  assert.equal(pkg.dependencies["@proto-labs-inc/wire"], "0.2.0");
+  assert.deepEqual(updateRigDependencies(pkg), { "@proto-labs-inc/rig": "0.3.0", "@proto-labs-inc/wire": "0.3.0" });
+  assert.equal(pkg.dependencies["@proto-labs-inc/wire"], "0.3.0");
   assert.equal(pkg.dependencies.react, "19");
   assert.deepEqual(updateRigDependencies(pkg), {});
   const vue = { devDependencies: { "@proto-labs-inc/rig-vue": "file:vendor/rig.tgz", "@proto-labs-inc/wire": "0.1.0" } };
-  assert.deepEqual(updateRigDependencies(vue), { "@proto-labs-inc/rig-vue": "0.2.1", "@proto-labs-inc/wire": "0.2.0" });
+  assert.deepEqual(updateRigDependencies(vue), { "@proto-labs-inc/rig-vue": "0.3.0", "@proto-labs-inc/wire": "0.3.0" });
 });
 
 test("old prepared copies install and rebuild; current copies need no commands", (t) => {
@@ -22,11 +22,11 @@ test("old prepared copies install and rebuild; current copies need no commands",
   writeFileSync(join(workspace, "pnpm-lock.yaml"), "");
   const calls = [];
   const run = (manager, args) => { calls.push([manager, ...args]); return { status: 0 }; };
-  assert.equal(upgradeRig(workspace, { run }).status, "updated");
+  assert.equal(upgradeRig(workspace, { run, verify: () => {} }).status, "updated");
   assert.deepEqual(calls, [["pnpm", "install", "--no-frozen-lockfile"], ["pnpm", "run", "build"]]);
-  assert.equal(upgradeRig(workspace, { run }).status, "current");
+  assert.equal(upgradeRig(workspace, { run, verify: () => {} }).status, "current");
   assert.equal(calls.length, 2);
-  assert.equal(JSON.parse(readFileSync(join(workspace, "package.json"))).dependencies["@proto-labs-inc/rig"], "0.2.1");
+  assert.equal(JSON.parse(readFileSync(join(workspace, "package.json"))).dependencies["@proto-labs-inc/rig"], "0.3.0");
 });
 
 test("failed installs restore the manifest and lockfile so a retry still upgrades", (t) => {
@@ -35,12 +35,12 @@ test("failed installs restore the manifest and lockfile so a retry still upgrade
   const original = JSON.stringify({ dependencies: { "@proto-labs-inc/rig": "0.1.0" } });
   writeFileSync(join(workspace, "package.json"), original);
   writeFileSync(join(workspace, "pnpm-lock.yaml"), "original lock");
-  const fail = () => {
-    writeFileSync(join(workspace, "pnpm-lock.yaml"), "partial lock");
+  const fail = (_manager, _args, options) => {
+    writeFileSync(join(options.cwd, "pnpm-lock.yaml"), "partial lock");
     return { status: 1, stderr: "network unavailable" };
   };
-  assert.throws(() => upgradeRig(workspace, { run: fail }), /network unavailable/);
+  assert.throws(() => upgradeRig(workspace, { run: fail, verify: () => {} }), /network unavailable/);
   assert.equal(readFileSync(join(workspace, "package.json"), "utf8"), original);
   assert.equal(readFileSync(join(workspace, "pnpm-lock.yaml"), "utf8"), "original lock");
-  assert.equal(upgradeRig(workspace, { run: () => ({ status: 0 }) }).status, "updated");
+  assert.equal(upgradeRig(workspace, { run: () => ({ status: 0 }), verify: () => {} }).status, "updated");
 });

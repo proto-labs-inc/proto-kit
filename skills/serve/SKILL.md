@@ -39,8 +39,21 @@ action reaches that boundary.
 ## Start
 
 For an existing prototype, run `node <kit>/tools/update-rig.mjs <workspace>`
-before serving or publishing. This upgrades and rebuilds outdated rigs; current
-versions are unchanged. Stop on an upgrade failure.
+before serving or publishing. This prepares a sibling candidate, installs and
+builds it, verifies every manifest state, and checks for concurrent source edits
+before applying it. Stop agent edits and managed preview activity for this
+workspace during the explicit migration. It is never background maintenance.
+The tool refuses to replace a workspace whose preview port still answers. Use an
+authorized external editing session with that prototype closed; never kill an
+unrelated server or race a desktop preview owner. Browser verification here proves
+startup and URL preservation; also verify real state/alternate interactions in the
+Frame before publishing.
+The previous workspace is retained at the returned `backup` path. Keep it until
+publication and a check of the published prototype succeed. On failure, preserve
+that backup and the previously published build; do not overwrite newer changes.
+The tool never publishes. Current versions are unchanged. Stop on an upgrade
+failure. Vue startup now awaits `protoRig(manifest)` before mounting; unknown
+entrypoint shapes require manual repair in the candidate, not an unsafe rewrite.
 
 1. **Register the prototype** first: `register_prototype { codebase,
    slug, title }`. The laptop token identifies the member and team. It

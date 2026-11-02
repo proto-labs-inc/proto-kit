@@ -27,7 +27,7 @@
  * Usage: node migrate-rig.mjs [<codebase>…] [--check]
  *   --check   say what would change, change nothing
  */
-import { updateRigDependencies } from "./update-rig.mjs";
+import { updateRigDependencies, upgradeRig } from "./update-rig.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -152,29 +152,14 @@ export function planWorkspace(workspace, kit) {
   return { needed, pkg, packagePath, missing, renames, tsconfigPath, tsconfig, vitePath, vite };
 }
 
-/** Apply a plan: install first, then rewrite. Returns what happened, in words. */
+/** Apply supported npm upgrades through the verified candidate path. */
 export function applyPlan(workspace, plan) {
-  const originalPackage = readFileSync(plan.packagePath, "utf8");
-  if (Object.keys(plan.missing).length > 0) {
-    const pkg = structuredClone(plan.pkg);
-    for (const [name, version] of Object.entries(plan.missing)) {
-      const section = name in (pkg.devDependencies ?? {}) && !(name in (pkg.dependencies ?? {})) ? "devDependencies" : "dependencies";
-      pkg[section] ??= {};
-      pkg[section][name] = version;
-    }
-    writeFileSync(plan.packagePath, JSON.stringify(pkg, null, 2) + "\n");
-  }
-  const install = spawnSync("pnpm", ["install", "--prefer-offline", "--no-frozen-lockfile"], { cwd: workspace, encoding: "utf8" });
-  if (install.status !== 0) {
-    writeFileSync(plan.packagePath, originalPackage);
-    const reason = (install.stderr || install.stdout || "").trim().split("\n").slice(-3).join(" ");
-    return { kind: "failed", reason };
-  }
-  for (const { path, text } of plan.renames) writeFileSync(path, text);
-  if (plan.tsconfig) writeFileSync(plan.tsconfigPath, JSON.stringify(plan.tsconfig, null, 2) + "\n");
-  if (plan.vite.kind === "rewritten") writeFileSync(plan.vitePath, plan.vite.text);
-  return { kind: "done" };
+  const legacy = plan.renames.length > 0 || plan.tsconfig !== null || plan.vite.kind !== "unchanged";
+  if (legacy) return { kind: "failed", reason: "Legacy source rig requires an agent-assisted migration in a candidate copy before installing the hosted adapter." };
+  try { return { kind: "migrated", ...upgradeRig(workspace) }; }
+  catch (error) { return { kind: "failed", reason: error.message }; }
 }
+
 
 function describe(plan, did) {
   const parts = [];
@@ -196,7 +181,7 @@ function main() {
   const dirs = (path) => {
     try {
       return readdirSync(path, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
         .map((entry) => entry.name);
     } catch {
       return [];
@@ -205,6 +190,7 @@ function main() {
 
   const codebases = named.length > 0 ? named : dirs(root).filter((name) => !name.startsWith("chrome"));
   const lines = [];
+  let failed = false;
   for (const codebase of codebases) {
     const prototypes = join(root, codebase, "prototypes");
     for (const slug of dirs(prototypes)) {
@@ -219,12 +205,13 @@ function main() {
         continue;
       }
       const outcome = applyPlan(workspace, plan);
-      if (outcome.kind === "failed") lines.push(`${label}: pnpm install failed, so nothing changed there (${outcome.reason}).`);
+      if (outcome.kind === "failed") { failed = true; lines.push(`${label}: migration stopped without applying the candidate (${outcome.reason}).`); }
       else lines.push(`${label}: ${describe(plan, did)}.${unknown}`);
     }
   }
   if (lines.length === 0) console.log("Every prototype already uses the current rig; nothing needed updating.");
   for (const line of lines) console.log(line);
+  if (failed) process.exitCode = 1;
   if (check && lines.length > 0) console.log("\nNothing was written (--check).");
 }
 
