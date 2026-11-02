@@ -16,7 +16,8 @@ import { validateVerification } from "./screen-verification.mjs";
 import { unpackScreenBuild } from "./screen-build.mjs";
 import { packScreenBuild } from "./screen-build.mjs";
 import { join } from "node:path";
-import { callTool } from "./mcp-call.mjs";
+import { callTool, readConfig } from "./mcp-call.mjs";
+import { uploadEvidence, evidenceRecord, putArtifact } from "./evidence-upload.mjs";
 import {
   packScreen,
   cloneScreen,
@@ -42,18 +43,7 @@ async function invoke(args) {
   if (result.isError) throw new Error(text || "Screen indexing failed.");
   return JSON.parse(text);
 }
-async function put(url, bytes) {
-  const response = await fetch(url, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Content-Length": String(bytes.length),
-    },
-    body: bytes,
-  });
-  if (!response.ok)
-    throw new Error(`Artifact upload failed (${response.status}).`);
-}
+const put = putArtifact;
 async function download(url, checksum, archive) {
   if (existsSync(archive)) {
     const bytes = readFileSync(archive);
@@ -171,18 +161,28 @@ else if (command === "capture") {
     const report = await verifyBuild(join(temporary, "dist"), JSON.parse(readFileSync(planFile, "utf8")), screen, join(cache, "verification", prepared.checksum));
     const failed = report.scenarios.filter(s => s.outcome !== "passed");
     if (failed.length) throw new Error(`Screen verification failed ${failed.length} of ${report.scenarios.length} checks, each after one retry (${failed.slice(0, 5).map(s => s.id).join(", ")}${failed.length > 5 ? ", …" : ""}). Inspect the saved report and repair the source before uploading a new build. Passed checks are saved: verifying the same build and plan again reruns only the rest.`);
-    for (const scenario of report.scenarios) {
-      const keys = [];
-      for (const path of scenario.evidence) {
-        const file = readFileSync(path);
-        const capture = await invoke({ operation: "capture", indexId: screen.index_id, checksum: sha256(file), size: file.length });
-        await put(capture.uploadUrl, file);
-        keys.push(capture.key);
-      }
-      scenario.evidence = keys;
-    }
+    // Each distinct file once, 16 at a time, skipping what this laptop
+    // already uploaded to this index; keys and their order are unchanged.
+    const paths = report.scenarios.map((s) => [...s.evidence]);
+    const record = evidenceRecord(join(protoHome(), codebase, "screens", "uploaded-evidence.json"), readConfig().app, screen.index_id);
+    const sign = (checksum, size) => invoke({ operation: "capture", indexId: screen.index_id, checksum, size });
+    const started = Date.now();
+    const sent = await uploadEvidence(report.scenarios, { sign, known: record.known });
+    record.save(sent.uploaded);
+    console.error(`proto: evidence ${sent.named} named, ${sent.distinct} distinct, ${Object.keys(sent.uploaded).length} uploaded, ${sent.skipped.length} already on the site (${((Date.now() - started) / 1000).toFixed(1)} s).`);
     validateVerification(report, screen);
-    answer = await invoke({ operation: command === "reverify" ? "reverify" : "finish", screenId, verification: report });
+    const operation = command === "reverify" ? "reverify" : "finish";
+    try {
+      answer = await invoke({ operation, screenId, verification: report });
+    } catch (error) {
+      if (!sent.skipped.length) throw error;
+      // A file recorded as uploaded may be gone from the site: upload
+      // everything this report names and try once more.
+      record.save({}, sent.skipped);
+      report.scenarios.forEach((s, i) => { s.evidence = paths[i]; });
+      record.save((await uploadEvidence(report.scenarios, { sign })).uploaded);
+      answer = await invoke({ operation, screenId, verification: report });
+    }
   } finally {
     rmSync(temporary, { recursive: true, force: true });
     await stopSessionRenderer(browserSessionPath());
