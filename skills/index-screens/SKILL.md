@@ -48,9 +48,11 @@ approval boundary, including when setup was requested end to end.
    Require confirmed_version === inventory_version === the requested version.
    If they differ, send the user back to review and stop. The backend refuses
    unapproved transitions; never work around a refusal with local commands.
-2. If the saved phase is `complete`, inspect each ready revision’s verification.
-   Use prepare-screen’s Existing starters workflow to reverify missing or outdated
-   reports. Do not transition a completed index back to replication. Report completion
+2. If the saved phase is `complete`, check that each included entry has a ready
+   source and a matching prepared build. Verification reports are optional diagnostics;
+   missing, outdated or failed reports do not block selection or copying. Do not
+   reverify a saved starter unless asked. Do not transition a completed index back
+   to replication. Report completion
    only when every included entry is currently selectable; repairs require a refresh.
    If the saved phase is
    `replicating`, skip directly to the remaining replicas. Otherwise claim
@@ -62,7 +64,7 @@ approval boundary, including when setup was requested end to end.
    reference inspection, copying, local behavior, responsive verification and
    artifact completion. For every initial screen, visually inspect source and copy
    at matching widths, reproduce mobile-only UI, and repair small overflow defects
-   as part of the baseline. Reuse only revisions passing current verification.
+   as part of the baseline. Reuse ready revisions with a matching prepared build.
    Report per-entry progress; preserve partial completion and resume checkpoints.
 4. Mark phase complete only when every included entry is ready. Preserve partial
    completion and report individual failures. Do not say setup is complete while
@@ -81,6 +83,18 @@ For a saved brief with starter_screen_id, this replaces replication entirely:
    It also verifies and copies the prepared build into `dist/`, giving source and
    dist the same fresh identity, manifest and initial state. It refuses unrelated
    existing workspaces and resumes only the same request without overwriting edits.
+   The cloud checks team access and readiness. Copying checks both archive checksums
+   and their source/build binding; it does not require a verification report or staff
+   acceptance. Preserve diagnostic results without treating them as copy approval.
+For desktop-owned previews, add `--defer-verification` to clone. The result
+remains unverified. Write the static supervised run spec, call the desktop
+`ensure_preview` tool, then run `tools/check-managed-starter.mjs <workspace>
+<returned-url> '<initial-state-json>'`. This checks the exact prepared files,
+render, markers, runtime exceptions, and initial URL state without starting or
+stopping a server. Inspect its screenshot. Publish with `--preview-url <returned-url>`;
+publication verifies the served bytes against dist before capturing the thumbnail.
+Never use the temporary-server smoke path for a desktop-owned preview.
+
 3. For an unchanged copy, do not install dependencies or compile. Serve the
    cloned `dist/` with `node <kit>/tools/serve.mjs <workspace>/dist <port>`, then
    publish it directly with `publish.mjs`. Register the prototype, smoke-test

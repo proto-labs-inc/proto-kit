@@ -100,6 +100,11 @@ entrypoint shapes require manual repair in the candidate, not an unsafe rewrite.
    last publish did not already have, and prints the published URL.
    That copy is what everyone but the maker sees.
 
+For desktop-owned previews, call `ensure_preview` and pass its origin as
+`--preview-url <url>` to publishing. It checks the served bytes against the
+prepared dist and borrows that server for the capture without stopping it.
+A stale or mismatched managed preview fails publication.
+
 5. **Report**. When the workspace has a running brief, step 4's publish
    reports it done itself (that is what closes the build's card in the
    gallery; registering does not), so do not report done again. Then tell

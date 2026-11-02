@@ -161,8 +161,11 @@ clones this starter before applying the user's changes. Do not clone until ready
 Use `screen-index.mjs reverify <codebase> <screenId> <plan.json>` to test existing
 immutable artifacts using a freshly inspected reference inventory. If a compiled
 build is missing, prepare it once with `screen-index.mjs prepare` first. A failed
-old screen remains unavailable; repair it through a new approved revision.
-Never rebuild a starter during selection. Cloning checks current eligibility and
+verification report does not make saved ready artifacts unavailable. Readiness
+requires saved source and its matching compiled build; missing, outdated or failed
+diagnostic reports do not require staff acceptance or re-verification before copying.
+Reverify existing starters only when requested. Artifact repairs require a new
+approved revision. Never rebuild a starter during selection. Cloning checks current eligibility and
 performs a load/asset/initial-state/rig smoke check. Continue the serve skill's
 publish before reporting the prototype available.
 

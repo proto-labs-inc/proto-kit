@@ -229,6 +229,80 @@ test("fresh and cached copies have independent editable files and fresh identiti
   );
 });
 
+// Approved by Maayan: ready artifacts copy independently of diagnostic results;
+// corrupt archives and mismatched source/build pairs still fail before publication.
+function readyStarter(t) {
+  const { root, source } = fixture(t);
+  const bytes = packScreen(source);
+  const sourceChecksum = sha256(bytes);
+  const dist = join(source, "dist");
+  mkdirSync(dist);
+  for (const [from, to] of [["index.html", "index.html"], ["public/prototype.json", "prototype.json"]]) {
+    writeFileSync(join(dist, to), readFileSync(join(source, from)));
+  }
+  const buildBytes = packScreenBuild(dist, sourceChecksum);
+  const screen = {
+    id: "ready-starter", status: "ready", title: "Users", initial_state: {},
+    source_url: "https://source.invalid/users", bundle_checksum: sourceChecksum,
+    metadata: { preparedBuild: { checksum: sha256(buildBytes), sourceChecksum } },
+  };
+  const options = {
+    buildBytes, destination: join(root, "copy"), slug: "copy", codebase: "example",
+    briefId: "copy-request", port: 5183, resolveRigRelease: async () => release,
+  };
+  return { bytes, screen, options };
+}
+
+for (const diagnostic of ["absent", "failed"]) {
+  test(`ready starter copies with ${diagnostic} verification diagnostics and no staff acceptance`, async (t) => {
+    const { bytes, screen, options } = readyStarter(t);
+    if (diagnostic === "failed") {
+      screen.metadata.verification = {
+        version: 4, sourceChecksum: screen.bundle_checksum,
+        buildChecksum: screen.metadata.preparedBuild.checksum,
+        inventory: { sourceUrl: screen.source_url, capturedAt: new Date().toISOString(),
+          controls: [], states: [{ id: "default", kind: "source" }], breakpoints: [] },
+        scenarios: [{ id: "visual-default", category: "visual", target: "default",
+          viewport: { width: 1440, height: 900 }, outcome: "failed",
+          problems: ["Visual mismatch"], evidence: [`screen-indexes/example/${"a".repeat(64)}.png`] }],
+      };
+    }
+    const original = structuredClone(screen);
+    const result = await cloneScreen(bytes, screen, options);
+    assert.equal(result.resumed, false);
+    assert.ok(existsSync(join(result.path, "package.json")));
+    assert.ok(existsSync(join(result.path, "dist/index.html")));
+    assert.deepEqual(screen, original, "copying must not rewrite diagnostic outcomes or invent acceptance");
+  });
+}
+
+for (const fault of ["source checksum", "build checksum", "metadata binding", "archive binding"]) {
+  test(`ready starter without verification rejects ${fault} corruption`, async (t) => {
+    let { bytes, screen, options } = readyStarter(t);
+    let expected;
+    if (fault === "source checksum") {
+      bytes = Buffer.from(bytes);
+      bytes[0] ^= 1;
+      expected = /checksum/i;
+    } else if (fault === "build checksum") {
+      options.buildBytes = Buffer.from(options.buildBytes);
+      options.buildBytes[0] ^= 1;
+      expected = /checksum/i;
+    } else if (fault === "metadata binding") {
+      screen.metadata.preparedBuild.sourceChecksum = "0".repeat(64);
+      expected = /prepared build/i;
+    } else {
+      const archive = JSON.parse(gunzipSync(options.buildBytes));
+      archive.sourceChecksum = "0".repeat(64);
+      options.buildBytes = gzipSync(JSON.stringify(archive));
+      screen.metadata.preparedBuild.checksum = sha256(options.buildBytes);
+      expected = /source bundle/i;
+    }
+    await assert.rejects(cloneScreen(bytes, screen, options), expected);
+    assert.equal(existsSync(options.destination), false, "rejected artifacts must not become a workspace");
+  });
+}
+
 test("prepared builds reject corrupt bytes, another source, unsafe paths, and leaking identity", (t) => {
   const { root, source } = fixture(t);
   const dist = join(source, "dist");

@@ -214,7 +214,6 @@ else if (command === "capture") {
       prepared.checksum,
       join(cache, `${prepared.checksum}.build.json.gz`),
     );
-    validateVerification(screen.metadata.verification, screen);
     answer = await cloneScreen(bytes, screen, {
       destination: join(root, "prototypes", slug),
       slug,
@@ -222,7 +221,10 @@ else if (command === "capture") {
       briefId,
       buildBytes,
     });
-    try { await smokeBuild(join(answer.path, "dist"), screen.initial_state); }
+    try {
+      if (rest.includes("--defer-verification")) answer.verification = "pending-managed-preview";
+      else await smokeBuild(join(answer.path, "dist"), screen.initial_state);
+    }
     finally { await stopSessionRenderer(browserSessionPath()); }
   }
 } else throw new Error("Unknown screen-index command.");

@@ -52,7 +52,7 @@ import { completePublishAttempt, failPublishAttempt, startPublishAttempt } from 
 const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run] [--request-id <id>]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
 const KINDS = ["prototype", "library"];
-const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id", "request-id"];
+const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id", "request-id", "preview-url"];
 let publishAttempt = null;
 let attemptWorkspace = null;
 function recordFailure(error) {
@@ -310,7 +310,7 @@ try {
 if (progress) {
   progress.send([publishing, activityEvent(publishing, "publish-capture", "active", "Capturing the final prototype", "Capturing the built page before upload")]);
   await progress.flush();
-  await capturePublishedPreview(dist, progressBuild, progress, publishing.revision);
+  await capturePublishedPreview(dist, progressBuild, progress, publishing.revision, options["preview-url"]);
   progress.send([activityEvent(publishing, "publish-capture", "completed", "Captured the final prototype", "Saved the clean final preview"), activityEvent(publishing, "publish-upload", "active", "Uploading the prototype", `Uploading ${manifest.length} files`)]);
   await progress.flush();
 }

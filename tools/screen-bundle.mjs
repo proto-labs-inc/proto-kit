@@ -1,7 +1,6 @@
 import { upgradeRig } from "./update-rig.mjs";
 import { fetchRigRelease } from "./rig-release.mjs";
 import { SCREEN_ARTIFACT_LIMIT, SCREEN_EXPANDED_LIMIT, isBase64 } from "./screen-archive.mjs";
-import { validateVerification } from "./screen-verification.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
 import {
@@ -163,7 +162,8 @@ export async function cloneScreen(
   screen,
   { destination, slug, codebase, briefId, port, buildBytes, resolveRigRelease = fetchRigRelease },
 ) {
-  validateVerification(screen.metadata?.verification, screen);
+  // Readiness is source plus its prepared build; verification is diagnostic.
+  // Both archives and their source/build binding are checked before extraction.
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug) || !briefId)
     throw new Error("A new slug and exact brief ID are required.");
   if (existsSync(destination)) {
