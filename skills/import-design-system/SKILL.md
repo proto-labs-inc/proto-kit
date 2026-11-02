@@ -20,6 +20,9 @@ components and assets portable inside the preparation workspace.
 
 # Import a design system
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 Before preparing or importing a new design system, read the codebase's latest
 screen_index. For setup, require exact inventory confirmation, then claim phase
 library. Without approval, follow index-screens discovery and stop at review.

@@ -13,6 +13,11 @@ import { browser } from "./attach.mjs";
 import { acquireSourceSession } from "./source-session.mjs";
 import { connect } from "./cdp.mjs";
 
+if (process.env.PROTO_ALLOW_FOREGROUND !== "1") {
+  console.error("Foregrounding is disabled. Use PROTO_ALLOW_FOREGROUND=1 only when the user explicitly requests a visible browser or sign-in.");
+  process.exit(1);
+}
+
 const [match, portArg] = browserArguments();
 if (!match) {
   console.error("usage: node tools/cdp/raise.mjs <url-substring> [port]");

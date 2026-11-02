@@ -356,7 +356,7 @@ export async function runScenario(
     );
     await until(page, `window.messages?.some(m=>m.type==='hello')`);
     if (scenario.category === "keyboard") {
-      await page.send("Page.bringToFront");
+      await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
       await evaluate(
         page,
         "document.querySelector('iframe').contentWindow.focus()",

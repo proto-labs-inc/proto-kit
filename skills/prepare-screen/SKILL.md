@@ -5,6 +5,9 @@ description: Prepare and verify one reusable, self-contained starter screen from
 
 # Prepare a screen once
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 The caller supplies codebase, indexId, approved inventory version and entryId.
 Setup keeps its member-confirmation boundary. A custom URL uses its claimed saved
 brief to create a one-screen index before entering here. Call replication-check

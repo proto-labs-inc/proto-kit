@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { assertForegroundAllowed } from "./foreground-policy.mjs";
 import { browserSessionPath, readSession } from "./session-context.mjs";
 import { acquireProcessLock } from "../process-lock.mjs";
 let ownedConnections = 0;
@@ -67,6 +68,7 @@ export async function connect(wsUrl, { openTimeoutMs = 10_000 } = {}) {
   };
   const send = (method, params = {}, { timeoutMs = COMMAND_TIMEOUT_MS } = {}) =>
     new Promise((resolve, reject) => {
+      assertForegroundAllowed(method, params);
       if (closed) {
         reject(new Error(`${method}: ${closed}`));
         return;

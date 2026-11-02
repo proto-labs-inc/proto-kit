@@ -5,6 +5,9 @@ description: Discover and review screenshots during codebase setup, then prepare
 
 # Screenshot-first screen indexing
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 Use the installed kit root for `tools/…`. All work happens in this conversation;
 never start a listener or wait for website commands. Website review is a real
 approval boundary, including when setup was requested end to end.

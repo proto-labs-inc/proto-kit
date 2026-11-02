@@ -5,6 +5,9 @@ description: Build a new prototype from your product's own code in a single dire
 
 # Create a prototype
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 A prototype is an exact copy of one screen of the user's product with
 the brief's change built on top of it: a standalone Vite app in
 `~/.proto/<codebase>/prototypes/<slug>/`, naked except for the rig (the
