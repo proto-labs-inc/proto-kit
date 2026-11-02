@@ -25,6 +25,10 @@ import {
 } from "./screen-bundle.mjs";
 
 function fixture(t) {
+  // These prepared starters already use the current rig; cloning must not
+  // trigger a real dependency install or build in this portable-copy test.
+  const template = JSON.parse(readFileSync(new URL("../template/workspace-react/package.json", import.meta.url)));
+  const rigDependencies = Object.fromEntries(Object.entries(template.dependencies).filter(([name]) => name.startsWith("@proto-labs-inc/")));
   const root = mkdtempSync(join(tmpdir(), "proto-screen-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, "source");
@@ -33,7 +37,7 @@ function fixture(t) {
     join(source, "package.json"),
     JSON.stringify({
       name: "original",
-      dependencies: {},
+      dependencies: rigDependencies,
       scripts: { dev: "vite" },
     }),
   );
