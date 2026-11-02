@@ -19,6 +19,31 @@ import { acquireSourceSession } from "./source-session.mjs";
 import { SCREEN_RENDER, applyScreenRender, clearScreenRender, settleForCapture } from "./render-profile.mjs";
 import { captureProfileFor, sampleAnimations, sampleVideos } from "../verify-screen.mjs";
 
+/** Put a source tab at the screen render (render-profile.mjs) at width x
+ *  height CSS px and wait until the page has taken it. */
+export async function setReferenceViewport(page, width, height = 900) {
+  await applyScreenRender(page, { width, height });
+  const end = Date.now() + 5000;
+  while ((await evaluate(page, `innerWidth === ${width} && innerHeight === ${height}`)) !== true) {
+    if (Date.now() > end) throw new Error(`The source page did not take a ${width}x${height} viewport`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+/** One reference PNG of the page as it is now: scrolled to the top, fonts
+ *  and finite motion settled, the profile's animation/video sample applied.
+ *  The tab must already be at setReferenceViewport. */
+export async function shootReference(page, out, profile = {}) {
+  await evaluate(page, "window.scrollTo(0, 0), true");
+  await settleForCapture(page, evaluate);
+  if (profile.animationTimeMs !== undefined) await evaluate(page, `(${sampleAnimations.toString()})(document, ${profile.animationTimeMs})`);
+  if (profile.videoTimeMs !== undefined) await evaluate(page, `(${sampleVideos.toString()})(document, ${profile.videoTimeMs})`);
+  await evaluate(page, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  const shot = await page.send("Page.captureScreenshot", { format: "png", fromSurface: true });
+  writeFileSync(out, Buffer.from(shot.data, "base64"));
+  return out;
+}
+
 /** Capture references on an open CDP page; returns { [width]: path }. */
 export async function captureReferences(page, { outDir, widths, height = 900, capture = {}, name = "" }) {
   const profile = captureProfileFor({}, { capture });
@@ -34,20 +59,9 @@ export async function captureReferences(page, { outDir, widths, height = 900, ca
       await loaded;
     }
     for (const width of widths) {
-      await applyScreenRender(page, { width, height });
-      const end = Date.now() + 5000;
-      while ((await evaluate(page, `innerWidth === ${width} && innerHeight === ${height}`)) !== true) {
-        if (Date.now() > end) throw new Error(`The source page did not take a ${width}x${height} viewport`);
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      await evaluate(page, "window.scrollTo(0, 0), true");
-      await settleForCapture(page, evaluate);
-      if (profile.animationTimeMs !== undefined) await evaluate(page, `(${sampleAnimations.toString()})(document, ${profile.animationTimeMs})`);
-      if (profile.videoTimeMs !== undefined) await evaluate(page, `(${sampleVideos.toString()})(document, ${profile.videoTimeMs})`);
-      await evaluate(page, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
-      const shot = await page.send("Page.captureScreenshot", { format: "png", fromSurface: true });
+      await setReferenceViewport(page, width, height);
       const out = resolve(join(outDir, `${name}${width}.png`));
-      writeFileSync(out, Buffer.from(shot.data, "base64"));
+      await shootReference(page, out, profile);
       written[width] = out;
     }
   } finally {

@@ -96,7 +96,8 @@ export async function serveBuild(folder) {
 }
 const inFrame = (expression) =>
   `(()=>{const window=globalThis.document.querySelector('iframe').contentWindow;const document=window.document;const location=window.location;const innerWidth=window.innerWidth;const innerHeight=window.innerHeight;return (${expression})})()`;
-async function until(page, expression) {
+const frameScope = (expression) => inFrame(expression);
+export async function until(page, expression) {
   const end = Date.now() + 5000;
   while (Date.now() < end) {
     try {
@@ -106,7 +107,10 @@ async function until(page, expression) {
   }
   throw new Error(`Assertion timed out: ${expression}`);
 }
-async function step(page, action) {
+/** Perform one scenario action. `wrap` scopes expressions: the verifier's
+ *  iframe by default; prepare-plan.mjs passes an identity wrap for the live source. */
+export async function step(page, action, scope = frameScope) {
+  const inFrame = scope;
   if (action.kind === "resize-container") {
     if (!Number.isFinite(action.width) || action.width < 1 || action.width > 10000)
       throw new Error("Invalid container width");
@@ -143,7 +147,7 @@ async function step(page, action) {
         throw new Error("Keyboard target needs Tab and a selector");
       for (let pressed = 0; pressed < 150; pressed++) {
         if (await evaluate(page, inFrame(`document.activeElement?.matches(${JSON.stringify(action.until)})`))) return;
-        await step(page, {kind:"key",key:"Tab",shift:action.shift});
+        await step(page, {kind:"key",key:"Tab",shift:action.shift}, scope);
       }
       throw new Error("Control is not reachable by keyboard: " + action.until);
     }
@@ -568,7 +572,7 @@ function stable(value) {
 /** The runner's own code: a kit update that changes how checks run invalidates every checkpoint. */
 let runnerChecksum;
 function runner() {
-  runnerChecksum ??= sha(["./verify-screen.mjs", "./screen-verification.mjs", "./cdp/diff.mjs"]
+  runnerChecksum ??= sha(["./verify-screen.mjs", "./screen-verification.mjs", "./cdp/diff.mjs", "./cdp/render-profile.mjs"]
     .map(file => readFileSync(new URL(file, import.meta.url))).reduce((all, bytes) => Buffer.concat([all, bytes]), Buffer.alloc(0)));
   return runnerChecksum;
 }
@@ -614,63 +618,109 @@ export async function checkWithRetry(run) {
   };
 }
 
-export async function verifyBuild(folder, plan, screen, output, options = {}) {
-  if (!plan?.inventory || !Array.isArray(plan.scenarios))
-    throw new Error("Supply the reference inventory and executable scenarios");
-  validateStateInventory(plan.inventory);
-  validateResponsivePlan(plan);
-  interactionBands(plan.inventory);
-  captureProfileFor(plan);
-  for (const scenario of plan.scenarios) {
-    captureProfileFor(plan, scenario);
+// An assertion that cannot fail does not verify an outcome.
+const TRIVIAL = new Set(["true", "1", "!0", "!!1", "!false", "document", "!!document", "document.body", "!!document.body",
+  "window", "!!window", "location", "!!location", "document.readyState==='complete'", 'document.readyState==="complete"']);
+const stripComments = (code) => code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+/** Problems that make a plan unfit to run: placeholders, interaction checks
+ *  without an outcome, invalid expressions and pointer-driven keyboard checks. */
+export function assertionProblems(plan) {
+  const problems = [];
+  const placeholder = (value) => JSON.stringify(value ?? "").includes("TODO");
+  for (const control of plan?.inventory?.controls || [])
+    if (placeholder(control.expected)) problems.push(`Describe the expected outcome of control ${control.id}`);
+  for (const [finding, review] of Object.entries(plan?.responsiveCssReview || {}))
+    if (placeholder(review)) problems.push(`Review the CSS finding ${finding}`);
+  for (const scenario of plan?.scenarios || []) {
+    const name = scenario.id || "(unnamed scenario)";
+    const expressions = [scenario.assertion, ...(scenario.steps || []).filter(s => s.kind === "assert").map(s => s.expression)];
+    if (placeholder(scenario.assertion) || placeholder(scenario.steps) || placeholder(scenario.path))
+      problems.push(`Replace the TODO in scenario ${name}`);
+    for (const expression of expressions) {
+      if (typeof expression !== "string" || !stripComments(expression).trim()) { problems.push(`Scenario ${name} needs an assertion`); continue; }
+      if (expression.includes("TODO")) continue;
+      try { new Function(`return (${expression});`); }
+      catch (error) { problems.push(`Scenario ${name} has an invalid assertion: ${error.message}`); }
+    }
+    if (["interaction", "keyboard"].includes(scenario.category)) {
+      if (!scenario.steps?.length) problems.push(`Control scenario ${name} needs executable actions`);
+      const outcome = stripComments(String(scenario.assertion || "")).replace(/\s+/g, "");
+      if (TRIVIAL.has(outcome)) problems.push(`Control scenario ${name} must assert the control's visible outcome, not ${scenario.assertion}`);
+    }
+    if (scenario.category === "keyboard" && (!scenario.steps?.some(s => s.kind === "key") || scenario.steps.some(s => s.kind === "click")))
+      problems.push(`Keyboard scenario ${name} must use keyboard input only`);
+  }
+  return [...new Set(problems)];
+}
+
+/** Every check a plan asks for: each scenario at each width its category
+ *  needs (widthsForScenario), width-major then plan order, so the report
+ *  order is the same however many checks run at once. `only` (scenario ids
+ *  or a RegExp) and `widths` narrow it for local runs. */
+export function planJobs(plan, { only, widths } = {}) {
+  const wanted = (scenario) => !only || (only instanceof RegExp ? only.test(scenario.id) : only.includes(scenario.id));
+  const jobs = plan.scenarios
+    .filter(wanted)
+    .flatMap((scenario, order) => widthsForScenario(plan.inventory, scenario)
+      .filter(width => !widths || widths.includes(width))
+      .map(width => ({ scenario, order, width, id: `${scenario.id}-${width}` })))
+    .sort((a, b) => a.width - b.width || a.order - b.order);
+  for (const { scenario, id } of jobs) {
     if (!CATEGORIES.includes(scenario.category)) throw new Error("Unknown scenario category");
     if (["interaction", "keyboard"].includes(scenario.category) && !scenario.steps?.length)
       throw new Error("Controls need executable actions");
     if (scenario.category === "keyboard" &&
         (!scenario.steps.some((s) => s.kind === "key") || scenario.steps.some((s) => s.kind === "click")))
       throw new Error("Keyboard checks must use keyboard input");
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("Scenario IDs must be safe filenames");
   }
-  const manifest = JSON.parse(
-    readFileSync(join(folder, "prototype.json"), "utf8"),
-  );
-  if (manifest.viewport)
-    throw new Error("Responsive starters must not fix the Frame viewport.");
-  validateMapStates(manifest, plan.inventory);
-  const sourceChecksum = screen.bundle_checksum;
-  const buildChecksum = screen.metadata.preparedBuild.checksum;
-  // Width-major, then plan order: the same report order however many lanes run.
-  const jobs = plan.scenarios
-    .flatMap((scenario, order) => widthsForScenario(plan.inventory, scenario).map(width => ({ scenario, order, width })))
-    .sort((a, b) => a.width - b.width || a.order - b.order);
-  for (const { scenario, width } of jobs)
-    if (!/^[a-zA-Z0-9_-]+$/.test(`${scenario.id}-${width}`))
-      throw new Error("Scenario IDs must be safe filenames");
+  return jobs;
+}
+
+/** Run a plan's checks against a compiled build: the one loop behind both
+ *  `screen-index.mjs verify` (verifyBuild) and `prepare-plan.mjs run`.
+ *  At most `concurrency` pages at once (PROTO_VERIFY_CONCURRENCY), each check
+ *  in a fresh tab, a failing check retried once (both attempts recorded, the
+ *  first try's screenshot kept as <id>.first-try.png). With `checkpoint`
+ *  ({ sourceChecksum, buildChecksum }) every finished check is saved under
+ *  <output>/checkpoints and a passed one is not run again for the same
+ *  build, plan, reference and runner. `bail` stops starting checks after the
+ *  first failure; `onResult` sees each result as it finishes. */
+export async function runPlan(folder, plan, output, { only, widths, bail = false, concurrency, lanes, checkpoint, onResult, runScenario: run = runScenario } = {}) {
+  const jobs = planJobs(plan, { only, widths });
+  mkdirSync(output, { recursive: true });
   const checkpoints = join(output, "checkpoints");
-  mkdirSync(checkpoints, { recursive: true });
+  if (checkpoint) mkdirSync(checkpoints, { recursive: true });
+  const limit = concurrency ?? lanes ?? verifyConcurrency();
   const server = await serveBuild(folder);
-  const run = options.runScenario ?? runScenario;
-  let scenarios;
+  let failed = false;
   try {
-    scenarios = await inPool(jobs, options.concurrency ?? verifyConcurrency(), async ({ scenario, width }) => {
+    const results = await inPool(jobs, limit, async ({ scenario, width, id }) => {
+      if (bail && failed) return null;
       const viewport = { width, height: plan.height || 900 };
-      const id = `${scenario.id}-${width}`;
       const evidence = join(output, id + ".png");
       const reference = scenario.references?.[width];
       const effective = { ...scenario, capture: captureProfileFor(plan, scenario) };
       const compared = ["visual", "responsive"].includes(scenario.category)
         && comparisonState(plan.inventory, scenario).kind === "source";
-      const key = checkpointKey({ sourceChecksum, buildChecksum, inventory: plan.inventory, scenario: effective, viewport, reference });
-      const checkpoint = join(checkpoints, `${id}.json`);
-      const saved = resumed(checkpoint, key);
-      if (saved) return { ...saved, resumed: true };
+      const key = checkpoint && checkpointKey({ ...checkpoint, inventory: plan.inventory, scenario: effective, viewport, reference });
+      const file = join(checkpoints, `${id}.json`);
+      const saved = checkpoint && resumed(file, key);
+      if (saved) {
+        const result = { ...saved, resumed: true };
+        onResult?.(result, jobs.length);
+        return result;
+      }
       const capture = {};
       let tries = 0;
       const { problems, attempts } = await checkWithRetry(async () => {
         // Keep the failed first try's screenshot beside the retry's.
         if (tries++ && existsSync(evidence)) copyFileSync(evidence, join(output, id + ".first-try.png"));
-        for (const key of Object.keys(capture)) delete capture[key];
+        for (const name of Object.keys(capture)) delete capture[name];
         return run(server.url, effective, evidence, viewport, reference, capture, plan.inventory);
       });
+      if (problems.length) failed = true;
       const result = {
         id,
         category: scenario.category,
@@ -683,14 +733,46 @@ export async function verifyBuild(folder, plan, screen, output, options = {}) {
         ...(attempts ? { attempts } : {}),
         evidence: compared ? [evidence, reference].filter(Boolean) : [evidence],
       };
-      const hashes = {};
-      for (const path of result.evidence) if (existsSync(path)) hashes[path] = sha(readFileSync(path));
-      writeFileSync(checkpoint, JSON.stringify({ key, result, evidence: hashes }, null, 2));
+      if (checkpoint) {
+        const hashes = {};
+        for (const path of result.evidence) if (existsSync(path)) hashes[path] = sha(readFileSync(path));
+        writeFileSync(file, JSON.stringify({ key, result, evidence: hashes }, null, 2));
+      }
+      onResult?.(result, jobs.length);
       return result;
     });
+    return results.filter(Boolean);
   } finally {
     await server.close();
   }
+}
+
+/** Everything that refuses a plan before any page opens. */
+export function preflightPlan(folder, plan) {
+  if (!plan?.inventory || !Array.isArray(plan.scenarios))
+    throw new Error("Supply the reference inventory and executable scenarios");
+  validateStateInventory(plan.inventory);
+  validateResponsivePlan(plan);
+  interactionBands(plan.inventory);
+  const problems = assertionProblems(plan);
+  if (problems.length) throw new Error("The verification plan is incomplete:\n- " + problems.join("\n- "));
+  captureProfileFor(plan);
+  for (const scenario of plan.scenarios) captureProfileFor(plan, scenario);
+  const manifest = JSON.parse(readFileSync(join(folder, "prototype.json"), "utf8"));
+  if (manifest.viewport)
+    throw new Error("Responsive starters must not fix the Frame viewport.");
+  validateMapStates(manifest, plan.inventory);
+}
+
+export async function verifyBuild(folder, plan, screen, output, options = {}) {
+  preflightPlan(folder, plan);
+  const sourceChecksum = screen.bundle_checksum;
+  const buildChecksum = screen.metadata.preparedBuild.checksum;
+  const scenarios = await runPlan(folder, plan, output, {
+    concurrency: options.concurrency,
+    runScenario: options.runScenario,
+    checkpoint: { sourceChecksum, buildChecksum },
+  });
   const report = {
     version: VERSION,
     sourceChecksum,

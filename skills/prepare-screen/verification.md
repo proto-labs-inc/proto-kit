@@ -1,6 +1,13 @@
 # Executable verification plan
 
-Save a JSON object with `inventory`, `responsiveCss` (the responsive-css.mjs
+`prepare-plan.mjs capture` (see SKILL.md) writes this file with every required
+scenario, the CSS report, container observations and reference PNGs. This page
+describes its format so you can fill the remaining `"TODO: …"` assertions and
+add scenarios; never rebuild the plan or its evidence with your own scripts.
+`prepare-plan.mjs lint <plan.json>` checks everything below that can be checked
+before running.
+
+The plan is a JSON object with `inventory`, `responsiveCss` (the responsive-css.mjs
 report), `height` (default 900) and `scenarios`.
 `inventory` contains `sourceUrl`, ISO `capturedAt`, `controls` (each has `id`,
 `expected`, and `state`: enabled or disabled), `states` (nonempty typed declarations with unique IDs),
@@ -10,12 +17,11 @@ JavaScript-driven transitions. For each warning or unresolved condition in the C
 report, record the inspected behavior and coverage in `responsiveCssReview`, keyed
 by its exact message. Unreviewed findings block verification.
 
-Container rules may be unused shared CSS. Before exempting one, collect live
-observations with `node <kit>/tools/container-applicability.mjs <exact-live-url>
-<responsive-css.json> <state> <observations.json> [cdp-port]` after opening each
-source state at each required width. Keep the source state visible and settled;
-do not rename a default-state observation as another state. Include the resulting
-array as `containerObservations` in the plan. The verifier exempts only rules with
+Container rules may be unused shared CSS. `prepare-plan.mjs capture` collects
+live observations after opening each source state at each required width and
+stores them as `containerObservations` (a state whose steps change the URL gets
+none, so its rules keep requiring tests). Do not rename a default-state
+observation as another state. The verifier exempts only rules with
 zero selector matches across every source state and width, captured after the
 CSS report for its exact source URL. Dynamic, unsupported or empty selectors,
 missing observations, changed rules and any matching observation still require
@@ -57,14 +63,18 @@ before it counts; the report keeps both outcomes in `attempts` and the first try
 screenshot as `<id>.first-try.png`. Each result is saved in `checkpoints/` beside
 the report, keyed by the build, the scenario as run, its width, its reference PNG
 and the runner's code; verifying the same build and plan again skips checks that
-already passed and reruns the rest. Responsive scenarios load at an opposite width, resize
+already passed and reruns the rest. `prepare-plan.mjs run` uses the same loop
+(same widths, concurrency and retry) without checkpoints; `--widths` and `--only`
+narrow it, but a scenario never runs at a width its category does not need.
+Responsive scenarios load at an opposite width, resize
 without reloading, run the actions and assertion, then resize away and back and
 assert again. Write width-dependent assertions for observed layout behavior
 (e.g. sidebar replaced by a menu, columns stack, text wraps, table scrolls).
 An assertion that only checks page existence does not verify responsiveness.
 Use the actual source behavior, including container-query transitions. Test
 short viewports separately when the source has height-dependent overlays. Each source visual and responsive scenario's `references` maps each
-width to its local reference PNG from `tools/cdp/reference.mjs`. Reference and
+width to its local reference PNG from `prepare-plan.mjs capture` (or
+`tools/cdp/reference.mjs` for one state). Reference and
 copy are drawn identically (tools/cdp/render-profile.mjs: 1x, sRGB, no scrollbars,
 fonts and finite motion settled), so never adjust either for scrollbars, DPR or
 fonts. The fixed visual gate is at most 1%
@@ -95,8 +105,8 @@ for delayed entrances and reduced-motion duration overrides. A sampled screensho
 does not prove motion behavior: separately exercise the source and copy with normal
 motion and verify their transitions and controls.
 
-Capture new live-source references with `tools/cdp/reference.mjs --capture
-'<the same profile>'`: it applies the identical media preference (reloading the
+Capture new live-source references with `prepare-plan.mjs capture --capture
+'<the same profile>'` (or `tools/cdp/reference.mjs --capture` for one state): it applies the identical media preference (reloading the
 source window) and the identical animation sampling immediately before the screenshot.
 Preserve the original unsampled references and document the chosen profile in the
 screen notes. Do not hide elements, replace source images with copy images, mask
@@ -125,7 +135,7 @@ passing evidence is uploaded to private storage and bound to both checksums.
 Missing scenarios are failures even if every supplied scenario passes.
 
 For looping video, `capture.videoTimeMs` samples the original media at a declared
-finite nonnegative timestamp. Pass the same profile to `tools/cdp/reference.mjs
+finite nonnegative timestamp. Pass the same profile to `prepare-plan.mjs capture
 --capture`, which runs `sampleVideos(document, timeMs)` in the source window
 immediately before capturing the reference, and use that profile for the copy. Keep original unsampled captures and separately test
 normal playback and controls. This pauses/seeks native media only; never replace

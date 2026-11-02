@@ -26,64 +26,109 @@ Use the run key `<indexId>-<version>-<entryId>` from the start, including inspec
 Run `node <kit>/tools/cdp/product-page.mjs '<exact-live-url>' --codebase <codebase>
 --run <runKey>` and retain its `browserSession` path. Each entry gets its own source
 window; never borrow a same-origin tab from another preparation or prototype.
-Pass `--browser-session <browserSession>` to responsive-css, container-applicability,
-CDP capture, and verification helpers. For custom CDP scripts set
-`PROTO_BROWSER_SESSION=<browserSession>` and use the kit's `connect` helper; close
-one source connection before opening another. Only the session's target may be
-resized, scrolled or navigated. After recovery, repeat the interrupted inspection
-and replace evidence from the previous session generation.
 
-Use the signed-in live page and source to record every visible control, its
-expected local outcome, enabled/disabled state, meaningful URL states and CSS
-breakpoints. Exercise only nonmutating actions on the live product; determine
-mutating outcomes from source and test them only against local fixtures.
-Save the reference inventory and executable scenarios outside the source bundle.
-Run `node <kit>/tools/responsive-css.mjs <exact-live-url> <responsive-css.json>
-[cdp-port]` against the existing signed-in source tab. It reads the compiled
-styles through Chrome, including Tailwind utilities, nested media rules and
-cross-origin stylesheets. Copy its `breakpoints` into the reference inventory;
-keep its JSON as the plan's `responsiveCss`. Do not assume framework defaults.
-Run again after opening states that load additional styles and merge the findings.
-Inspect every warning and unresolved query using the source/browser before
-proceeding. Width queries with fractional boundaries remain fractional.
+All source evidence comes from one command. **Do not read kit tool source and do
+not write capture, inspect, inventory, plan or local-check scripts**: every
+script agents used to write (capture-refs, capture-containers, inspect1–9,
+make-plan/build-plan, local-verify, check-controls) is a mode of this tool, and
+its usage below is complete. If it fails, report the exact error; do not work
+around it with your own CDP code.
 
-Use the returned `widths` (the layout-band set): 320 and 1440, both sides of each
-CSS boundary (floor and ceiling of a fractional one; b-1, b and b+1 of an integer
-one, whose direction is unknown), plus one midpoint inside each band. Add any
-JavaScript-driven transitions discovered in source to inventory.breakpoints and
-recompute widths with screen-verification.mjs's widthsFor. Capture reference PNGs
-at those widths with `node <kit>/tools/cdp/reference.mjs <dir> --widths <w1,w2,...>
---height <plan height, default 900> --browser-session <browserSession>` (add
-`--capture '<profile json>'` for a sampled animation/video profile and `--name
-<state>-` per state). It draws the source window exactly as verification draws the
-copy: CSS viewport at that width, 1x, sRGB, no scrollbars (custom
-`::-webkit-scrollbar` ones included, and they take no layout width), fonts and
-finite motion settled, scrolled to the top; then it restores the window. Put its
-printed map into the scenario's `references`. Never capture references any other
-way, and never compensate for rendering by hand: do not sample or fake scrollbars,
-add scrollbar CSS, resize, pad or rescale reference PNGs, or change DPR. A
-"Reference viewport dimensions do not match" failure means recapture with
-reference.mjs at the reported size.
-Only visual and responsive checks sweep these widths. Interaction and keyboard
-checks run at 320 and 1440, plus the midpoint of each band listed in
-`inventory.interactionBands`; state and isolation checks run once at 1440.
-Container queries are listed separately with their names, conditions and selectors.
-They are not viewport breakpoints: inspect the actual query container at each
-layout, vary its available space to cross each threshold, and record the resulting
-viewport widths in inventory.breakpoints as additional probes. For em/rem or
-container-relative units use that container's actual font/size context. If its size
-cannot be driven by viewport changes, add explicit container-size scenarios and
-reference captures in the plan; do not claim that a viewport sweep covers it.
-Include dialogs, menus, validation and local navigation states: open each in the
-source window, then run reference.mjs for it.
+```
+node <kit>/tools/prepare-plan.mjs capture '<exact-live-url>' <plan-dir> \
+  --browser-session <browserSession> [--states <plan-dir>/states.json] \
+  [--breakpoints <js-breakpoints,comma>] [--height 900] [--capture '<profile-json>'] [--concurrency 3]
+```
+
+`<plan-dir>` is `<protoHome>/<codebase>/screens/plan/<runKey>`, outside the
+source bundle. In one run (a few minutes) it reads the compiled responsive CSS
+(again after opening each state), computes the required widths, captures every
+reference PNG per state and width with the render profile below,
+collects container observations for every state and width, inventories every
+visible control (label, selector, enabled/disabled, widths where visible), and
+writes `<plan-dir>/plan.json`: a schema-valid plan with every scenario the
+verifier requires. State assertions (heading/text that identifies each state,
+width-dependent visibility for responsive checks), disabled-control checks and
+boundary checks are filled in from the source. It prints JSON: `widths`,
+`controls`, `references`, `toFill` (everything left), `tagInCopy`,
+`partialWidth`, `statesWithoutAutoAssertion`, `captureProblems`.
+
+First run it with no `--states` file. Open and look at a phone, an intermediate
+and a desktop reference in `<plan-dir>/references/` and every layout transition,
+then write `states.json` for the dialogs, menus, validation and local
+navigation states you see, and run capture again (it keeps everything already
+filled in):
+
+```json
+{ "states": [
+    { "id": "menu", "path": "/?state=menu",
+      "steps": [{ "kind": "click", "selector": "button[aria-label='Open menu']" }] },
+    { "id": "outside", "kind": "prototype-boundary", "path": "/?state=outside",
+      "originatingControl": "link-settings", "destination": "/settings",
+      "returnControl": "return-to-screen", "returnState": "default" } ],
+  "controls": [ { "id": "return-to-screen", "selector": "[data-proto-id='return-to-screen']",
+      "path": "/?state=outside", "expected": "Returns to the screen" } ],
+  "containers": { "(width >= 40rem)": ".cards" } }
+```
+
+`steps` use the scenario actions in [verification.md](verification.md) and run
+on the live source after a fresh load at each width; use only nonmutating
+actions there. `path` is the copy's URL for that state (default
+`/?state=<id>`). `controls` adds controls that exist only in the copy (such as a
+boundary's return action). `containers` names a query container the tool could
+not find. Pass JavaScript-driven layout transitions found in source with
+`--breakpoints`.
+
+Then fill only what the source cannot tell the tool, editing `plan.json`:
+- each enabled control's `expected` and the `assertion` of its `pointer-<id>`
+  and `keyboard-<id>` scenarios (every `"TODO: …"` string carries a hint);
+- selectors listed in `tagInCopy`: add `data-proto-id="<id>"` to that control
+  in the copy;
+- controls in `partialWidth`: make the scenario reach the control at every
+  width (for example its path opens the state that shows it);
+- `responsiveCssReview` entries and container scenarios, when present.
+
+`node <kit>/tools/prepare-plan.mjs lint <plan-dir>/plan.json` lists everything
+verification would refuse; it must print `Plan is complete` before upload.
+Interaction and keyboard scenarios without a real outcome assertion are refused.
+Inspect every CSS warning and unresolved query in the browser before reviewing it.
+Do not assume framework defaults. Container queries are not viewport
+breakpoints; the tool observes them per state and width and only adds container
+scenarios for rules it cannot prove unused.
+
+### Width matrix and render profile
+
+Verification runs a scoped matrix; `widths` in capture's output is the
+layout-band set: 320 and 1440, both sides of each CSS boundary (floor and
+ceiling of a fractional one; b-1, b and b+1 of an integer one), plus one
+midpoint inside each band. Visual and responsive checks (and container
+scenarios) run at every layout width. Interaction and keyboard checks run at
+320 and 1440, plus the midpoint of each band listed in
+`inventory.interactionBands` (a `[left, right]` pair of neighbouring band edges,
+for a control that changes form there). State and isolation checks run once at
+1440. Capture therefore takes reference PNGs only at the widths compared
+screenshots need, and lint asks for exactly those.
+
+References and the verifier draw alike (tools/cdp/render-profile.mjs): CSS
+viewport at that width, 1x, sRGB, no scrollbars (custom `::-webkit-scrollbar`
+ones included, and they take no layout width), focused, fonts and finite motion
+settled, scrolled to the top; capture restores the source window afterwards.
+Never compensate for rendering by hand: do not sample or fake scrollbars, add
+scrollbar CSS, resize, pad or rescale reference PNGs, or change DPR. A
+"Reference viewport dimensions do not match" failure means run capture again. To
+replace one state's references without a full capture, use `node
+<kit>/tools/cdp/reference.mjs <plan-dir>/references --widths <w1,w2,...> --height
+<plan height> --name <state>- --browser-session <browserSession>` with that state
+open in the source window, and put its printed map into the scenario's
+`references`.
+
 Open and visually inspect the reference screenshots before judging the layout.
 Measurements, CSS extraction and clipping reports do not replace seeing the page.
 Compare at least one phone, intermediate and desktop view selected from the
 source-derived width matrix, plus each distinct layout transition. Record what
 actually changes: headers, navigation, columns, order, wrapping and scrolling.
-Scroll the page and inspect its intentional horizontal scroll regions. A control
-outside the initial viewport may be reachable by scrolling; test that before
-calling it clipped. Restore the source browser's viewport after inspection.
+A control outside the initial viewport may be reachable by scrolling; test that
+before calling it clipped. After recovery of the source window, run capture again.
 
 A local overflow defect does not mean the whole source has no mobile layout.
 Preserve the observed layouts and repair small usability defects in the copy:
@@ -143,7 +188,7 @@ Do not create a user's prototype or serve one for the baseline.
 
 A failed verification preflight blocks final acceptance, not visual repairs,
 interaction tests, keyboard tests or other screens. Record the exact failure and
-continue all independent authorized work. Use the executable scenario runner for
+continue all independent authorized work. Use `prepare-plan.mjs run` for
 checks that can run while a plan or tool issue is being repaired. Preserve failures
 and evidence; never lower a gate or mark ready to clear a blocker. Report progress
 through screen_index and state which checks remain incomplete. Ask the user only
@@ -153,16 +198,29 @@ remaining action depends on the blocker.
 
 ## Verify and save
 
-Read [verification.md](verification.md) for the executable scenario format.
-Inspect the actual output images at matching widths and exercise the responsive
-controls. A passing build or geometry report alone is not visual verification.
+Read [verification.md](verification.md) for the scenario format. While building,
+loop on the local check, which builds the workspace and runs the plan with the
+same runner as the final verification, in parallel, printing only failures:
+
+```
+node <kit>/tools/prepare-plan.mjs run <workspace> <plan-dir>/plan.json \
+  [--only pointer-save,keyboard-save | --match '^(visual|responsive)-'] \
+  [--widths 320,768,1440] [--bail] [--concurrency 6] [--no-build]
+```
+
+Each failure line names the screenshot to open; diff details are in
+`<plan-dir>/local-check/results.json`. Start with `--widths` at a phone, an
+intermediate and a desktop width and `--bail` (each scenario still runs only at
+the widths its category needs); finish with a full run (no
+filters) before uploading. Inspect the actual output images at matching widths.
+A passing build or geometry report alone is not visual verification.
 After a layout fix, rerun the affected widths and interaction/state checks.
 `verify` saves each passed check under the screen cache; running it again for the
 same build and plan reruns only failed or changed checks.
 Report progress through screen_index. Upload with
 `screen-index.mjs upload <codebase> <indexId> <version> <entryId> <workspace>`.
 This archives source and compiles that exact archive once. Then run
-`screen-index.mjs verify <codebase> <screenId> <plan.json>`.
+`screen-index.mjs verify <codebase> <screenId> <plan-dir>/plan.json`.
 The tool tests the archived compiled build, uploads private evidence and calls
 finish only after all required checks pass. Do not submit handwritten success
 booleans or fabricate reports. Inspect failures and screenshots, repair source,

@@ -57,6 +57,16 @@ export function widthsForScenario(inventory, scenario) {
   if (isContainerScenario(scenario)) return widthsFor(inventory);
   return widthsForCategory(inventory, scenario.category);
 }
+/** The widths a plan needs reference PNGs at: the union of
+ *  widthsForScenario over its screenshot-compared (visual and responsive)
+ *  scenarios. prepare-plan.mjs captures exactly these; lint requires them. */
+export function referenceWidths(inventory, scenarios) {
+  const widths = new Set();
+  for (const scenario of scenarios)
+    if (["visual", "responsive"].includes(scenario.category))
+      for (const width of widthsForScenario(inventory, scenario)) widths.add(width);
+  return [...widths].sort((a, b) => a - b);
+}
 export const resizeOrigin = (width) => width < 1024 ? 1440 : 390;
 export function validateVerification(report, screen) {
   const fail = (message) => {

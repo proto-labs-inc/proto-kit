@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { verifyBuild, inPool, verifyConcurrency, checkWithRetry } from "./verify-screen.mjs";
-import { validateVerification, widthsFor, widthsForCategory, widthsForScenario, boundarySides } from "./screen-verification.mjs";
+import { verifyBuild, runPlan, planJobs, inPool, verifyConcurrency, checkWithRetry } from "./verify-screen.mjs";
+import { validateVerification, widthsFor, widthsForCategory, widthsForScenario, referenceWidths, boundarySides } from "./screen-verification.mjs";
 
 const screen = {
   index_id: "022b489a-d73a-4ecf-a650-98926b38159b",
@@ -127,8 +127,8 @@ function fakeBuild(t) {
       { id: "fit", category: "responsive", target: "default", assertion: "true", references },
       { id: "reload", category: "state", target: "default", assertion: "true" },
       { id: "alone", category: "isolation", target: "default", assertion: "true" },
-      { id: "open", category: "interaction", target: "menu", steps: [{ kind: "click", selector: "#m" }], assertion: "true" },
-      { id: "keys", category: "keyboard", target: "menu", steps: [{ kind: "key", key: "Enter" }], assertion: "true" },
+      { id: "open", category: "interaction", target: "menu", steps: [{ kind: "click", selector: "#m" }], assertion: "document.body.dataset.menu === 'open'" },
+      { id: "keys", category: "keyboard", target: "menu", steps: [{ kind: "key", key: "Enter" }], assertion: "document.body.dataset.menu === 'open'" },
     ],
   };
   return { folder, plan, output: join(folder, "out") };
@@ -185,6 +185,28 @@ test("verifyBuild runs the scoped matrix in a pool, retries, and resumes passed 
   rebuilt.metadata.preparedBuild.checksum = "e".repeat(64);
   await verifyBuild(folder, plan, rebuilt, output, { runScenario, concurrency: 4 });
   assert.equal(ran.length, 12);
+});
+
+test("prepare-plan's run uses the same loop: scoped widths, filters, bail, retry, no checkpoints", async (t) => {
+  const { folder, plan, output } = fakeBuild(t);
+  // Narrowing to 880 and 1440 keeps each scenario's own widths: controls and
+  // state checks never run at a layout-only width.
+  assert.deepEqual(planJobs(plan, { widths: [880, 1440] }).map(j => j.id), [
+    "look-880", "fit-880", "look-1440", "fit-1440", "reload-1440", "alone-1440", "open-1440", "keys-1440"]);
+  assert.deepEqual(planJobs(plan, { only: /^open$/ }).map(j => j.id), ["open-320", "open-1440"]);
+  const ran = [];
+  const runScenario = async (_url, scenario, out, viewport) => {
+    ran.push(`${scenario.id}-${viewport.width}`);
+    writeFileSync(out, "shot");
+    return scenario.id === "open" ? ["Assertion timed out"] : [];
+  };
+  const results = await runPlan(folder, plan, output, { only: ["open", "keys"], bail: true, concurrency: 1, runScenario });
+  assert.deepEqual(results.map(r => [r.id, r.outcome]), [["open-320", "failed"]]);
+  assert.deepEqual(ran, ["open-320", "open-320"], "retried once, then nothing new starts");
+  assert.ok(!existsSync(join(output, "checkpoints")), "local runs keep no checkpoints");
+  // References are needed exactly where screenshots are compared.
+  assert.deepEqual(referenceWidths(plan.inventory, plan.scenarios), widthsFor(plan.inventory));
+  assert.deepEqual(referenceWidths(plan.inventory, plan.scenarios.filter(s => s.category === "state")), []);
 });
 
 test("in the browser, concurrent lanes give the same report, retry a flaky load and resume", { skip: process.env.PROTO_BROWSER_TEST !== "1" }, async (t) => {
