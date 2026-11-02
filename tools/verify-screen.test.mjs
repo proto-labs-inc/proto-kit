@@ -3,8 +3,54 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serveBuild, runScenario, smokeBuild, verifyBuild, validateMapStates, validateResponsivePlan, captureProfileFor, applyCaptureMedia, sampleAnimations } from "./verify-screen.mjs";
+import { serveBuild, runtimeSource, runScenario, smokeBuild, verifyBuild, validateMapStates, validateResponsivePlan, captureProfileFor, applyCaptureMedia, sampleAnimations } from "./verify-screen.mjs";
 import { validateVerification, widthsFor } from "./screen-verification.mjs";
+
+test("a served build may reach only itself and the Frame origin its rig loads the runtime from", async (t) => {
+  const folder = mkdtempSync(join(tmpdir(), "proto-runtime-source-"));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const header = async () => {
+    const server = await serveBuild(folder);
+    try { return (await fetch(`${server.url}/`)).headers.get("content-security-policy"); }
+    finally { server.close(); }
+  };
+  writeFileSync(join(folder, "index.html"), "<main>Page</main>");
+  assert.equal(runtimeSource(folder), null);
+  assert.match(await header(), /^connect-src 'self'; /);
+  writeFileSync(join(folder, "prototype.json"), JSON.stringify({ frameOrigin: "https://prototypes.fun" }));
+  assert.match(await header(), /^connect-src 'self' https:\/\/prototypes\.fun; /);
+  writeFileSync(join(folder, "prototype.json"), JSON.stringify({ frameOrigin: "http://localhost:3100" }));
+  assert.equal(runtimeSource(folder), "http://localhost:3100");
+  for (const frameOrigin of ["http://prototypes.fun", "https://prototypes.fun/p/x", "javascript:alert(1)"]) {
+    writeFileSync(join(folder, "prototype.json"), JSON.stringify({ frameOrigin }));
+    assert.throws(() => runtimeSource(folder), /Invalid frameOrigin/);
+  }
+});
+
+test("in the browser, a build fetches its runtime from its Frame origin and nowhere else", { skip: process.env.PROTO_BROWSER_TEST !== "1" }, async (t) => {
+  const { createServer } = await import("node:http");
+  const serve = (body) => new Promise((done) => {
+    const server = createServer((_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.end(body); }).listen(0, "127.0.0.1", () => done(server));
+  });
+  const frame = await serve('{"release":"r"}');
+  const other = await serve('{"release":"other"}');
+  t.after(() => { frame.close(); other.close(); });
+  const at = (server) => `http://localhost:${server.address().port}`;
+  const folder = mkdtempSync(join(tmpdir(), "proto-runtime-fetch-"));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  writeFileSync(join(folder, "prototype.json"), JSON.stringify({ frameOrigin: at(frame) }));
+  writeFileSync(join(folder, "index.html"), `<html><head><link rel="icon" href="data:,"></head><body><output></output><script>
+    Promise.all([fetch('${at(frame)}/rig-runtime/active.json').then(r => r.json()).then(j => j.release, () => 'blocked'),
+                 fetch('${at(other)}/x').then(() => 'reached', () => 'blocked')])
+      .then(([runtime, elsewhere]) => { document.querySelector('output').textContent = runtime + ' ' + elsewhere; parent.postMessage({type:'hello'},'*'); });
+  </script></body></html>`);
+  const server = await serveBuild(folder);
+  t.after(() => server.close());
+  const problems = await runScenario(server.url, { category: "smoke", assertion: "document.querySelector('output').textContent === 'r blocked'" }, join(folder, "evidence.png"), { width: 800, height: 600 });
+  assert.ok(!problems.some((p) => p.includes("Assertion timed out")), "the runtime loaded and the other origin was refused");
+  assert.ok(!problems.some((p) => p.includes(`External request blocked: ${at(frame)}`)), "the Frame origin is not refused");
+  assert.ok(problems.some((p) => p.includes(`External request blocked: ${at(other)}`)), "any other origin is still reported");
+});
 
 test("verification rejects absent evidence, stale artifacts and missing keyboard coverage", () => {
   const screen = {

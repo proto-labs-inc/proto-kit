@@ -23,14 +23,34 @@ const mime = {
   ".woff2": "font/woff2",
   ".jpg": "image/jpeg",
 };
+/** The Frame origin each served build may reach, by the build's address. */
+const runtimeOrigins = new Map();
+
+/** Where the build's rig fetches its runtime: the Frame origin the build's
+ *  prototype.json records (rig 0.3 and later). Null when it records none. */
+export function runtimeSource(folder) {
+  const manifest = join(folder, "prototype.json");
+  if (!existsSync(manifest)) return null;
+  const configured = JSON.parse(readFileSync(manifest, "utf8")).frameOrigin;
+  if (typeof configured !== "string") return null;
+  const url = new URL(configured);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.origin !== configured || (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)))
+    throw new Error(`Invalid frameOrigin in prototype.json: ${configured}`);
+  return url.origin;
+}
+
 export async function serveBuild(folder) {
   const root = resolve(folder);
+  // The build may request only itself and the Frame origin its rig loads the runtime from.
+  const runtime = runtimeSource(root);
+  const connect = runtime ? `connect-src 'self' ${runtime}` : "connect-src 'self'";
   const server = createServer((req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
       res.setHeader(
         "Content-Security-Policy",
-        "connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'",
+        `${connect}; form-action 'self'; object-src 'none'; base-uri 'self'`,
       );
       if (url.pathname === "/__proto_verify_frame") {
         const target = url.searchParams.get("target") || "/";
@@ -59,10 +79,13 @@ export async function serveBuild(folder) {
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = `http://127.0.0.1:${server.address().port}`;
+  if (runtime) runtimeOrigins.set(address, runtime);
   return {
-    url: `http://127.0.0.1:${server.address().port}`,
+    url: address,
     close: () =>
       new Promise((resolve) => {
+        runtimeOrigins.delete(address);
         server.close(resolve);
         server.closeAllConnections();
       }),
@@ -325,6 +348,7 @@ export async function runScenario(
       let operation;
       if (
         address.origin === new URL(url).origin ||
+        address.origin === runtimeOrigins.get(new URL(url).origin) ||
         ["data:", "blob:"].includes(address.protocol)
       )
         operation = page.send("Fetch.continueRequest", {
