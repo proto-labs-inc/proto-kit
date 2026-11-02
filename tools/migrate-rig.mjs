@@ -10,7 +10,7 @@
  * such workspace to what scaffold.mjs writes now:
  *
  *   1. package.json depends on the adapter and the wire at the version
- *      this kit's template pins, and `pnpm install` fetches them;
+ *      the cloud app advertises, and `pnpm install` fetches them;
  *   2. every import in src/ names `@proto-labs-inc/…`;
  *   3. tsconfig.json loses its `@proto/…` paths;
  *   4. vite.config.ts loses the PROTO_PACKAGES block and its aliases.
@@ -28,20 +28,14 @@
  *   --check   say what would change, change nothing
  */
 import { updateRigDependencies, upgradeRig } from "./update-rig.mjs";
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { fetchRigRelease, rigDependencies } from "./rig-release.mjs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { protoHome } from "./proto-home.mjs";
 
 const OLD_IMPORT = /(["'])@proto\/(rig-core|rig-vue|rig|wire)\1/g;
 const SOURCE_FILE = /\.(ts|tsx|js|jsx|mts|mjs|vue)$/;
-
-/** The dependencies a workspace of this framework takes, from this kit's template. */
-export function rigDependencies(kit, framework) {
-  const template = JSON.parse(readFileSync(join(kit, "template", `workspace-${framework}`, "package.json"), "utf8"));
-  return Object.fromEntries(Object.entries(template.dependencies).filter(([name]) => name.startsWith("@proto-labs-inc/")));
-}
 
 /** Source text with every `@proto/…` import renamed; unchanged when there is none. */
 export function renameImports(source) {
@@ -124,13 +118,13 @@ function sourceFiles(dir) {
  * dependencies to add, the source files to rename, the new tsconfig and
  * vite config. `needed` is false only when its npm rig is current.
  */
-export function planWorkspace(workspace, kit) {
+export function planWorkspace(workspace, release) {
   const packagePath = join(workspace, "package.json");
   const pkg = JSON.parse(readFileSync(packagePath, "utf8"));
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-  const framework = "vue" in deps ? "vue" : "react";
-  const wanted = rigDependencies(kit, framework);
-  const upgrades = updateRigDependencies(structuredClone(pkg));
+  const framework = deps["@proto-labs-inc/rig-vue"] || deps.vue ? "vue" : "react";
+  const wanted = rigDependencies(release, framework);
+  const upgrades = updateRigDependencies(structuredClone(pkg), release);
   const missing = { ...upgrades, ...Object.fromEntries(Object.entries(wanted).filter(([name]) => !(name in deps))) };
 
   const src = join(workspace, "src");
@@ -149,14 +143,14 @@ export function planWorkspace(workspace, kit) {
   const vite = existsSync(vitePath) ? withoutSourceRig(readFileSync(vitePath, "utf8")) : { kind: "unchanged" };
 
   const needed = Object.keys(missing).length > 0 || renames.length > 0 || tsconfig !== null || vite.kind !== "unchanged";
-  return { needed, pkg, packagePath, missing, renames, tsconfigPath, tsconfig, vitePath, vite };
+  return { needed, release, pkg, packagePath, missing, renames, tsconfigPath, tsconfig, vitePath, vite };
 }
 
 /** Apply supported npm upgrades through the verified candidate path. */
 export function applyPlan(workspace, plan) {
   const legacy = plan.renames.length > 0 || plan.tsconfig !== null || plan.vite.kind !== "unchanged";
   if (legacy) return { kind: "failed", reason: "Legacy source rig requires an agent-assisted migration in a candidate copy before installing the hosted adapter." };
-  try { return { kind: "migrated", ...upgradeRig(workspace) }; }
+  try { return { kind: "migrated", ...upgradeRig(workspace, { release: plan.release }) }; }
   catch (error) { return { kind: "failed", reason: error.message }; }
 }
 
@@ -171,12 +165,12 @@ function describe(plan, did) {
   return parts.join(", ");
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const check = argv.includes("--check");
   const named = argv.filter((arg) => !arg.startsWith("--"));
   const did = (verb, past) => (check ? `would ${verb}` : past);
-  const kit = dirname(dirname(fileURLToPath(import.meta.url)));
+  let release;
   const root = protoHome();
   const dirs = (path) => {
     try {
@@ -196,7 +190,8 @@ function main() {
     for (const slug of dirs(prototypes)) {
       const workspace = join(prototypes, slug);
       if (!existsSync(join(workspace, "package.json"))) continue;
-      const plan = planWorkspace(workspace, kit);
+      release ??= await fetchRigRelease();
+      const plan = planWorkspace(workspace, release);
       if (!plan.needed) continue;
       const label = `${codebase}/${slug}`;
       const unknown = plan.vite.kind === "unknown" ? " Its vite.config.ts still reads PROTO_PACKAGES in a shape this does not recognise; remove that by hand." : "";
@@ -215,4 +210,4 @@ function main() {
   if (check && lines.length > 0) console.log("\nNothing was written (--check).");
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) await main();

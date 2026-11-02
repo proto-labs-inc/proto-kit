@@ -412,7 +412,7 @@ prototype or library under `~/.proto` claims, in `vite.config.ts` and
 `public/__proto-workspace.json`, which every tool reads back from the
 port before rendering in it; the page's tokens, fonts and body base in
 `src/`; Tailwind when the source uses it; `pnpm install` from the
-shared store. The rig is a dependency the template pins to one exact
+shared store. The rig is a dependency the connected cloud app pins to one exact
 version: `@proto-labs-inc/rig` (React) or `@proto-labs-inc/rig-vue`
 (Vue), with `@proto-labs-inc/wire` for the manifest's types, all from
 npm. Never vendor the rig or change its version by hand;
@@ -450,7 +450,7 @@ copying all components.
 ## Rig compatibility when copying starters
 
 Cloning preserves the verified starter artifacts. If the independent copy pins
-an older rig than this kit, `screen-bundle.mjs` updates its rig dependencies,
+an older rig than the connected cloud app advertises, `screen-bundle.mjs` updates its rig dependencies,
 installs them and rebuilds that copy before its normal smoke check. This is the
 exception to the unchanged-copy no-install/no-build fast path. Copies already
 on the current rig keep the prepared build fast path.

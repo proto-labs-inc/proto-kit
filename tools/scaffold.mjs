@@ -25,7 +25,7 @@
  *   - wires Tailwind (the plugin and the import) when the source uses it;
  *   - installs with pnpm from the shared store, offline first; the rig
  *     (@proto-labs-inc/rig or rig-vue, and the wire) is a dependency the
- *     template pins, fetched from npm the first time.
+ *     cloud app selects, fetched from npm the first time.
  * Idempotent: a workspace that exists keeps its port and its files;
  * only the derived tokens and fonts are written again, and the install
  * runs only when node_modules is missing or the lockfile changed.
@@ -44,6 +44,7 @@ import { frameOrigin } from "./frame-origin.mjs";
 import { reservePort } from "./ports.mjs";
 import { requireScreenApproval } from "./screen-approval.mjs";
 import { protoHome } from "./proto-home.mjs";
+import { fetchRigRelease, rigDependencies } from "./rig-release.mjs";
 
 const kit = dirname(dirname(fileURLToPath(import.meta.url)));
 const USAGE = 'usage: node tools/scaffold.mjs <slug> --codebase <id> --brief <briefId> [--title "<title>"]';
@@ -99,6 +100,8 @@ const fresh = !existsSync(join(workspace, "package.json"));
 const recordPath = join(buildDir, "workspace.json");
 const ours = existsSync(recordPath) && JSON.parse(readFileSync(recordPath, "utf8")).path === workspace;
 if (!fresh && !ours) fail(`a prototype named ${slug} already exists in ${workspaces}: choose another slug`);
+// Resolve before creating files; resumed builds retain their existing dependencies.
+const rig = fresh ? rigDependencies(await fetchRigRelease(), framework) : null;
 mkdirSync(workspaces, { recursive: true });
 if (fresh) {
   cpSync(template, workspace, { recursive: true, filter: (source) => !/[\\/](node_modules|dist)([\\/]|$)/.test(source) });
@@ -110,7 +113,7 @@ if (fresh) {
 // ---- names and port ----
 const title = options.title ?? slug;
 const port = fresh ? await reservePort({ owner: join(workspace, "public", "prototype.json") }) : JSON.parse(readFileSync(join(workspace, "public", "prototype.json"), "utf8")).port;
-editJson(join(workspace, "package.json"), (pkg) => ({ ...pkg, name: slug }));
+editJson(join(workspace, "package.json"), (pkg) => ({ ...pkg, name: slug, dependencies: { ...pkg.dependencies, ...rig } }));
 // The workspace's own token, served from its public/ folder: what the
 // dev server on its port must answer with before any check renders in it.
 if (!workspaceIdentity(workspace)) {

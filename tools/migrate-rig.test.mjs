@@ -1,3 +1,4 @@
+const release = { schemaVersion: 1, packages: { "@proto-labs-inc/rig-core": "0.3.1", "@proto-labs-inc/rig": "0.3.1", "@proto-labs-inc/rig-vue": "0.3.1", "@proto-labs-inc/wire": "0.3.0" } };
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -110,10 +111,10 @@ test("already installed npm rigs still receive version upgrades", (t) => {
   t.after(() => rmSync(workspace, { recursive: true, force: true }));
   const pkg = { dependencies: { "@proto-labs-inc/rig": "0.1.0", "@proto-labs-inc/wire": "0.1.0" } };
   writeFileSync(join(workspace, "package.json"), JSON.stringify(pkg));
-  const plan = planWorkspace(workspace, kit);
+  const plan = planWorkspace(workspace, release);
   assert.equal(plan.needed, true);
   assert.deepEqual(plan.missing, { "@proto-labs-inc/rig": "0.3.1", "@proto-labs-inc/wire": "0.3.0" });
   assert.deepEqual(plan.pkg, pkg);
   writeFileSync(join(workspace, "package.json"), JSON.stringify({ dependencies: plan.missing }));
-  assert.equal(planWorkspace(workspace, kit).needed, false);
+  assert.equal(planWorkspace(workspace, release).needed, false);
 });

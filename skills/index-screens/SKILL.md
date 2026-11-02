@@ -117,7 +117,7 @@ Never create a replacement screen or reconstruct the product to backfill a build
 ## Rig compatibility when copying starters
 
 Cloning preserves the verified starter artifacts. If the independent copy pins
-an older rig than this kit, `screen-bundle.mjs` updates its rig dependencies,
+an older rig than the connected cloud app advertises, `screen-bundle.mjs` updates its rig dependencies,
 installs them and rebuilds that copy before its normal smoke check. This is the
 exception to the unchanged-copy no-install/no-build fast path. Copies already
 on the current rig keep the prepared build fast path.

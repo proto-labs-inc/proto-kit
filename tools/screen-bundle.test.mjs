@@ -1,3 +1,4 @@
+const release = { schemaVersion: 1, packages: { "@proto-labs-inc/rig-core": "0.3.1", "@proto-labs-inc/rig": "0.3.1", "@proto-labs-inc/rig-vue": "0.3.1", "@proto-labs-inc/wire": "0.3.0" } };
 import { randomBytes } from "node:crypto";
 import { isBase64, SCREEN_ARTIFACT_LIMIT } from "./screen-archive.mjs";
 import { widthsFor } from "./screen-verification.mjs";
@@ -27,8 +28,7 @@ import {
 function fixture(t) {
   // These prepared starters already use the current rig; cloning must not
   // trigger a real dependency install or build in this portable-copy test.
-  const template = JSON.parse(readFileSync(new URL("../template/workspace-react/package.json", import.meta.url)));
-  const rigDependencies = Object.fromEntries(Object.entries(template.dependencies).filter(([name]) => name.startsWith("@proto-labs-inc/")));
+  const rigDependencies = { "@proto-labs-inc/rig": release.packages["@proto-labs-inc/rig"], "@proto-labs-inc/wire": release.packages["@proto-labs-inc/wire"] };
   const root = mkdtempSync(join(tmpdir(), "proto-screen-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, "source");
@@ -137,6 +137,7 @@ test("fresh and cached copies have independent editable files and fresh identiti
   };
   const one = {
     buildBytes,
+    resolveRigRelease: async () => release,
     destination: join(root, "one"),
     slug: "one",
     codebase: "example",
@@ -145,6 +146,7 @@ test("fresh and cached copies have independent editable files and fresh identiti
   };
   const two = {
     buildBytes,
+    resolveRigRelease: async () => release,
     destination: join(root, "two"),
     slug: "two",
     codebase: "example",

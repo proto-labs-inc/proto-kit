@@ -52,8 +52,35 @@ try {
   for (const view of views) {
     const opened = await headlessPage(`${address}/__rig_check?search=${encodeURIComponent(view.search)}`, { width: 1280, height: 800 });
     try {
-      const result = await opened.page.send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `(async()=>{const end=Date.now()+12000;while(Date.now()<end){const doc=document.querySelector('iframe')?.contentDocument;const root=doc?.querySelector('#root,#app');if(window.rigHello?.adapterContract===1&&root?.children.length&&!root.querySelector('[role="alert"]')&&!root.textContent.includes('Loading prototype'))return {hello:window.rigHello,search:doc.location.search};await new Promise(r=>setTimeout(r,100))}throw new Error('Rig handshake or prototype rendering did not complete')})()` });
-      if (result.exceptionDetails || !result.result?.value?.hello?.runtimeVersion) throw new Error(`Candidate failed view ${view.name}: ${result.exceptionDetails?.text || "no hosted runtime"}`);
+      // Frozen screens use portals outside the React mount. Check rendered
+      // content across the document, not children of a particular mount node.
+      const result = await opened.page.send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `(async()=>{
+        const end=Date.now()+12000;
+        let observation;
+        while(Date.now()<end){
+          const doc=document.querySelector('iframe')?.contentDocument;
+          const body=doc?.body;
+          const hello=window.rigHello;
+          const alert=body?.querySelector('[role="alert"]')?.textContent;
+          const loading=[...(body?.querySelectorAll('[role="status"]')??[])].some(el=>el.textContent.includes('Loading prototype'));
+          const rendered=[...(body?.querySelectorAll('*')??[])].some(el=>{
+            if(el.closest('script,style,template,noscript,[hidden],[aria-hidden="true"]'))return false;
+            const style=doc.defaultView.getComputedStyle(el);
+            if(style.visibility==='hidden'||style.display==='none'||style.opacity==='0')return false;
+            const rect=el.getBoundingClientRect();
+            if(rect.width<=0||rect.height<=0)return false;
+            return [...el.childNodes].some(node=>node.nodeType===3&&node.textContent.trim())||el.matches('canvas,img,svg,video,iframe,input,button');
+          });
+          observation={handshake:hello?.adapterContract===1&&!!hello.runtimeVersion,rendered,loading,alert:alert||null};
+          if(observation.handshake&&rendered&&!loading&&!alert)return {hello,search:doc.location.search};
+          await new Promise(resolve=>setTimeout(resolve,100));
+        }
+        throw new Error('Rig startup verification failed: '+JSON.stringify(observation));
+      })()` });
+      if (result.exceptionDetails || !result.result?.value?.hello?.runtimeVersion) {
+        const detail = result.exceptionDetails?.exception?.description || result.exceptionDetails?.text || "no hosted runtime";
+        throw new Error(`Candidate failed view ${view.name}: ${detail}`);
+      }
       const actual = new URLSearchParams(result.result.value.search);
       for (const [key, value] of new URLSearchParams(view.search)) if (actual.get(key) !== value) throw new Error(`Candidate lost ${key} in ${view.name}`);
       checked.push(view.name);

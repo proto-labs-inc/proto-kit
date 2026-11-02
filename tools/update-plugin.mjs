@@ -17,8 +17,23 @@ export function updatePlugin(host, { channel = 'main', run = (cmd, args) => exec
   if (!['codex', 'claude', 'cursor'].includes(host)) throw new Error('Pass --agent codex, claude, or cursor.');
   if (!validChannel(channel)) throw new Error('Pass --branch with a proto-kit source branch name.');
   const branch = releaseBranch(channel);
-  const scratch = mkdtempSync(join(tmpdir(), 'proto-update-'));
   const json = (cmd, args) => JSON.parse(run(cmd, args));
+  const marketplace = () => {
+    const listing = json(host, ['plugin', 'marketplace', 'list', '--json']);
+    const markets = host === 'codex' ? listing?.marketplaces : listing;
+    if (!Array.isArray(markets)) throw new Error('Unrecognized marketplace list; nothing changed.');
+    const market = markets.find(m => m.name === 'proto-kit');
+    if (host === 'codex' && market) {
+      const sourceType = market.marketplaceSource?.sourceType;
+      if (sourceType === 'local') throw new Error('Proto uses an explicitly configured local source; preserved. Continue with the local kit. Switching to a published release requires an explicit change to the marketplace registration.');
+      if (sourceType !== 'git') throw new Error('Cannot verify the Proto marketplace source; nothing changed. Inspect its registration before retrying.');
+    }
+    return market;
+  };
+  // Protect the configured source before downloads, then check it again before
+  // mutation in case another agent changed the registration during the download.
+  if (host === 'codex') marketplace();
+  const scratch = mkdtempSync(join(tmpdir(), 'proto-update-'));
   const version = root => JSON.parse(readFileSync(join(root, manifest), 'utf8')).version;
   const builtFrom = root => { try { return JSON.parse(readFileSync(join(root, '.proto-release.json'), 'utf8')).channel || 'main'; } catch { return 'main'; } };
   try {
@@ -45,10 +60,7 @@ export function updatePlugin(host, { channel = 'main', run = (cmd, args) => exec
         run('git', ['-C', root, 'checkout', '--detach', 'FETCH_HEAD']);
       } else run('git', ['clone', '--branch', branch, repo, root]);
     } else {
-      const listing = json(host, ['plugin', 'marketplace', 'list', '--json']);
-      const markets = host === 'codex' ? listing.marketplaces : listing;
-      if (!Array.isArray(markets)) throw new Error('Unrecognized marketplace list; nothing changed.');
-      const market = markets.find(m => m.name === 'proto-kit');
+      const market = marketplace();
       // Re-register deterministically: host versions expose source/ref differently.
       // This changes registration only, never the local source checkout.
       if (market) run(host, ['plugin', 'marketplace', 'remove', 'proto-kit']);
