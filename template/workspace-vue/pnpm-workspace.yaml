@@ -1,0 +1,3 @@
+# Proto releases are maintained and published by this project.
+minimumReleaseAgeExclude:
+  - '@proto-labs-inc/*'
