@@ -10,6 +10,9 @@ description: >-
 
 # Setup
 
+Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
+
+
 Setup has two explicit purposes: customer connection and staff preparation.
 For a customer, link the laptop, connect the repository and attach existing assets
 from the staff preparation codebase assigned to their email.

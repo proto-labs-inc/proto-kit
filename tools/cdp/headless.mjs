@@ -126,6 +126,7 @@ async function startHeadless(display, port, profile, rendererPath) {
     "-a", "Google Chrome",
     "--args",
     "--headless=new",
+    "--mute-audio",
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${profile}`,
     "--no-first-run",
