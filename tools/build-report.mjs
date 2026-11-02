@@ -26,7 +26,7 @@ const BATCH = 150;
 const FLUSH_MS = 700;
 const FLUSH_AT = 40;
 
-export function createReporter({ codebase, briefId, runDir, sink = "site", transport = callTool }) {
+export function createReporter({ codebase, briefId, runDir, sink = "site", transport = callTool, screen }) {
   const waiting = [];
   let timer = null;
   let sending = Promise.resolve();
@@ -41,7 +41,7 @@ export function createReporter({ codebase, briefId, runDir, sink = "site", trans
   const deliver = async (events) => {
     if (sink === "file") {
       toFolder(events);
-      await reportScreenBuild({ codebase, runDir, transport });
+      await reportScreenBuild({ codebase, runDir, transport, screen });
       return;
     }
     mkdirSync(outbox, { recursive: true });

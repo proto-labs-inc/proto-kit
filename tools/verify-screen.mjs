@@ -14,7 +14,7 @@ import { headlessPage } from "./cdp/headless.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { diffPngs } from "./cdp/diff.mjs";
 import { createHash } from "node:crypto";
-import { SCREEN_RENDER, applyScreenRender, settleForCapture, pngSize, referenceScale } from "./cdp/render-profile.mjs";
+import { SCREEN_RENDER, applyScreenRender, settleForCapture, trackNetwork, pngSize, referenceScale } from "./cdp/render-profile.mjs";
 import { VERSION, widthsForScenario, interactionBands, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
 const mime = {
   ".html": "text/html",
@@ -332,7 +332,7 @@ export async function runScenario(
     // must keep advancing even while another browser window has focus.
     await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await page.send("Runtime.enable");
-    await page.send("Network.enable");
+    await trackNetwork(page);
     await page.send("Page.enable");
     await page.send("Log.enable");
     page.on("Log.entryAdded", ({ entry }) => {
@@ -481,7 +481,10 @@ export async function runScenario(
     problems.push(
       ...violations.map((uri) => `External request blocked: ${uri}`),
     );
-    await settleForCapture(page, evaluate, inFrame);
+    // The same settle as the source references (render-profile.mjs); the
+    // copy is local, so a shorter bound. Recorded, not a failure by itself:
+    // an unsettled shot shows up in the pixel comparison.
+    captureMetadata.settle = await settleForCapture(page, evaluate, inFrame, { timeoutMs: 8_000 });
     const shot = await page.send("Page.captureScreenshot", { format: "png" });
     writeFileSync(out, Buffer.from(shot.data, "base64"));
     if (["visual", "responsive"].includes(scenario.category)) {

@@ -335,7 +335,9 @@ test("browser capture media applies before source scripts and records the sample
     category: "smoke", capture, assertion: "window.bootMotion===true",
   }, join(folder, "sample.png"), { width: 390, height: 600 }, undefined, metadata);
   assert.deepEqual(problems, []);
-  assert.deepEqual(metadata, { profile: capture, render: { dpr: 1, colorProfile: "srgb", scrollbars: "hidden" }, reducedMotion: "reduce", sampledAnimations: 1 });
+  const { settle, ...rest } = metadata;
+  assert.deepEqual(rest, { profile: capture, render: { dpr: 1, colorProfile: "srgb", scrollbars: "hidden" }, reducedMotion: "reduce", sampledAnimations: 1 });
+  assert.equal(settle.settled, true, settle.reasons.join("; "));
   const normal = await runScenario(server.url, {
     category: "smoke", capture: { reducedMotion: "no-preference" },
     assertion: "window.bootMotion===false && document.getAnimations()[0].playState==='running'",

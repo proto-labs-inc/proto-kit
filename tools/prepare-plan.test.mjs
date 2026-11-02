@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { planSkeleton, mergePlan, lintPlan, containerThreshold, containerSteps, normalizeStates, mergeControls, capturePlan, responsiveTerms, VISIBLE_TEXT } from "./prepare-plan.mjs";
+import { planSkeleton, mergePlan, lintPlan, containerThreshold, containerSteps, normalizeStates, mergeControls, capturePlan, responsiveTerms, VISIBLE_TEXT, statesOf, screenOfRunKey, referenceReporter } from "./prepare-plan.mjs";
 import { assertionProblems, preflightPlan, runPlan } from "./verify-screen.mjs";
 import { widthsFor, widthsForScenario } from "./screen-verification.mjs";
 
@@ -39,6 +39,12 @@ test("the skeleton fills every state assertion from the source and leaves only c
   assert.equal(byId["pointer-menuitem-pricing"].steps[0].selector, "[data-proto-id=\"menuitem-pricing\"]");
   assert.deepEqual(notes.tagInCopy.map(n => n.id), ["menuitem-pricing"]);
   assert.deepEqual(notes.partialWidth.map(n => n.id), ["link-docs"]);
+  // The inventory records where each control is visible, so a desktop-only
+  // link is checked at 1440 only and no state has to be invented for 320.
+  const docs = plan.inventory.controls.find(c => c.id === "link-docs");
+  assert.deepEqual(docs.widths, widthsFor({ breakpoints: [768] }).filter(w => w >= 768));
+  assert.deepEqual(widthsForScenario(plan.inventory, plan.scenarios.find(s => s.id === "keyboard-link-docs")), [1440]);
+  assert.deepEqual(widthsForScenario(plan.inventory, plan.scenarios.find(s => s.id === "pointer-button-save-changes")), [320, 1440]);
   assert.doesNotMatch(byId["keyboard-button-delete-project"].assertion, /TODO/);
   assert.ok(byId["keyboard-button-delete-project"].steps.every(s => s.kind === "key"));
   const problems = lintPlan(plan, { files: false });
@@ -138,6 +144,63 @@ document.querySelector('#save').onclick=()=>{document.querySelector('#status').t
 render();${hello ? "parent.postMessage({type:'hello'},'*');" : ""}
 </script></body></html>`;
 
+test("capture needs no states file: the default {} means the default state only", () => {
+  assert.deepEqual(statesOf({}), []);
+  assert.deepEqual(statesOf(), []);
+  assert.deepEqual(normalizeStates(statesOf({})).map(s => s.id), ["default"]);
+  assert.deepEqual(statesOf({ states: [{ id: "menu" }], containers: {} }), [{ id: "menu" }]);
+  assert.deepEqual(statesOf([{ id: "menu" }]), [{ id: "menu" }]);
+  assert.deepEqual(statesOf({ containers: { "(width >= 40rem)": ".cards" } }), []);
+  assert.throws(() => statesOf("menu"), /states.json must be/);
+});
+
+const INDEX = "022b489a-d73a-4ecf-a650-98926b38159b";
+const ENTRY = "6f1c2a9e-1111-4c2b-9d1e-0a0b0c0d0e0f";
+test("a screen run key names its index, version and entry", () => {
+  assert.deepEqual(screenOfRunKey(`${INDEX}-3-${ENTRY}`), { indexId: INDEX, version: 3, entryId: ENTRY });
+  assert.throws(() => screenOfRunKey("brief-123"), /--run takes the screen run key/);
+});
+
+test("capture reports each reference to the screen's preparation stream as it is captured (mock site)", async (t) => {
+  const puts = [];
+  const site = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", chunk => chunks.push(chunk));
+    req.on("end", () => { puts.push({ url: req.url, bytes: Buffer.concat(chunks) }); res.end(); });
+  });
+  await new Promise(done => site.listen(0, "127.0.0.1", done));
+  t.after(() => site.close());
+  const calls = [];
+  const transport = async (tool, args) => {
+    calls.push({ tool, args });
+    const reply = (value) => ({ content: [{ type: "text", text: JSON.stringify(value) }] });
+    if (args.operation === "capture") return reply({ uploadUrl: `http://127.0.0.1:${site.address().port}/${args.checksum}` });
+    return reply({ ok: true });
+  };
+  const runKey = `${INDEX}-2-${ENTRY}`;
+  const runDir = mkdtempSync(join(tmpdir(), "proto-screen-run-"));
+  t.after(() => rmSync(runDir, { recursive: true, force: true }));
+  const png = (n) => { const file = join(runDir, `ref-${n}.png`); writeFileSync(file, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.from(String(n))])); return file; };
+  const onReference = referenceReporter({ codebase: "acme", runKey, runDir, transport });
+  // No workspace.json yet (scaffold comes later): the run key names the entry.
+  assert.equal(existsSync(join(runDir, "workspace.json")), false);
+  await onReference({ file: png(1440), width: 1440, height: 900, url: "https://app.example/settings" });
+  const first = calls.filter(c => c.args.operation === "build-events");
+  assert.equal(first.length, 1, "the desktop reference leaves at once");
+  assert.equal(first[0].tool, "screen_index");
+  assert.deepEqual([first[0].args.indexId, first[0].args.version, first[0].args.entryId, first[0].args.codebase], [INDEX, 2, ENTRY, "acme"]);
+  const [{ event }] = first[0].args.events;
+  assert.equal(event.kind, "reference");
+  assert.deepEqual([event.width, event.height, event.url], [1440, 900, "https://app.example/settings"]);
+  assert.match(event.image, new RegExp(`^proto-screen://${INDEX}/[a-f0-9]{64}\\.png$`));
+  assert.ok(event.reportId);
+  assert.equal(puts.length, 1);
+  await onReference({ file: png(320), width: 320, height: 900, url: "https://app.example/settings" });
+  const events = calls.filter(c => c.args.operation === "build-events").flatMap(c => c.args.events.map(e => e.event));
+  assert.deepEqual(events.map(e => [e.kind, e.width]), [["reference", 1440], ["reference", 320]], "each width is its own reference event, none sent twice");
+  assert.equal(puts.length, 2);
+});
+
 test("capture writes references, inventory and a plan that runs against a matching copy", { skip: process.env.PROTO_BROWSER_TEST !== "1", timeout: 600_000 }, async (t) => {
   const { headlessPage } = await import("./cdp/headless.mjs");
   const source = createServer((_req, res) => { res.setHeader("Content-Type", "text/html"); res.end(page(false)); });
@@ -198,4 +261,52 @@ test("capture writes references, inventory and a plan that runs against a matchi
   const bailed = await runPlan(copy, broken, join(dir, "bail"), { only: ["pointer-button-save-changes", "visual-default"], bail: true, concurrency: 1 });
   assert.equal(bailed.filter(r => r.outcome === "failed").length, 1);
   assert.ok(bailed.length < widths.length * 2, "stops starting scenarios after the first failure");
+});
+
+// The freeze (tools/freeze.mjs SERIALIZE) rewrites every href that is not a
+// fragment to an absolute URL against the source page; the same rewrite here.
+const FREEZE_HREFS = `(() => { const body = document.body.cloneNode(true);
+  for (const el of body.querySelectorAll('*')) for (const a of ['href', 'src']) { const v = el.getAttribute(a);
+    if (v && !v.startsWith('#') && !v.startsWith('data:') && !v.startsWith('javascript:')) el.setAttribute(a, new URL(v, location.href).href); }
+  for (const el of body.querySelectorAll('script')) el.remove();
+  return '<!doctype html><html><body>' + body.innerHTML + '</body></html>'; })()`;
+
+test("control selectors from the live page still find every control in the frozen copy", { skip: process.env.PROTO_BROWSER_TEST !== "1", timeout: 300_000 }, async (t) => {
+  const { headlessPage } = await import("./cdp/headless.mjs");
+  const { evaluate } = await import("./cdp/cdp.mjs");
+  const live = `<!doctype html><html><body>
+    <nav><a href="/org/acme/general">General</a><a href="billing?tab=invoices">Billing</a>
+      <a href="http://HOST/org/acme/members">Members</a><a href="https://docs.example/guides">Docs</a><a href="#top">Top</a></nav>
+    <main><h1>Settings</h1><a href="/org/acme/general">Edit general</a><button>Save</button>
+      <button aria-label="Close panel">x</button><input name="org-name" value="Acme"></main></body></html>`;
+  const source = createServer((req, res) => { res.setHeader("Content-Type", "text/html"); res.end(live.replace("HOST", req.headers.host)); });
+  await new Promise(done => source.listen(0, "127.0.0.1", done));
+  t.after(() => source.close());
+  const url = `http://127.0.0.1:${source.address().port}/org/acme/settings`;
+  const dir = mkdtempSync(join(tmpdir(), "proto-plan-freeze-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const opened = await headlessPage(url, { width: 1440, height: 900 });
+  t.after(() => opened.close());
+  const result = await capturePlan({ page: opened.page, url, dir, states: {}, height: 600 });
+  assert.deepEqual(result.captureProblems, []);
+  // Links resolve by destination (scoped to their landmark when it repeats);
+  // only an unlabelled, unnamed button needs a data-proto-id in the copy.
+  assert.deepEqual(result.tagInCopy.map(n => n.id), ["button-save"]);
+  const frozen = await evaluate(opened.page, FREEZE_HREFS);
+  assert.match(frozen, /href="http:\/\/127\.0\.0\.1:\d+\/org\/acme\/billing\?tab=invoices"/, "the freeze made the hrefs absolute");
+  // The copy is served from its own origin, as the workspace is.
+  const copy = createServer((_req, res) => { res.setHeader("Content-Type", "text/html"); res.end(frozen); });
+  await new Promise(done => copy.listen(0, "127.0.0.1", done));
+  t.after(() => copy.close());
+  const copyPage = await headlessPage(`http://127.0.0.1:${copy.address().port}/`, { width: 1440, height: 900 });
+  t.after(() => copyPage.close());
+  const plan = JSON.parse(readFileSync(result.plan, "utf8"));
+  const selectors = plan.scenarios.filter(s => s.category === "interaction").map(s => [s.target, s.steps[0].selector]);
+  assert.equal(selectors.length, 9);
+  for (const [target, selector] of selectors) {
+    if (selector.startsWith("[data-proto-id=")) continue;
+    for (const page of [opened.page, copyPage.page])
+      assert.equal(await evaluate(page, `document.querySelectorAll(${JSON.stringify(selector)}).length`), 1, `${target}: ${selector}`);
+  }
+  assert.equal(selectors.find(([target]) => target === "link-general")[1].split(",")[0], 'nav a[href="/org/acme/general"]');
 });

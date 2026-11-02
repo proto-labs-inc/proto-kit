@@ -55,6 +55,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileS
 import { join } from "node:path";
 import { connect } from "./cdp/cdp.mjs";
 import { takeFrame } from "./cdp/live.mjs";
+import { settleProblem } from "./cdp/render-profile.mjs";
 import { answeredInTerminal, ask, waitForAnswer } from "./ask.mjs";
 import { createReporter } from "./build-report.mjs";
 import { draftCuration } from "./curate.mjs";
@@ -161,6 +162,8 @@ switch (command) {
     try {
       frame = await takeFrame(page, codebase, { also: () => readPage(page) });
       read = frame.read;
+      const unsettled = settleProblem(frame.settle, "The reference page");
+      if (unsettled) console.error(`… ${unsettled}`);
       console.error(`… read ${read.read.elements.length} elements and ${read.tree.nodes.length} boxes (${took()})`);
       if (read.tree.overlay) console.error(`… ${overlayLine(read.tree.overlay)}`);
       const captured = await captureAssets(page, read.read, join(runDir, "assets"));

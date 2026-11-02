@@ -48,6 +48,30 @@ export function widthsForCategory(inventory, category) {
   if (["state", "isolation"].includes(category)) return [1440];
   throw new Error("Invalid scenario category.");
 }
+/** The widths one control's interaction and keyboard checks run at.
+ *  `control.widths` (recorded by prepare-plan.mjs) lists the layout widths
+ *  where the source shows the control; without it the control is treated as
+ *  visible everywhere (widthsForCategory). The category's widths are kept
+ *  only where the control is visible. A control visible at neither 320 nor
+ *  1440 (a tablet-only control) also runs at its fallback: the visible width
+ *  nearest a layout-band midpoint (the wider on a tie), so every control is
+ *  checked at least once. */
+export function widthsForControl(inventory, control) {
+  const category = widthsForCategory(inventory, "interaction");
+  const visible = control?.widths;
+  if (visible === undefined) return category;
+  if (!Array.isArray(visible) || !visible.length || visible.some(width => !Number.isInteger(width) || width < 1 || width > 10000))
+    throw new Error(`Control ${control.id} widths must list the integer widths where it is visible.`);
+  const widths = category.filter(width => visible.includes(width));
+  if (!visible.includes(320) && !visible.includes(1440)) {
+    const edges = bandEdges(inventory);
+    const midpoints = edges.slice(1).map((right, i) => bandMidpoint(edges[i], right));
+    const distance = (width) => Math.min(...midpoints.map(midpoint => Math.abs(midpoint - width)));
+    const fallback = [...visible].sort((a, b) => distance(a) - distance(b) || b - a)[0];
+    widths.push(fallback);
+  }
+  return [...new Set(widths)].sort((a, b) => a - b);
+}
 /** A container scenario resizes its own container; it runs at every layout
  *  width as authored, whatever its category. */
 export const isContainerScenario = (scenario) =>
@@ -55,6 +79,8 @@ export const isContainerScenario = (scenario) =>
 /** The widths the runner executes one plan scenario at. */
 export function widthsForScenario(inventory, scenario) {
   if (isContainerScenario(scenario)) return widthsFor(inventory);
+  if (["interaction", "keyboard"].includes(scenario.category))
+    return widthsForControl(inventory, inventory.controls?.find(control => control.id === scenario.target));
   return widthsForCategory(inventory, scenario.category);
 }
 /** The widths a plan needs reference PNGs at: the union of
@@ -184,11 +210,14 @@ export function validateVerification(report, screen) {
         if (!has(category, state.id, width))
           fail(`Missing ${category} check for ${state.id} at ${width}px.`);
   }
-  for (const control of inventory.controls)
+  for (const control of inventory.controls) {
+    let widths;
+    try { widths = widthsForControl(inventory, control); } catch (error) { fail(error.message); }
     for (const category of ["interaction", "keyboard"])
-      for (const width of widthsForCategory(inventory, category))
+      for (const width of widths)
         if (!has(category, control.id, width))
           fail(`Missing ${category} check for ${control.id} at ${width}px.`);
+  }
   return report;
 }
 

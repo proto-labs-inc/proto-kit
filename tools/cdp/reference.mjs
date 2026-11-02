@@ -16,7 +16,7 @@ import { join, resolve } from "node:path";
 import { connect, evaluate } from "./cdp.mjs";
 import { browserArguments, browserSessionPath, readSession } from "./session-context.mjs";
 import { acquireSourceSession } from "./source-session.mjs";
-import { SCREEN_RENDER, applyScreenRender, clearScreenRender, settleForCapture } from "./render-profile.mjs";
+import { SCREEN_RENDER, applyScreenRender, clearScreenRender, settleForCapture, settleProblem, trackNetwork } from "./render-profile.mjs";
 import { captureProfileFor, sampleAnimations, sampleVideos } from "../verify-screen.mjs";
 
 /** Put a source tab at the screen render (render-profile.mjs) at width x
@@ -30,26 +30,30 @@ export async function setReferenceViewport(page, width, height = 900) {
   }
 }
 
-/** One reference PNG of the page as it is now: scrolled to the top, fonts
- *  and finite motion settled, the profile's animation/video sample applied.
- *  The tab must already be at setReferenceViewport. */
-export async function shootReference(page, out, profile = {}) {
+/** One reference PNG of the page as it is now: scrolled to the top, settled
+ *  (network idle, no loading indicators, fonts and images ready, finite
+ *  motion finished, layout still: settleForCapture), the profile's
+ *  animation/video sample applied. The tab must already be at
+ *  setReferenceViewport. Returns the settle result; `onSettle` gets it too. */
+export async function shootReference(page, out, profile = {}, { timeoutMs, onSettle } = {}) {
   await evaluate(page, "window.scrollTo(0, 0), true");
-  await settleForCapture(page, evaluate);
+  const settle = await settleForCapture(page, evaluate, undefined, { timeoutMs });
+  onSettle?.(settle);
   if (profile.animationTimeMs !== undefined) await evaluate(page, `(${sampleAnimations.toString()})(document, ${profile.animationTimeMs})`);
   if (profile.videoTimeMs !== undefined) await evaluate(page, `(${sampleVideos.toString()})(document, ${profile.videoTimeMs})`);
   await evaluate(page, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   const shot = await page.send("Page.captureScreenshot", { format: "png", fromSurface: true });
   writeFileSync(out, Buffer.from(shot.data, "base64"));
-  return out;
+  return settle;
 }
 
 /** Capture references on an open CDP page; returns { [width]: path }. */
-export async function captureReferences(page, { outDir, widths, height = 900, capture = {}, name = "" }) {
+export async function captureReferences(page, { outDir, widths, height = 900, capture = {}, name = "", problems = [] }) {
   const profile = captureProfileFor({}, { capture });
   mkdirSync(outDir, { recursive: true });
   const written = {};
   try {
+    await trackNetwork(page);
     if (profile.reducedMotion !== undefined) {
       // Same as the verifier: the preference holds before the document's scripts run.
       await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: profile.reducedMotion }] });
@@ -61,7 +65,8 @@ export async function captureReferences(page, { outDir, widths, height = 900, ca
     for (const width of widths) {
       await setReferenceViewport(page, width, height);
       const out = resolve(join(outDir, `${name}${width}.png`));
-      await shootReference(page, out, profile);
+      const problem = settleProblem(await shootReference(page, out, profile), `The page at ${width}px`);
+      if (problem) problems.push(problem);
       written[width] = out;
     }
   } finally {
@@ -87,11 +92,12 @@ if (process.argv[1] && resolve(process.argv[1]) === new URL(import.meta.url).pat
   const { tab } = await acquireSourceSession(session.requestedUrl, session.port);
   const page = await connect(tab.webSocketDebuggerUrl);
   try {
+    const problems = [];
     const written = await captureReferences(page, {
-      outDir, widths, height, name: flag("--name") ?? "",
+      outDir, widths, height, name: flag("--name") ?? "", problems,
       capture: flag("--capture") ? JSON.parse(flag("--capture")) : {},
     });
-    console.log(JSON.stringify({ render: { ...SCREEN_RENDER, height }, references: written }, null, 2));
+    console.log(JSON.stringify({ render: { ...SCREEN_RENDER, height }, references: written, ...(problems.length ? { captureProblems: problems } : {}) }, null, 2));
   } finally {
     page.close();
   }

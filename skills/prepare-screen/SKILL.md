@@ -36,7 +36,7 @@ around it with your own CDP code.
 
 ```
 node <kit>/tools/prepare-plan.mjs capture '<exact-live-url>' <plan-dir> \
-  --browser-session <browserSession> [--states <plan-dir>/states.json] \
+  --browser-session <browserSession> --run <runKey> [--states <plan-dir>/states.json] \
   [--breakpoints <js-breakpoints,comma>] [--height 900] [--capture '<profile-json>'] [--concurrency 3]
 ```
 
@@ -52,6 +52,12 @@ width-dependent visibility for responsive checks), disabled-control checks and
 boundary checks are filled in from the source. It prints JSON: `widths`,
 `controls`, `references`, `toFill` (everything left), `tagInCopy`,
 `partialWidth`, `statesWithoutAutoAssertion`, `captureProblems`.
+With `--run` it sends each default-state reference (the desktop one first) to
+this screen's progress view as soon as it is captured. Every width waits until
+the page has settled (network idle, no skeletons or spinners, motion finished,
+layout still); a width that did not settle within `--settle-timeout` seconds
+(default 15) is still captured and named in `captureProblems` with the reason:
+open that reference, and capture again if it shows loading content.
 
 First run it with no `--states` file. Open and look at a phone, an intermediate
 and a desktop reference in `<plan-dir>/references/` and every layout transition,
@@ -84,8 +90,9 @@ Then fill only what the source cannot tell the tool, editing `plan.json`:
   and `keyboard-<id>` scenarios (every `"TODO: …"` string carries a hint);
 - selectors listed in `tagInCopy`: add `data-proto-id="<id>"` to that control
   in the copy;
-- controls in `partialWidth`: make the scenario reach the control at every
-  width (for example its path opens the state that shows it);
+- controls in `partialWidth` are shown by the source only at some widths; their
+  checks run only where they are visible (the control's `widths` in the
+  inventory), so do not invent states to show them elsewhere;
 - `responsiveCssReview` entries and container scenarios, when present.
 
 `node <kit>/tools/prepare-plan.mjs lint <plan-dir>/plan.json` lists everything

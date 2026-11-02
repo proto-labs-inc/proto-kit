@@ -51,7 +51,13 @@ scenario's widths by category (`widthsForScenario` in screen-verification.mjs):
   inside a band (a menu that collapses, a toolbar that overflows), mark that band in
   `inventory.interactionBands` as `[left, right]`, two neighbouring band edges
   (320, a breakpoint or 1440), e.g. `[[767.98, 1024]]`; control checks then also run
-  at its midpoint.
+  at its midpoint. Each control runs only at those widths where it is visible:
+  capture records `widths` (the layout widths where the source shows it) on each
+  inventory control, so a phone-only menu button runs at 320 and a desktop-only
+  sidebar link at 1440. A control visible at neither 320 nor 1440 runs at its
+  visible width nearest a band midpoint (the wider on a tie). Without `widths` a
+  control is checked at every control width. Do not invent states to show a
+  control at widths where the source hides it.
 - `state` and `isolation` run once, at 1440px: reload and isolation do not depend
   on width.
 - Container scenarios (a `containerQuery` or any `resize-container` step) run at the

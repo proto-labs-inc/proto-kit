@@ -5,10 +5,12 @@ import { createHash } from "node:crypto";
 import { callTool } from "./mcp-call.mjs";
 
 /** Forward a screen's durable copy log to its approved inventory entry. */
-export async function reportScreenBuild({ codebase, runDir, transport = callTool }) {
+/** `screen` ({ indexId, version, entryId }) names the entry before scaffold
+ *  has written workspace.json (prepare-plan.mjs capture reports references
+ *  that early); otherwise workspace.json's screenIndex does. */
+export async function reportScreenBuild({ codebase, runDir, transport = callTool, screen: named }) {
   const record = join(runDir, "workspace.json");
-  if (!existsSync(record)) return;
-  const screen = JSON.parse(readFileSync(record, "utf8")).screenIndex;
+  const screen = named ?? (existsSync(record) ? JSON.parse(readFileSync(record, "utf8")).screenIndex : null);
   if (!screen) return;
   const file = join(runDir, "events.jsonl");
   if (!existsSync(file)) return;

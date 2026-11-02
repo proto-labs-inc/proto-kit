@@ -4,8 +4,12 @@
  * write their own capture, inventory, plan or local-check scripts.
  *
  *   prepare-plan.mjs capture <exact-live-url> <plan-dir> --browser-session <path>
- *       [--states states.json] [--breakpoints 900,1100.5] [--height 900]
- *       [--capture '{"reducedMotion":"reduce"}'] [--concurrency 3]
+ *       [--run <runKey>] [--states states.json] [--breakpoints 900,1100.5] [--height 900]
+ *       [--capture '{"reducedMotion":"reduce"}'] [--concurrency 3] [--settle-timeout 15]
+ *     --run sends the default state's references (the widest first) to the
+ *     screen's preparation stream as they are captured. Each width waits for
+ *     the page to settle (network idle, no loading indicators, motion done,
+ *     layout still; at most --settle-timeout seconds) and says when it did not.
  *     Reads the signed-in source window: compiled responsive CSS (again after
  *     opening each state), container observations for every state and width,
  *     the control inventory, and every reference PNG. Writes plan-dir/plan.json:
@@ -20,13 +24,14 @@
  *     as `screen-index.mjs verify`, in parallel, printing only failures.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { connect, evaluate } from "./cdp/cdp.mjs";
-import { clearScreenRender } from "./cdp/render-profile.mjs";
+import { clearScreenRender, settleForCapture, settleProblem, trackNetwork } from "./cdp/render-profile.mjs";
 import { setReferenceViewport, shootReference } from "./cdp/reference.mjs";
 import { discoverResponsiveCss } from "./responsive-css.mjs";
+import { createReporter } from "./build-report.mjs";
 import { captureContainerObservation, hasCompleteAbsenceEvidence } from "./container-applicability.mjs";
 import { widthsFor, widthsForScenario, referenceWidths, validateStateInventory } from "./screen-verification.mjs";
 import { step, until, assertionProblems, validateResponsivePlan, runPlan, preflightPlan, captureProfileFor, applyCaptureMedia, verifyConcurrency } from "./verify-screen.mjs";
@@ -48,6 +53,18 @@ export function pageProbe(mode, arg, seen) {
   const unique = (selector) => { try { return document.querySelectorAll(selector).length === 1; } catch { return false; } };
   const generated = (id) => /\d{3,}|^[:_]|:|radix|headlessui|react-aria|^mui-|^rc[-_]/i.test(id);
   const quote = (value) => JSON.stringify(value);
+  const regionOf = (element) => {
+    const tag = element.tagName.toLowerCase();
+    if (element.id && !generated(element.id)) return "#" + CSS.escape(element.id);
+    for (const name of ["data-testid", "data-test", "data-qa", "aria-label"]) {
+      const value = element.getAttribute(name);
+      if (value) return `${tag}[${name}=${quote(value)}]`;
+    }
+    if (["nav", "main", "header", "footer", "aside", "form", "dialog"].includes(tag)) return tag;
+    const role = element.getAttribute("role");
+    if (["navigation", "main", "banner", "contentinfo", "complementary", "dialog", "menu", "tablist", "toolbar", "region"].includes(role)) return `[role=${quote(role)}]`;
+    return null;
+  };
   const selectorFor = (element) => {
     const tag = element.tagName.toLowerCase();
     if (element.id && !generated(element.id) && unique("#" + CSS.escape(element.id))) return { selector: "#" + CSS.escape(element.id), stable: true };
@@ -55,8 +72,30 @@ export function pageProbe(mode, arg, seen) {
       const value = element.getAttribute(name);
       if (value && unique(`${tag}[${name}=${quote(value)}]`)) return { selector: `${tag}[${name}=${quote(value)}]`, stable: true };
     }
-    if (tag === "a" && element.getAttribute("href") && unique(`a[href=${quote(element.getAttribute("href"))}]`))
-      return { selector: `a[href=${quote(element.getAttribute("href"))}]`, stable: true };
+    // A link by its destination in every form it is written: as in the
+    // source, absolute (the freeze rewrites hrefs to absolute URLs) and
+    // root-relative (same-origin), so the selector survives the freeze.
+    if (tag === "a" && element.getAttribute("href")) {
+      const raw = element.getAttribute("href");
+      const forms = [raw];
+      if (!raw.startsWith("#")) {
+        try {
+          const url = new URL(raw, location.href);
+          forms.push(url.href);
+          if (url.origin === location.origin) forms.push(url.pathname + url.search + url.hash);
+        } catch {}
+      }
+      const own = [...new Set(forms)].map(form => `a[href=${quote(form)}]`);
+      if (unique(own.join(","))) return { selector: own.join(","), stable: true };
+      // The same destination twice (a nav link and an in-page one): scope it
+      // to the nearest named region or landmark, which the freeze keeps.
+      for (let scope = element.parentElement; scope && scope !== document.documentElement; scope = scope.parentElement) {
+        const name = regionOf(scope);
+        if (!name) continue;
+        const scoped = own.map(form => `${name} ${form}`).join(",");
+        if (unique(scoped)) return { selector: scoped, stable: true };
+      }
+    }
     const parts = [];
     let node = element;
     for (; node && node !== document.body && node.parentElement; node = node.parentElement) {
@@ -177,7 +216,7 @@ function hintFor(control, states, allWidths) {
   if (["checkbox", "radio", "switch"].includes(control.role) || ["checkbox", "radio"].includes(control.type)) hints.push("assert the checked state");
   const [state, widths] = bestState(control, states);
   if (widths.length !== allWidths.length)
-    hints.push(`visible in state ${state} only at ${widths.join(",")}px; make the scenario reach it at every width`);
+    hints.push(`visible in state ${state} only at ${widths.join(",")}px; its checks run only where it is visible (inventory widths)`);
   return hints.join("; ") || "assert its visible outcome";
 }
 
@@ -309,7 +348,9 @@ export function planSkeleton({ css, states, snapshots, observations = [], refere
       keyboard = [{ kind: "key", key: "Tab" }];
       keyboardAssertion = `(e=>!!e&&(e.disabled||e.getAttribute('aria-disabled')==='true')&&document.activeElement!==e)(${element})&&${unchanged}`;
     }
-    inventory.controls.push({ id: control.id, expected, state: control.disabled ? "disabled" : "enabled" });
+    // Where the source shows it: its interaction and keyboard checks run
+    // only at those widths (widthsForControl in screen-verification.mjs).
+    inventory.controls.push({ id: control.id, expected, state: control.disabled ? "disabled" : "enabled", widths: visibleWidths });
     scenarios.push({ id: `pointer-${control.id}`, category: "interaction", target: control.id, path, steps: pointer, assertion: pointerAssertion });
     scenarios.push({ id: `keyboard-${control.id}`, category: "keyboard", target: control.id, path, steps: keyboard, assertion: keyboardAssertion });
   }
@@ -433,18 +474,16 @@ export function lintPlan(plan, { files = true } = {}) {
 // ---------------------------------------------------------------------------
 // Live source capture
 
-async function settle(page) {
-  await evaluate(page, "document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))");
-  await until(page, "document.getAnimations().every(a => !Number.isFinite(a.effect?.getComputedTiming().endTime) || a.playState !== 'running')").catch(() => {});
-  await until(page, "Array.from(document.images).every(i=>{const r=i.getBoundingClientRect();return !(i.checkVisibility()&&r.bottom>0&&r.top<innerHeight)||i.complete})").catch(() => {});
-}
+/** Wait until the source is settled (render-profile.mjs settleForCapture:
+ *  network idle, no loading indicators, fonts/images ready, finite motion
+ *  finished, layout still), bounded; returns the settle result. */
+const settle = (page, timeoutMs) => settleForCapture(page, evaluate, undefined, { timeoutMs });
 
 /** The source tab at the screen render (tools/cdp/render-profile.mjs, the
  *  same as reference.mjs and the verifier): exact CSS viewport, 1x, sRGB, no
- *  scrollbars, focused. */
+ *  scrollbars, focused. The shot that follows settles the page. */
 async function resizeTo(page, width, height) {
   await setReferenceViewport(page, width, height);
-  await settle(page);
 }
 
 async function navigate(page, url) {
@@ -452,13 +491,14 @@ async function navigate(page, url) {
   await page.send("Page.navigate", { url });
   await Promise.race([loaded, new Promise((_, reject) => setTimeout(() => reject(new Error(`Source did not load within 30 s: ${url}`)), 30_000).unref())]);
   await until(page, "document.readyState === 'complete'");
-  await settle(page);
 }
 
-const shoot = (page, file, capture) => shootReference(page, file, capture ?? {});
+const shoot = (page, file, capture, timeoutMs) => shootReference(page, file, capture ?? {}, { timeoutMs });
 
 async function preparePage(page, capture) {
   await page.send("Page.enable");
+  // Network idle is part of settling; requests are tracked from here on.
+  await trackNetwork(page);
   if (capture) await applyCaptureMedia(page, capture);
 }
 
@@ -476,10 +516,18 @@ export async function capturePlan(options) {
   }
 }
 
-async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, height = 900, capture, extraBreakpoints = [], lanes = 1, openLane, log = () => {} }) {
+/** The states list of a states file: an array, or { states, containers,
+ *  controls } with states optional (no file means the default state only). */
+export function statesOf(spec = {}) {
+  if (Array.isArray(spec)) return spec;
+  if (!spec || typeof spec !== "object") throw new Error("states.json must be an array of states or { states, containers, controls }");
+  return spec.states ?? [];
+}
+
+async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, height = 900, capture, extraBreakpoints = [], lanes = 1, openLane, log = () => {}, onReference = () => {}, settleTimeout }) {
   const started = Date.now();
   mkdirSync(join(dir, "references"), { recursive: true });
-  const states = normalizeStates(stateSpec.states ?? stateSpec);
+  const states = normalizeStates(statesOf(stateSpec));
   const sourceStates = states.filter(state => state.kind !== "prototype-boundary");
   const problems = [];
   capture = capture ? captureProfileFor({ capture }) : undefined;
@@ -492,8 +540,9 @@ async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, heigh
     try {
       await resizeTo(page, 1440, height);
       await navigate(page, css.sourceUrl);
+      await settle(page, settleTimeout);
       for (const action of state.steps) await step(page, action, identity);
-      await settle(page);
+      await settle(page, settleTimeout);
       const more = await discoverResponsiveCss(page);
       css.breakpoints = [...new Set([...css.breakpoints, ...more.breakpoints])].sort((a, b) => a - b);
       css.unresolved = [...new Set([...css.unresolved, ...more.unresolved])];
@@ -512,8 +561,11 @@ async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, heigh
 
   const snapshots = {};
   const references = {};
+  const reports = [];
   const observations = [];
-  const jobs = sourceStates.flatMap((state, index) => widths.map(width => ({ state, width, fresh: index > 0 })));
+  // The default state's widest (desktop) reference first, so the progress
+  // view shows the reference screen as soon as it exists.
+  const jobs = sourceStates.flatMap((state, index) => (index === 0 ? [...widths].reverse() : widths).map(width => ({ state, width, fresh: index > 0 })));
   log(`Capturing ${jobs.length} references (${sourceStates.length} states x ${widths.length} widths) in ${lanes} lane(s)`);
   const pages = [{ page, close: async () => {}, dirty: true }];
   for (let lane = 1; lane < lanes && openLane; lane++) {
@@ -533,11 +585,17 @@ async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, heigh
           await resizeTo(lane.page, width, height);
           if (fresh || lane.dirty) await navigate(lane.page, css.sourceUrl);
           lane.dirty = fresh;
-          for (const action of state.steps) await step(lane.page, action, identity);
-          await settle(lane.page);
+          if (state.steps.length) {
+            await settle(lane.page, settleTimeout);
+            for (const action of state.steps) await step(lane.page, action, identity);
+          }
           const file = resolve(dir, "references", `${state.id}-${width}.png`);
-          await shoot(lane.page, file, capture);
+          const problem = settleProblem(await shoot(lane.page, file, capture, settleTimeout), `State ${state.id} at ${width}px`);
+          if (problem) problems.push(problem);
           (references[state.id] ||= {})[width] = file;
+          if (state.id === sourceStates[0].id)
+            reports.push(Promise.resolve().then(() => onReference({ file, width, height, url: css.sourceUrl, widest: width === Math.max(...widths) }))
+              .catch(error => problems.push(`Reference at ${width}px not reported to the preparation stream: ${error.message}`)));
           (snapshots[state.id] ||= {})[width] = await snapshot(lane.page);
           if (css.containerQueries.length) {
             try { observations.push(await captureContainerObservation(lane.page, css, state.id)); }
@@ -554,6 +612,7 @@ async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, heigh
     for (const lane of pages.slice(1)) await lane.close().catch(() => {});
   }
 
+  await Promise.all(reports);
   const containers = [];
   const draft = { inventory: { sourceUrl: css.sourceUrl, states: sourceStates.map(s => ({ id: s.id, kind: "source" })), breakpoints: [...new Set([...css.breakpoints, ...extraBreakpoints])] }, responsiveCss: css, containerObservations: observations };
   const live = css.containerQueries.filter(query => !hasCompleteAbsenceEvidence(draft, query));
@@ -561,6 +620,7 @@ async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, heigh
     log(`Capturing ${live.length} live container quer${live.length === 1 ? "y" : "ies"}`);
     await resizeTo(page, 1440, height);
     await navigate(page, css.sourceUrl);
+    await settle(page, settleTimeout);
     const located = await evaluate(page, `(${pageProbe.toString()})("containers", ${JSON.stringify(live)})`);
     for (const [index, query] of live.entries()) {
       const selector = stateSpec.containers?.[query.condition] ?? located[index]?.selector ?? null;
@@ -573,9 +633,9 @@ async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, heigh
           await resizeTo(page, width, height);
           const before = await evaluate(page, `document.querySelector(${JSON.stringify(selector)})?.getAttribute('style') ?? null`);
           await step(page, { kind: "resize-container", selector, width: Math.ceil(threshold) + 1 }, identity);
-          await settle(page);
           const file = resolve(dir, "references", `container-${index + 1}-${width}.png`);
-          await shoot(page, file, capture);
+          const problem = settleProblem(await shoot(page, file, capture, settleTimeout), `Container ${query.condition} at ${width}px`);
+          if (problem) problems.push(problem);
           entry.references[width] = file;
           await evaluate(page, `(e=>{${JSON.stringify(before)}===null?e.removeAttribute('style'):e.setAttribute('style',${JSON.stringify(before)})})(document.querySelector(${JSON.stringify(selector)}))`);
         } catch (error) { problems.push(`Container ${query.condition} at ${width}px: ${error.message}`); }
@@ -593,6 +653,33 @@ async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, heigh
   writeFileSync(planFile, JSON.stringify(merged, null, 2) + "\n");
   const remaining = lintPlan(merged);
   return { plan: planFile, widths, states: states.map(s => s.id), controls: merged.inventory.controls.length, references: Object.values(references).reduce((n, r) => n + Object.keys(r).length, 0) + containers.reduce((n, c) => n + Object.keys(c.references).length, 0), seconds: Math.round((Date.now() - started) / 1000), captureProblems: problems, toFill: remaining, ...notes };
+}
+
+// ---------------------------------------------------------------------------
+// Progress: the reference screen, early
+
+/** The screen entry a preparation run key names: `<indexId>-<version>-<entryId>`. */
+export function screenOfRunKey(runKey) {
+  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(\d+)-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(runKey ?? "");
+  if (!match) throw new Error(`--run takes the screen run key <indexId>-<version>-<entryId>, not ${runKey}`);
+  return { indexId: match[1], version: Number(match[2]), entryId: match[3] };
+}
+
+/**
+ * Sends each default-state reference to the screen's preparation stream as
+ * a `reference` event, the way build-stream.mjs `read` does for this run
+ * (file sink in the run folder, forwarded with screen_index build-events),
+ * so the Frame shows the reference screen while capture is still running.
+ * The widest is captured first; every other width follows as its own
+ * event, for the progress view's viewports.
+ */
+export function referenceReporter({ codebase, runKey, runDir, transport }) {
+  const reporter = createReporter({ codebase, briefId: runKey, runDir, sink: "file", transport, screen: screenOfRunKey(runKey) });
+  return async ({ file, width, height, url }) => {
+    const image = await reporter.upload(readFileSync(file));
+    reporter.send([{ kind: "reference", image, url, width, height }]);
+    await reporter.flush();
+  };
 }
 
 export function normalizeStates(list = []) {
@@ -638,9 +725,19 @@ async function cli() {
     const captureProfile = option(args, "--capture");
     const lanes = Number(option(args, "--concurrency", option(args, "--lanes", "3")));
     const port = Number(option(args, "--port", "9333"));
+    const runKey = option(args, "--run");
+    const settleSeconds = option(args, "--settle-timeout");
     const [url, dir] = args;
-    if (!url || !dir) throw new Error("usage: prepare-plan.mjs capture <exact-live-url> <plan-dir> --browser-session <path> [--states states.json] [--breakpoints 900,1100] [--height 900] [--capture json] [--concurrency 3]");
+    if (!url || !dir) throw new Error("usage: prepare-plan.mjs capture <exact-live-url> <plan-dir> --browser-session <path> [--run <runKey>] [--states states.json] [--breakpoints 900,1100] [--height 900] [--capture json] [--concurrency 3] [--settle-timeout 15]");
     if (!browserSessionPath()) throw new Error("Pass --browser-session <path> from product-page.mjs");
+    // --run: report the references to this screen's preparation stream. The
+    // run folder is the browser session's (<protoHome>/<codebase>/run/builds/<runKey>/).
+    let onReference;
+    if (runKey) {
+      const runDir = dirname(resolve(browserSessionPath()));
+      if (basename(runDir) !== runKey) throw new Error(`--run ${runKey} is not this browser session's run (${basename(runDir)})`);
+      onReference = referenceReporter({ codebase: basename(resolve(runDir, "..", "..", "..")), runKey, runDir });
+    }
     const { findPage } = await import("./cdp/attach.mjs");
     const tab = await findPage(url, port);
     const session = readSession();
@@ -656,7 +753,8 @@ async function cli() {
     };
     try {
       const result = await capturePlan({
-        page, url, dir: resolve(dir), height, lanes, openLane,
+        page, url, dir: resolve(dir), height, lanes, openLane, onReference,
+        settleTimeout: settleSeconds ? Number(settleSeconds) * 1000 : undefined,
         states: states ? JSON.parse(readFileSync(states, "utf8")) : {},
         capture: captureProfile ? JSON.parse(captureProfile) : undefined,
         extraBreakpoints: breakpoints ? breakpoints.split(",").map(Number) : [],

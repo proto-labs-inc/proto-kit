@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verifyBuild, runPlan, planJobs, inPool, verifyConcurrency, checkWithRetry } from "./verify-screen.mjs";
-import { validateVerification, widthsFor, widthsForCategory, widthsForScenario, referenceWidths, boundarySides } from "./screen-verification.mjs";
+import { validateVerification, widthsFor, widthsForCategory, widthsForScenario, widthsForControl, referenceWidths, boundarySides } from "./screen-verification.mjs";
 
 const screen = {
   index_id: "022b489a-d73a-4ecf-a650-98926b38159b",
@@ -244,4 +244,34 @@ test("in the browser, concurrent lanes give the same report, retry a flaky load 
   const again = await verifyBuild(folder, plan, screen, join(folder, "lanes"), { concurrency: 6 });
   assert.ok(again.scenarios.every(s => s.resumed && s.outcome === "passed"));
   assert.ok(Date.now() - started < 2000, "a resumed run opens no pages");
+});
+
+test("a control's checks run at 320 and 1440 only where the source shows it, with a midpoint fallback", () => {
+  const inv = inventory({ interactionBands: [[767.98, 1024]] });
+  const layout = widthsFor(inv);
+  const control = (widths) => ({ id: "c", expected: "Opens", state: "enabled", widths });
+  // No recorded visibility: every control width, as before.
+  assert.deepEqual(widthsForControl(inv, { id: "c" }), [320, 896, 1440]);
+  assert.deepEqual(widthsForControl(inv, control(layout)), [320, 896, 1440]);
+  // Phone-only menu button and desktop-only sidebar link.
+  assert.deepEqual(widthsForControl(inv, control([320, 544, 767])), [320]);
+  assert.deepEqual(widthsForControl(inv, control([768, 896, 1023, 1024, 1025, 1232, 1440])), [896, 1440]);
+  // Tablet-only: neither endpoint, so the visible band midpoint.
+  assert.deepEqual(widthsForControl(inventory(), control([768, 896, 1023])), [896]);
+  // No visible midpoint: the visible width nearest one (the wider on a tie).
+  assert.deepEqual(widthsForControl(inventory(), control([767, 768])), [768]);
+  assert.throws(() => widthsForControl(inv, control([])), /widths must list/);
+  assert.throws(() => widthsForControl(inv, control([320.5])), /widths must list/);
+  // widthsForScenario reads the target control from the inventory.
+  const phone = inventory({ controls: [control([320, 544])] });
+  assert.deepEqual(widthsForScenario(phone, { category: "keyboard", target: "c" }), [320]);
+  assert.deepEqual(widthsForScenario(phone, { category: "interaction", target: "c", steps: [{ kind: "resize-container", selector: "#c", width: 250 }] }), widthsFor(phone));
+  // Validation requires exactly those widths for that control.
+  const report = scopedReport(phone);
+  report.scenarios = report.scenarios.filter(s => !["interaction", "keyboard"].includes(s.category));
+  for (const category of ["interaction", "keyboard"])
+    report.scenarios.push({ id: `${category}-c-320`, category, target: "c", viewport: { width: 320, height: 900 }, outcome: "passed", problems: [], evidence });
+  assert.equal(validateVerification(report, screen), report);
+  assert.throws(() => validateVerification({ ...report, scenarios: report.scenarios.filter(s => s.category !== "keyboard") }, screen), /keyboard check for c at 320px/);
+  assert.throws(() => validateVerification({ ...report, inventory: { ...phone, controls: [control([])] } }, screen), /widths must list/);
 });

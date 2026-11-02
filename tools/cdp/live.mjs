@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { stableShot, FONTS_LOADED, VIEWPORT } from "./capture.mjs";
 import { evaluate, sourceConnectionHeld } from "./cdp.mjs";
 import { decodePng, encodePng } from "./png.mjs";
+import { settleForCapture, trackNetwork } from "./render-profile.mjs";
 import { protoHome } from "../proto-home.mjs";
 import { dirname } from "node:path";
 import { browserSessionPath, sourceIdentity } from "./session-context.mjs";
@@ -51,12 +52,18 @@ const STANDING = "JSON.stringify([innerWidth, innerHeight, scrollX, scrollY, dev
 export async function takeFrame(live, codebase, { also } = {}) {
   let hovered = [];
   let read;
+  let settle;
   const paths = framePaths(codebase);
   mkdirSync(join(paths.png, ".."), { recursive: true });
   await withLive(async () => {
     // A build's one read of the page runs under this same lock, just
     // before the shot, so the frame and the read see the same page.
     const document = await evaluate(live, "JSON.stringify([location.href, performance.timeOrigin])");
+    // Settled before the read, so the frozen copy keeps loaded content and
+    // finished motion, not skeletons or mid-tween inline styles
+    // (render-profile.mjs settleForCapture).
+    await trackNetwork(live).catch(() => {});
+    settle = await settleForCapture(live, evaluate);
     if (also) read = await also();
     await evaluate(live, "(() => { for (const a of document.getAnimations()) if (a instanceof CSSTransition) a.finish(); return true; })()");
     await stableShot(live, `JSON.stringify([${VIEWPORT}, ${FONTS_LOADED}])`, paths.png);
@@ -71,7 +78,7 @@ export async function takeFrame(live, codebase, { also } = {}) {
     hovered = await evaluate(live, HOVERED);
     writeFileSync(paths.meta, JSON.stringify({ source: sourceIdentity(), standing, hovered, size: [decoded.width, decoded.height], at: Date.now() }) + "\n");
   });
-  return { ...paths, hovered, read };
+  return { ...paths, hovered, read, settle };
 }
 
 /**
