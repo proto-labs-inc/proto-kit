@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveBuild, runtimeSource, runScenario, smokeBuild, verifyBuild, validateMapStates, validateResponsivePlan, captureProfileFor, applyCaptureMedia, sampleAnimations } from "./verify-screen.mjs";
-import { validateVerification, widthsFor } from "./screen-verification.mjs";
+import { validateVerification, widthsFor, layoutWidthsFor, verifiedWidths } from "./screen-verification.mjs";
 
 test("a served build may reach only itself and the Frame origin its rig loads the runtime from", async (t) => {
   const folder = mkdtempSync(join(tmpdir(), "proto-runtime-source-"));
@@ -437,4 +437,28 @@ test("boundary browser checks allow no reference and catch broken returns and ov
   assert.doesNotThrow(() => validateMapStates({ states: [{ id: "default" }, { id: "error" }] }, inventory));
   assert.throws(() => validateMapStates({ states: [{ id: "outside", title: "Not included" }] }, inventory), /must not appear/);
   assert.throws(() => validateMapStates({ states: [{ id: "unknown" }] }, inventory), /Missing declared state/);
+});
+
+test("layout widths follow the source's main layouts", () => {
+  assert.deepEqual(layoutWidthsFor([]), [390, 1440]);
+  assert.deepEqual(layoutWidthsFor([768]), [390, 1024, 1440]);
+  assert.deepEqual(layoutWidthsFor([1100]), [390, 1440]);
+  assert.deepEqual(layoutWidthsFor([640, 768, 1024, 1280]), [390, 768, 1024, 1440]);
+  assert.deepEqual(layoutWidthsFor([767.98, 1199.98]), [390, 1024, 1440]);
+});
+
+test("an inventory with layout widths is verified at those widths and 320 only", () => {
+  const breakpoints = [640, 768, 1024, 1280];
+  assert.equal(widthsFor({ breakpoints }).length, 19);
+  assert.deepEqual(verifiedWidths({ breakpoints, layoutWidths: layoutWidthsFor(breakpoints) }), [320, 390, 768, 1024, 1440]);
+  assert.deepEqual(verifiedWidths({ breakpoints }), widthsFor({ breakpoints }));
+  assert.throws(() => verifiedWidths({ breakpoints, layoutWidths: [390, 1440] }), /layoutWidths/);
+  const value = structuredClone(boundaryBase);
+  value.inventory.layoutWidths = layoutWidthsFor([]);
+  const template = value.scenarios.filter(s => s.viewport.width === 320);
+  value.scenarios = verifiedWidths(value.inventory).flatMap(width => template.map(s => ({ ...s, id: `${s.category}-${width}`,
+    viewport: { width, height: 900 }, ...(s.category === "responsive" ? { resizedFrom: width < 1024 ? 1440 : 390 } : {}) })));
+  assert.equal(acceptsBoundary(value), true);
+  value.scenarios = value.scenarios.filter(s => s.viewport.width !== 390);
+  assert.equal(acceptsBoundary(value), false);
 });

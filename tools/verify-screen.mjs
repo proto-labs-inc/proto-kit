@@ -12,7 +12,7 @@ import { resolve, join, extname } from "node:path";
 import { headlessPage } from "./cdp/headless.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { diffPngs } from "./cdp/diff.mjs";
-import { VERSION, widthsFor, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
+import { VERSION, verifiedWidths, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
 const mime = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -531,12 +531,15 @@ export async function verifyBuild(folder, plan, screen, output) {
   );
   if (manifest.viewport)
     throw new Error("Responsive starters must not fix the Frame viewport.");
+  const widths = verifiedWidths(plan.inventory);
+  if (JSON.stringify(manifest.layoutWidths) !== JSON.stringify(plan.inventory.layoutWidths))
+    throw new Error("prototype.json layoutWidths must match the inventory's: the Frame shows the screen only at the widths verified here.");
   validateMapStates(manifest, plan.inventory);
   mkdirSync(output, { recursive: true });
   const server = await serveBuild(folder);
   const scenarios = [];
   try {
-    for (const width of widthsFor(plan.inventory))
+    for (const width of widths)
       for (const scenario of plan.scenarios) {
         if (
           ![

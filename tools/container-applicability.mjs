@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { findPage } from "./cdp/attach.mjs";
-import { widthsFor } from "./screen-verification.mjs";
+import { verifiedWidths } from "./screen-verification.mjs";
 
 export function queryKey(query) {
   return JSON.stringify([query.source, query.name || "", query.condition, query.selectors]);
@@ -58,7 +58,7 @@ export function hasCompleteAbsenceEvidence(plan, query) {
   const relevant = observations.filter(o => o.sourceUrl === plan.inventory.sourceUrl);
   // A contradictory observation must not be hidden by a later absent sample.
   if (relevant.some(o => o.queries?.some(q => q.key === key && (q.status !== "absent" || q.matches !== 0)))) return false;
-  return states.every(state => widthsFor(plan.inventory).every(width => relevant.some(o =>
+  return states.every(state => verifiedWidths(plan.inventory).every(width => relevant.some(o =>
     o.state === state && o.width === width && Number.isFinite(Date.parse(o.capturedAt)) &&
     Date.parse(o.capturedAt) >= Date.parse(plan.responsiveCss.capturedAt) &&
     o.queries?.some(q => q.key === key && q.status === "absent" && q.matches === 0)

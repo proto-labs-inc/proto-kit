@@ -14,6 +14,34 @@ export function widthsFor(inventory) {
   }
   return [...points].sort((a, b) => a - b);
 }
+/** The device widths a prototype's main layouts are shown at. */
+const PHONE = 390, TABLET = 768, LAPTOP = 1024, DESKTOP = 1440;
+/** Which side of the source's breakpoints a width lays out on. */
+const layoutBand = (breakpoints, width) => breakpoints.filter(b => b <= width).length;
+/** The few widths the Frame shows a prototype at, one per main layout of the
+ *  source: always a phone (390) and a desktop (1440), plus 1024 when the
+ *  source lays out differently there than on a phone, plus 768 when that is
+ *  a layout of its own between the two. The Frame snaps between exactly
+ *  these widths and never reflows in between, so verification only needs
+ *  them (and 320, the narrowest supported phone): see verifiedWidths. */
+export function layoutWidthsFor(breakpoints) {
+  const band = width => layoutBand(breakpoints, width);
+  const widths = [PHONE];
+  if (band(TABLET) !== band(PHONE) && band(TABLET) !== band(LAPTOP)) widths.push(TABLET);
+  if (band(LAPTOP) !== band(PHONE)) widths.push(LAPTOP);
+  widths.push(DESKTOP);
+  return widths;
+}
+const sameWidths = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((width, i) => width === b[i]);
+/** The widths every state and control is checked at. An inventory that
+ *  records layoutWidths (the Frame only ever shows those) is checked at them
+ *  plus 320; an older one sweeps every breakpoint with widthsFor. */
+export function verifiedWidths(inventory) {
+  if (inventory.layoutWidths === undefined) return widthsFor(inventory);
+  if (!sameWidths(inventory.layoutWidths, layoutWidthsFor(inventory.breakpoints)))
+    throw new Error("Invalid layoutWidths: record layoutWidthsFor(inventory.breakpoints).");
+  return [...new Set([320, ...inventory.layoutWidths])].sort((a, b) => a - b);
+}
 export const resizeOrigin = (width) => width < 1024 ? 1440 : 390;
 export function validateVerification(report, screen) {
   const fail = (message) => {
@@ -126,7 +154,9 @@ export function validateVerification(report, screen) {
         s.target === target &&
         s.viewport.width === width,
     );
-  for (const width of widthsFor(inventory)) {
+  let widths;
+  try { widths = verifiedWidths(inventory); } catch (error) { fail(error.message); }
+  for (const width of widths) {
     for (const state of inventory.states) {
       const categories = state.kind === "source"
         ? ["visual", "responsive", "state", "isolation"]
