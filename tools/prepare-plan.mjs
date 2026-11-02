@@ -467,7 +467,16 @@ async function preparePage(page, capture) {
  * `openLane()` returns { page, close } for an extra page in the signed-in
  * browser (parallel captures), or null to stay sequential.
  */
-export async function capturePlan({ page, url, dir, states: stateSpec = {}, height = 900, capture, extraBreakpoints = [], lanes = 1, openLane, log = () => {} }) {
+/** Captures the plan; the source window always gets its own rendering back, even when capture fails. */
+export async function capturePlan(options) {
+  try {
+    return await captureSourcePlan(options);
+  } finally {
+    await clearScreenRender(options.page).catch(() => {});
+  }
+}
+
+async function captureSourcePlan({ page, url, dir, states: stateSpec = {}, height = 900, capture, extraBreakpoints = [], lanes = 1, openLane, log = () => {} }) {
   const started = Date.now();
   mkdirSync(join(dir, "references"), { recursive: true });
   const states = normalizeStates(stateSpec.states ?? stateSpec);
