@@ -51,7 +51,18 @@ Use the returned `widths`: narrow/wide endpoints, each CSS boundary and adjacent
 integer widths, plus one sample inside each interval for fluid wrapping. Add any
 JavaScript-driven transitions discovered in source to inventory.breakpoints and
 recompute widths with screen-verification.mjs's widthsFor. Capture reference PNGs
-at those widths using the same DPR and color profile as the headless renderer.
+at those widths with `node <kit>/tools/cdp/reference.mjs <dir> --widths <w1,w2,...>
+--height <plan height, default 900> --browser-session <browserSession>` (add
+`--capture '<profile json>'` for a sampled animation/video profile and `--name
+<state>-` per state). It draws the source window exactly as verification draws the
+copy: CSS viewport at that width, 1x, sRGB, no scrollbars (custom
+`::-webkit-scrollbar` ones included, and they take no layout width), fonts and
+finite motion settled, scrolled to the top; then it restores the window. Put its
+printed map into the scenario's `references`. Never capture references any other
+way, and never compensate for rendering by hand: do not sample or fake scrollbars,
+add scrollbar CSS, resize, pad or rescale reference PNGs, or change DPR. A
+"Reference viewport dimensions do not match" failure means recapture with
+reference.mjs at the reported size.
 Container queries are listed separately with their names, conditions and selectors.
 They are not viewport breakpoints: inspect the actual query container at each
 layout, vary its available space to cross each threshold, and record the resulting
@@ -59,8 +70,8 @@ viewport widths in inventory.breakpoints as additional probes. For em/rem or
 container-relative units use that container's actual font/size context. If its size
 cannot be driven by viewport changes, add explicit container-size scenarios and
 reference captures in the plan; do not claim that a viewport sweep covers it.
-Include dialogs, menus, validation and local navigation states.
-Use the existing CDP capture tools.
+Include dialogs, menus, validation and local navigation states: open each in the
+source window, then run reference.mjs for it.
 Open and visually inspect the reference screenshots before judging the layout.
 Measurements, CSS extraction and clipping reports do not replace seeing the page.
 Compare at least one phone, intermediate and desktop view selected from the

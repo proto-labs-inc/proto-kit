@@ -12,6 +12,7 @@ import { resolve, join, extname } from "node:path";
 import { headlessPage } from "./cdp/headless.mjs";
 import { evaluate } from "./cdp/cdp.mjs";
 import { diffPngs } from "./cdp/diff.mjs";
+import { SCREEN_RENDER, applyScreenRender, settleForCapture, pngSize, referenceScale } from "./cdp/render-profile.mjs";
 import { VERSION, widthsFor, resizeOrigin, validateStateInventory, comparisonState } from "./screen-verification.mjs";
 const mime = {
   ".html": "text/html",
@@ -306,10 +307,20 @@ export async function runScenario(
   captureMetadata.profile = capture;
   const responsive = scenario.category === "responsive";
   const origin = { ...viewport, width: resizeOrigin(viewport.width) };
+  // Drawn as reference.mjs draws the source (render-profile.mjs): 1x, no
+  // scrollbars. A reference taken before that at a whole multiple of the
+  // viewport (2x on a Retina window) is still compared at its own scale.
+  let referenceSize = null;
+  if (screenshotReference && existsSync(screenshotReference)) {
+    try { referenceSize = pngSize(readFileSync(screenshotReference)); } catch {}
+  }
+  const dpr = (referenceSize && referenceScale(referenceSize, viewport)) || SCREEN_RENDER.dpr;
+  captureMetadata.render = { ...SCREEN_RENDER, dpr };
   const opened = await headlessPage("about:blank", responsive ? origin : viewport);
   const page = opened.page;
   const problems = [];
   try {
+    await applyScreenRender(page, responsive ? { ...origin, dpr } : { ...viewport, dpr });
     await applyCaptureMedia(page, capture);
     // Match the visible source session: visibility-gated animation and rAF
     // must keep advancing even while another browser window has focus.
@@ -387,10 +398,7 @@ export async function runScenario(
       );
     }
     const resize = async (width) => {
-      const dpr = await evaluate(page, "devicePixelRatio");
-      await page.send("Emulation.setDeviceMetricsOverride", {
-        width, height: viewport.height, deviceScaleFactor: dpr, mobile: false,
-      });
+      await applyScreenRender(page, { width, height: viewport.height, dpr });
       await until(page, inFrame(`innerWidth === ${width}`));
       await evaluate(page, inFrame(`new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve)))`));
     };
@@ -467,18 +475,19 @@ export async function runScenario(
     problems.push(
       ...violations.map((uri) => `External request blocked: ${uri}`),
     );
+    await settleForCapture(page, evaluate, inFrame);
     const shot = await page.send("Page.captureScreenshot", { format: "png" });
     writeFileSync(out, Buffer.from(shot.data, "base64"));
     if (["visual", "responsive"].includes(scenario.category)) {
       const state = inventory ? comparisonState(inventory, scenario) : { kind: "source" };
       if (state.kind === "prototype-boundary") return problems;
       if (!screenshotReference) throw new Error("Missing reference screenshot");
-      const diff = await diffPngs(screenshotReference, out);
+      const diff = await diffPngs(screenshotReference, out, { dpr });
       if (
         diff.sizeReal[0] !== diff.sizeMine[0] ||
         diff.sizeReal[1] !== diff.sizeMine[1]
       )
-        problems.push("Reference viewport dimensions do not match");
+        problems.push(`Reference viewport dimensions do not match: the reference is ${diff.sizeReal.join("x")} px, the copy ${diff.sizeMine.join("x")} px (viewport ${viewport.width}x${viewport.height} CSS px). Recapture the reference with tools/cdp/reference.mjs at --widths ${viewport.width} --height ${viewport.height}; do not resize or pad it.`);
       if (parseFloat(diff.pct) > 1)
         problems.push(`Visual mismatch: ${diff.pct} (maximum 1%)`);
     }

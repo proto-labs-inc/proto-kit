@@ -44,7 +44,10 @@ assert again. Write width-dependent assertions for observed layout behavior
 An assertion that only checks page existence does not verify responsiveness.
 Use the actual source behavior, including container-query transitions. Test
 short viewports separately when the source has height-dependent overlays. Each source visual and responsive scenario's `references` maps each
-width to its captured local reference PNG. The fixed visual gate is at most 1%
+width to its local reference PNG from `tools/cdp/reference.mjs`. Reference and
+copy are drawn identically (tools/cdp/render-profile.mjs: 1x, sRGB, no scrollbars,
+fonts and finite motion settled), so never adjust either for scrollbars, DPR or
+fonts. The fixed visual gate is at most 1%
 mismatched pixels using the kit's existing color threshold; do not loosen it to
 pass. Preserve original source screenshots, including their defects. Record small
 intentional responsive repairs and visually review their before/after screenshots;
@@ -72,8 +75,9 @@ for delayed entrances and reduced-motion duration overrides. A sampled screensho
 does not prove motion behavior: separately exercise the source and copy with normal
 motion and verify their transitions and controls.
 
-Capture new live-source references using the identical media preference before
-navigation and the identical animation sampling immediately before the screenshot.
+Capture new live-source references with `tools/cdp/reference.mjs --capture
+'<the same profile>'`: it applies the identical media preference (reloading the
+source window) and the identical animation sampling immediately before the screenshot.
 Preserve the original unsampled references and document the chosen profile in the
 screen notes. Do not hide elements, replace source images with copy images, mask
 regions or relax the 1% gate. Each report records the effective requested profile,
@@ -101,9 +105,9 @@ passing evidence is uploaded to private storage and bound to both checksums.
 Missing scenarios are failures even if every supplied scenario passes.
 
 For looping video, `capture.videoTimeMs` samples the original media at a declared
-finite nonnegative timestamp. Use the exported `sampleVideos(document, timeMs)`
-in the source browser immediately before capturing the reference, and use the
-same profile for the copy. Keep original unsampled captures and separately test
+finite nonnegative timestamp. Pass the same profile to `tools/cdp/reference.mjs
+--capture`, which runs `sampleVideos(document, timeMs)` in the source window
+immediately before capturing the reference, and use that profile for the copy. Keep original unsampled captures and separately test
 normal playback and controls. This pauses/seeks native media only; never replace
 frames, modify faces, hide media or use a copy screenshot as its reference.
 
