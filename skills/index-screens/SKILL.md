@@ -60,7 +60,8 @@ approval boundary, including when setup was requested end to end.
 3. Claim phase `replicating`. For each included entry, invoke the shared
    prepare-screen skill with codebase, indexId, version and entryId. It owns
    reference inspection, copying, local behavior, responsive verification and
-   artifact completion. For every initial screen, visually inspect source and copy
+   artifact completion; its evidence and checks come from `tools/prepare-plan.mjs`
+   (never hand-written scripts). For every initial screen, visually inspect source and copy
    at matching widths, reproduce mobile-only UI, and repair small overflow defects
    as part of the baseline. Reuse only revisions passing current verification.
    Report per-entry progress; preserve partial completion and resume checkpoints.

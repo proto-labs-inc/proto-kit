@@ -1,6 +1,13 @@
 # Executable verification plan
 
-Save a JSON object with `inventory`, `responsiveCss` (the responsive-css.mjs
+`prepare-plan.mjs capture` (see SKILL.md) writes this file with every required
+scenario, the CSS report, container observations and reference PNGs. This page
+describes its format so you can fill the remaining `"TODO: …"` assertions and
+add scenarios; never rebuild the plan or its evidence with your own scripts.
+`prepare-plan.mjs lint <plan.json>` checks everything below that can be checked
+before running.
+
+The plan is a JSON object with `inventory`, `responsiveCss` (the responsive-css.mjs
 report), `height` (default 900) and `scenarios`.
 `inventory` contains `sourceUrl`, ISO `capturedAt`, `controls` (each has `id`,
 `expected`, and `state`: enabled or disabled), `states` (nonempty typed declarations with unique IDs),
@@ -10,12 +17,11 @@ JavaScript-driven transitions. For each warning or unresolved condition in the C
 report, record the inspected behavior and coverage in `responsiveCssReview`, keyed
 by its exact message. Unreviewed findings block verification.
 
-Container rules may be unused shared CSS. Before exempting one, collect live
-observations with `node <kit>/tools/container-applicability.mjs <exact-live-url>
-<responsive-css.json> <state> <observations.json> [cdp-port]` after opening each
-source state at each required width. Keep the source state visible and settled;
-do not rename a default-state observation as another state. Include the resulting
-array as `containerObservations` in the plan. The verifier exempts only rules with
+Container rules may be unused shared CSS. `prepare-plan.mjs capture` collects
+live observations after opening each source state at each required width and
+stores them as `containerObservations` (a state whose steps change the URL gets
+none, so its rules keep requiring tests). Do not rename a default-state
+observation as another state. The verifier exempts only rules with
 zero selector matches across every source state and width, captured after the
 CSS report for its exact source URL. Dynamic, unsupported or empty selectors,
 missing observations, changed rules and any matching observation still require

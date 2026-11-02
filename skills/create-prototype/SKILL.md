@@ -63,7 +63,9 @@ An unchanged copy requires no dependency installation or compilation. Never rege
 For a custom URL, follow index-screens' Custom URLs workflow after claiming the
 brief. It invokes prepare-screen, including visual inspection at different widths
 and small responsive usability repairs, saves the verified baseline, then
-clones it into this prototype. Skip the separate page-copy steps below and
+clones it into this prototype. Its source evidence, verification plan and local
+checks come only from `tools/prepare-plan.mjs` (capture, lint, run); do not read
+kit tool source or write capture, plan or check scripts for it. Skip the separate page-copy steps below and
 continue at Write the change only after the clone passes its smoke check.
 Never freeze a custom URL directly into the user's prototype or snapshot a
 modified prototype as its starter.
