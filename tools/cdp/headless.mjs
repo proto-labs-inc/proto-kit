@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect, evaluate } from "./cdp.mjs";
 import { protoHome } from "../proto-home.mjs";
+import { SCREEN_RENDER } from "./render-profile.mjs";
 
 export const HEADLESS_PORT = 9444;
 const PROFILE = join(protoHome(), "chrome-headless");
@@ -101,7 +102,10 @@ export async function ensureHeadless(callerDisplay, port = HEADLESS_PORT) {
     if (!display || !Number.isFinite(display.dpr) || !display.colorProfile) {
       if (session) {
         const source = readSession(session);
-        display = source?.display ?? { dpr: 2, colorProfile: "srgb" };
+        // A session with no source window (a verify run) draws as the
+        // references were captured: Chrome launched at 2x lays text out
+        // ~1px differently even under a 1x emulated page.
+        display = source?.display ?? { dpr: SCREEN_RENDER.dpr, colorProfile: SCREEN_RENDER.colorProfile };
       } else display = await theDisplay();
     }
     return startHeadless(display, port, profile, rendererPath);

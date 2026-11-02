@@ -185,7 +185,7 @@ else if (command === "capture") {
     }
   } finally {
     rmSync(temporary, { recursive: true, force: true });
-    await stopSessionRenderer(browserSessionPath());
+    await releaseRenderer();
   }
 } else if (command === "clone" || command === "prepare") {
   const [screenId, slug, briefId] = rest;
@@ -224,7 +224,21 @@ else if (command === "capture") {
       buildBytes,
     });
     try { await smokeBuild(join(answer.path, "dist"), screen.initial_state); }
-    finally { await stopSessionRenderer(browserSessionPath()); }
+    finally { await releaseRenderer(); }
+    // Publishing finds the request through this record, as it does for a
+    // scaffolded workspace, and finishes it.
+    mkdirSync(join(root, "run", "builds", briefId), { recursive: true });
+    writeFileSync(join(root, "run", "builds", briefId, "workspace.json"), JSON.stringify({
+      slug, path: answer.path, port: answer.port, framework: "react", title: screen.title, starterScreenId: screen.id,
+    }, null, 2) + "\n");
   }
 } else throw new Error("Unknown screen-index command.");
 console.log(JSON.stringify(answer, null, 2));
+
+/** Stops this run's renderer. A failure here is reported, never thrown: a
+ *  throw from a finally replaced the run's own error, so a failed check
+ *  read as a renderer problem. */
+async function releaseRenderer() {
+  try { await stopSessionRenderer(browserSessionPath()); }
+  catch (error) { console.error(`proto: renderer not released: ${error.message}`); }
+}
