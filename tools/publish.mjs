@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { buildSessionPath } from "./cdp/session-context.mjs";
+import { buildSessionPath, useBuildSession } from "./cdp/session-context.mjs";
 import { releaseSourceSession } from "./cdp/source-session.mjs";
 /**
  * Publish a prototype's built files (MAA-132, the publish half of
@@ -304,6 +304,9 @@ if (progressBuild) {
   // Re-publishing an existing prototype never reopens its completed request.
   if (brief.status === "done") progressBuild = null;
 }
+// The final capture runs in the request's own renderer, at its source
+// display, never the laptop's shared one that other chats capture in.
+if (progressBuild) useBuildSession(codebase, progressBuild.briefId);
 const progress = progressBuild ? createReporter({ codebase, briefId: progressBuild.briefId, runDir: progressBuild.dir }) : null;
 const publishing = progressBuild ? workflowEvent(progressBuild.dir, "publish", "Publishing the prototype") : null;
 try {
