@@ -17,7 +17,7 @@ import { releaseSourceSession } from "./cdp/source-session.mjs";
  * path is ever overwritten.
  *
  * Usage:
- *   node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
+ *   node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run] [--request-id <id>]
  *   node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]
  *
  * --kind is required and names what is published. For a prototype,
@@ -49,10 +49,10 @@ import { belowProtoHome, protoHome } from "./proto-home.mjs";
 import { takeRunLock } from "./run-lock.mjs";
 import { completePublishAttempt, failPublishAttempt, startPublishAttempt } from "./publish-status.mjs";
 
-const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run]
+const USAGE = `usage: node publish.mjs --kind prototype <workspace> [--dist <folder>] [--codebase <id>] [--slug <slug>] [--auto] [--dry-run] [--request-id <id>]
        node publish.mjs --kind library --codebase <id> [--dir <folder>] [--dry-run]`;
 const KINDS = ["prototype", "library"];
-const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id"];
+const VALUE_OPTIONS = ["kind", "dist", "dir", "codebase", "slug", "attempt-id", "request-id"];
 let publishAttempt = null;
 let attemptWorkspace = null;
 function recordFailure(error) {
@@ -122,7 +122,7 @@ if (runDir && existsSync(runDir) && !options.auto && !dryRun) {
 }
 if (kind === "prototype" && !dryRun) {
   attemptWorkspace = workspace;
-  publishAttempt = startPublishAttempt(workspace, options["attempt-id"] ?? null);
+  publishAttempt = startPublishAttempt(workspace, options["attempt-id"] ?? null, options["request-id"] ?? null);
   process.on("exit", (code) => {
     if (code !== 0) recordFailure("Publishing was interrupted before it finished");
   });
