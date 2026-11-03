@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bundleRevision } from "./application-alternates.mjs";
+import { bundleFiles, bundleRevision } from "./application-alternates.mjs";
 import { prepareSelectedForPr, verifyPrReady } from "./application-pr.mjs";
 
 const git = (repo, ...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
@@ -18,6 +18,7 @@ test("PR guard pins selected source, rejects preview wiring, and catches a chang
     const setId = "11111111-1111-4111-8111-111111111111";
     const versionId = "22222222-2222-4222-8222-222222222222";
     mkdirSync(app, { recursive: true });
+    mkdirSync(join(app, "node_modules"));
     git(worktree, "init", "-b", "proto/acme/billing");
     git(worktree, "config", "user.email", "test@example.invalid");
     git(worktree, "config", "user.name", "Test");
@@ -40,8 +41,10 @@ test("PR guard pins selected source, rejects preview wiring, and catches a chang
     const deps = {
       home,
       readConfig: () => ({ app: "https://proto.invalid", credentials: [{ team: { id: "team" }, secret: "token" }] }),
-      callTool: async () => ({ content: [{ text: JSON.stringify({ prototype: { selection_revision: selectionRevision, selected_alternates: { [setId]: versionId } },
-        sets: [{ id: setId, target_key: "app/page.tsx#Page", version_id: versionId, source_revision: revision }] }) }] }),
+      callTool: async (name) => ({ content: [{ text: JSON.stringify(name === "get_alternate_source"
+        ? { id: versionId, set_id: setId, source_revision: revision, bundle: bundleFiles(source) }
+        : { prototype: { selection_revision: selectionRevision, selected_alternates: { [setId]: versionId } },
+          sets: [{ id: setId, target_key: "app/page.tsx#Page", version_id: versionId, source_revision: revision }] }) }] }),
       build: async () => {},
     };
     const input = { codebase: "acme", slug: "billing" };

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { bundleRevision } from "./application-alternates.mjs";
+import { materializeApplicationAlternate } from "./application-alternates.mjs";
 import { callTool, readConfig } from "./mcp-call.mjs";
 import { protoHome } from "./proto-home.mjs";
 import { applicationPackageManager } from "./application-package-manager.mjs";
@@ -32,15 +32,16 @@ async function cloud(codebase, slug, context) {
   return JSON.parse(result.content[0].text);
 }
 
-function selectedBundles(context, state) {
+async function selectedBundles(context, state, codebase, slug, deps) {
   const choices = Object.entries(state.prototype.selected_alternates);
-  const selected = choices.map(([setId, versionId]) => {
+  const selected = [];
+  for (const [setId, versionId] of choices) {
     const version = state.sets.find(row => row.id === setId && row.version_id === versionId);
     if (!version) throw new Error(`Selected alternate ${versionId} is no longer in set ${setId}.`);
-    const source = join(context.record.alternateStorage, setId, version.source_revision);
-    if (!existsSync(source) || bundleRevision(source) !== version.source_revision) throw new Error(`Local source for alternate ${versionId} is missing or changed.`);
-    return { setId, versionId, targetKey: version.target_key, sourceRevision: version.source_revision, source };
-  });
+    const { source, sourceRevision } = await materializeApplicationAlternate({ codebase, slug, setId, versionId }, deps);
+    if (sourceRevision !== version.source_revision) throw new Error(`Alternate ${versionId} changed during preparation.`);
+    selected.push({ setId, versionId, targetKey: version.target_key, sourceRevision, source });
+  }
   return selected;
 }
 
@@ -51,7 +52,7 @@ export async function prepareSelectedForPr({ codebase, slug, wiringPaths }, deps
   const snapshotPath = join(context.directory, "pr-preparation.json");
   if (existsSync(snapshotPath)) throw new Error("PR preparation is already active. Verify or resume it before starting again.");
   const state = await cloud(codebase, slug, context);
-  const selected = selectedBundles(context, state);
+  const selected = await selectedBundles(context, state, codebase, slug, deps);
   const paths = [...new Set(wiringPaths ?? [])];
   if (paths.length === 0) throw new Error("Record the exact preview wiring paths before preparing a PR.");
   for (const path of paths) {
@@ -74,7 +75,7 @@ export async function verifyPrReady({ codebase, slug }, deps = {}) {
   const context = local(codebase, slug, deps);
   const snapshot = JSON.parse(readFileSync(join(context.directory, "pr-preparation.json"), "utf8"));
   const state = await cloud(codebase, slug, context);
-  const current = selectedBundles(context, state);
+  const current = await selectedBundles(context, state, codebase, slug, deps);
   if (state.prototype.selection_revision !== snapshot.selectionRevision || JSON.stringify(current) !== JSON.stringify(snapshot.selected)) {
     throw new Error("Shared selection or alternate source changed during PR preparation. Reconcile choices before continuing.");
   }
@@ -92,7 +93,7 @@ export async function verifyPrReady({ codebase, slug }, deps = {}) {
   });
   await run(app);
   const latest = await cloud(codebase, slug, context);
-  if (latest.prototype.selection_revision !== snapshot.selectionRevision || JSON.stringify(selectedBundles(context, latest)) !== JSON.stringify(snapshot.selected)) {
+  if (latest.prototype.selection_revision !== snapshot.selectionRevision || JSON.stringify(await selectedBundles(context, latest, codebase, slug, deps)) !== JSON.stringify(snapshot.selected)) {
     throw new Error("Shared selection changed during the build. Reconcile before committing or pushing.");
   }
   return { ready: true, selected: current, head: snapshot.head, build: "passed" };

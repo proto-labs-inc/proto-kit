@@ -9,6 +9,7 @@ import { readConfig } from "./mcp-call.mjs";
 import { releasePort, reservePort } from "./ports.mjs";
 import { writeApplicationManifest } from "./application-manifest.mjs";
 import { applicationPackageManager, ensureAlternateDependencies, installApplicationDependencies } from "./application-package-manager.mjs";
+import { restoreApplicationAlternates } from "./application-alternates.mjs";
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const answering = async (url) => { try { return (await fetch(url, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } };
@@ -24,6 +25,7 @@ export async function ensureApplicationPreview({ codebase, slug }, deps = {}) {
   if (!existsSync(join(app, "package.json"))) throw new Error("The customer's application package is missing from its prototype worktree.");
   installApplicationDependencies(record.worktree, app);
   ensureAlternateDependencies(record);
+  await restoreApplicationAlternates({ codebase, slug }, deps);
   const manager = applicationPackageManager(record.worktree);
   const statePath = join(directory, "preview.json");
   const owner = statePath;

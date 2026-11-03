@@ -42,8 +42,11 @@ inside the prototype record's `alternateStorage`. Import the customer app's
 real components and tokens where appropriate. Call
 `node tools/application-alternates.mjs save --codebase <id> --slug <id>
 --setId <uuid> --title <title> --staging <absolute-path>`.
-This stores an immutable, content-addressed bundle outside the checkout and
-registers its source revision. Expose the saved modules to the customer's
+This uploads the immutable, content-addressed bundle to a database row. The
+folder outside the checkout is a disposable build cache, never the source of
+truth. `node tools/application-alternates.mjs restore --codebase <id> --slug
+<id>` restores every saved version from the database when the cache is missing
+or damaged. Expose the cached modules to the customer's
 bundler through a recorded alias in its Next config and a matching TypeScript
 `paths` entry, then statically import them at the targeted call site. Next 16
 uses Turbopack by default: use `turbopack.resolveAlias` and set
