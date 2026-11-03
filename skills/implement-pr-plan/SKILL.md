@@ -5,6 +5,11 @@ description: Implement one or more entries from an existing Proto PR plan as foc
 
 # Implement PR plan entries
 
+For an application-backed prototype, including a direct chat request to open
+a PR without a plan, follow [`application-prototype`](../application-prototype/SKILL.md)
+and its `prepare_selected_for_pr`, `verify_pr_ready` and `resume_prototype`
+workflow. Do not apply unselected alternatives.
+
 Implement selected entries from an existing prototype `prPlan` as reviewable code changes, then link each result back to the plan in Proto. This skill does not create or revise the plan; use `create-pr-plan` for decomposition. It does not create or modify the prototype itself.
 
 ## Read the plan and choose the work

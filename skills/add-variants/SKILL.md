@@ -5,6 +5,10 @@ description: Add new options to an existing variant set only when the user wants
 
 # Add variants
 
+For an application-backed prototype, follow
+[`application-prototype`](../application-prototype/SKILL.md). Reuse the set for
+its stable target key and save each new source revision outside the checkout.
+
 First follow [Choose how to iterate](../../docs/variant-iteration.md).
 
 Before adding anything, confirm from the user's request that new options are
