@@ -47,11 +47,15 @@ Run again after opening states that load additional styles and merge the finding
 Inspect every warning and unresolved query using the source/browser before
 proceeding. Width queries with fractional boundaries remain fractional.
 
-Use the returned `widths`: narrow/wide endpoints, each CSS boundary and adjacent
-integer widths, plus one sample inside each interval for fluid wrapping. Add any
-JavaScript-driven transitions discovered in source to inventory.breakpoints and
-recompute widths with screen-verification.mjs's widthsFor. Capture reference PNGs
-at those widths using the same DPR and color profile as the headless renderer.
+Copy its `layoutWidths` into the reference inventory and into
+`public/prototype.json` as `layoutWidths`: the main layout widths of the source
+(a phone, 1024 and 768 when the source lays out differently there, and a
+desktop). The Frame shows the prototype only at these widths and snaps between
+them, so verification runs at the returned `widths`: the layout widths plus 320.
+Add any JavaScript-driven transitions discovered in source to
+inventory.breakpoints and recompute both with screen-verification.mjs's
+layoutWidthsFor and verifiedWidths. Capture reference PNGs at those widths using
+the same DPR and color profile as the headless renderer.
 Container queries are listed separately with their names, conditions and selectors.
 They are not viewport breakpoints: inspect the actual query container at each
 layout, vary its available space to cross each threshold, and record the resulting
@@ -110,7 +114,7 @@ any small source-defect repairs. Frozen HTML alone is never a finished screen.
 Implement every recorded interaction against deterministic fixtures. Vendor the
 library, dependencies, assets and lockfile; exclude credentials and sessions.
 Keep all state URL-addressable through the rig. Omit fixed `viewport` metadata
-from prototype.json so the Frame actually resizes the responsive screen. Preserve the source's disabled
+from prototype.json; record `layoutWidths` instead so the Frame snaps between them. Preserve the source's disabled
 controls. No live-product requests, navigation, authentication or writes.
 For destinations not included in this screen, show a local state reading
 "This screen isn’t included in this prototype" with a working return action.

@@ -5,7 +5,7 @@ import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { connect, evaluate } from "./cdp/cdp.mjs";
 import { findPage } from "./cdp/attach.mjs";
-import { widthsFor } from "./screen-verification.mjs";
+import { layoutWidthsFor, verifiedWidths } from "./screen-verification.mjs";
 
 export function mediaBreakpoints(medias, initialFontSize) {
   const breakpoints = new Set();
@@ -113,7 +113,8 @@ export async function discoverResponsiveCss(page) {
     const unique = new Map(containers.map(query => [JSON.stringify([query.name, query.condition, query.selectors]), query]));
     const sourceUrl = await evaluate(page, "location.href");
     return { sourceUrl, capturedAt: new Date().toISOString(), ...result,
-      widths: widthsFor(result), containerQueries: [...unique.values()], warnings: [...new Set(warnings)] };
+      layoutWidths: layoutWidthsFor(result.breakpoints),
+      widths: verifiedWidths({ ...result, layoutWidths: layoutWidthsFor(result.breakpoints) }), containerQueries: [...unique.values()], warnings: [...new Set(warnings)] };
   } finally { off(); }
 }
 

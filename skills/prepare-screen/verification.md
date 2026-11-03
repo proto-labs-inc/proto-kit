@@ -35,9 +35,11 @@ must assert a visible expected outcome, not just that the page loaded.
 Use `interaction` and `keyboard` scenarios for every control; use `visual`,
 `responsive`, `state` and `isolation` for every source state. Boundary states require
 `responsive`, `state` and `isolation`, but no `visual` scenario. The runner executes all
-scenarios at widthsFor(inventory): 320px and 1440px endpoints, each extracted
-CSS breakpoint and adjacent integer widths, and one midpoint in each interval.
-Fractional CSS boundaries use their floor/ceiling and adjacent integer widths. Responsive scenarios load at an opposite width, resize
+scenarios at verifiedWidths(inventory). With `inventory.layoutWidths` recorded
+(the Frame shows the screen only at those widths) that is 320px plus the layout
+widths. An older inventory without them sweeps widthsFor(inventory): 320px and
+1440px endpoints, each extracted CSS breakpoint and adjacent integer widths, and
+one midpoint in each interval. Responsive scenarios load at an opposite width, resize
 without reloading, run the actions and assertion, then resize away and back and
 assert again. Write width-dependent assertions for observed layout behavior
 (e.g. sidebar replaced by a menu, columns stack, text wraps, table scrolls).
