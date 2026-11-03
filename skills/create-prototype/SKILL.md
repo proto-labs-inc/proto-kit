@@ -447,6 +447,33 @@ initial copy: it reads the page afresh, stops at the curation review again
 step without `--again`. Missing or incompatible retry checkpoints fall back to
 copying all components.
 
+## Adding interactivity to one control
+
+A copy starts with the page and its page-level states; a control's own
+behaviour is added when someone asks. The Frame's "Add interactivity"
+sends a direct prompt naming one control (its label, selector and the part
+holding it), the live page and the workspace. Work on that part only:
+
+1. Try the control on the real site, once, in this request's own source
+   window: `node tools/try-control.mjs '<live url>' --codebase <id> --run
+   <runId> --click "<label>" [--in "<part selector on the live page>"]`.
+   It blocks every request that could change data (only GET, HEAD and
+   OPTIONS go through) and prints what opened, which attributes changed,
+   the writes it stopped and a picture. Never click a control on the real
+   site any other way. A sign-in redirect is the one reason to ask the
+   person for anything.
+2. Copy what it showed into the prototype, inside the named part: the
+   opened markup with the page's own class names, React state in a
+   component under `src/change/` that replaces the part (`<Frozen
+   replace>`), or the starter screen's own handler in `src/screen/`. Data
+   it would load comes from test data that reads as real. Writes it would
+   send become local state.
+3. Leave every other part, state and control as it is. A menu, dialog or
+   popover that should be reachable by URL becomes a preview state;
+   otherwise it stays local to the component.
+4. Check with `check-states.mjs`, `pnpm build`, then publish once. The
+   Frame outlines the part until that publish.
+
 ## Rig compatibility when copying starters
 
 Cloning preserves the verified starter artifacts. If the independent copy pins
