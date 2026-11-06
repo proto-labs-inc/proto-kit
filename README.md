@@ -1,8 +1,16 @@
 # proto-kit
 
-Proto's installable surface: everything a customer's machine runs.
-The cloud product lives in the `proto` repo; this repo is what their
-coding agent installs and drives.
+Proto's installable surface for copied prototypes. The cloud product and
+the Proto desktop app live in the `proto` repo; this repo is what a
+maker's coding agent installs to link the laptop and keep editing,
+serving and publishing prototypes that were copied into standalone
+workspaces under `~/.proto`.
+
+New prototypes are not copied any more. They are forks: the desktop app
+runs the maker's own dev server and the agent writes alternates as
+islands in the maker's app (`packages/islands` in the `proto` repo),
+following the islands brief Proto sends with each message. That flow
+uses nothing in this kit.
 
 Work starts and resumes in the active coding-agent conversation on Claude Code,
 Codex, and Cursor. Website actions provide copyable prompts; progress and
@@ -30,43 +38,34 @@ Cursor; the core stays harness-neutral.
 
 ### skills/
 
-- `setup/`: link the laptop and source repo, write codebase.json, and attach the
-  existing staff-prepared design system and verified screens assigned to the
-  customer's email. Report the attachment result; missing assignments or unavailable
-  assets need Proto team help. Customer connection never starts preparation.
-- `import-design-system/`: read the source repo and live page, fill the library.
-- `create-prototype/`: brief to workspace: one direction, preview states, markers.
+- `setup/`: install or update the plugin, link the laptop, connect the MCP
+  server, and reopen a copied prototype from its Edit prompt.
 - `create-variant-set/`: add a new variant set to an existing prototype.
 - `add-variants/`: add variants to a set that already exists.
 - `edit-variant/`: change one existing variant.
 - `serve/`: supervise the local dev server, publish, recover it.
 - `create-pr-plan/`: decompose prototype work into ordered pull-request slices.
 - `implement-pr-plan/`: build plan entries, link PRs and previews back.
-- `publish-library/`: publish the library on demand.
+- `publish-library/`: publish a previously imported library on demand.
 - `update/`: update the plugin, then repair what the update leaves stale.
 - `analyze-trace/`: read a session's debug trace, flag what went wrong or could be better, and say what to change in the kit.
 
 ### tools/
 
-The library and the import:
+The library (existing imports only):
 
-- `library.mjs`: the one writer of the library contract, atomic and locked.
 - `host-library.mjs`: scaffold, install and supervised local run, one call.
-- `verify-replica.mjs`: capture the live element, render the replica, diff them.
-- `pictures.mjs`: logos, icons, charts and background images taken from the page as files, never redrawn.
-- `verify-markers.mjs`: check a workspace's `data-proto-id` coverage.
-- `fake-import/run.mjs`: play a recorded import into a library app.
 
-A prototype build (`docs/build-read.md`):
+Editing a copied prototype:
 
-- `proto-build.mjs`: the whole copy of the reference page in one command, then the parts list.
-- `build-stream.mjs`: outbound build events and resumable questions answered in the active conversation.
-- `copy-gate.mjs`: one automatic copy retry, then a saved chat decision checkpoint; required choices never time out.
-- `scaffold.mjs`, `replicate.mjs`: the workspace from the read; every leaf copied, checked and composed.
+- `variant-manifest.mjs`: the guarded writer of `public/prototype.json` variant sets.
 - `variant-set.mjs`: a variant set's skeleton, one stub per variant for the units.
-- `check-states.mjs`: every state and variant loaded headless; errors, rect sanity, the untouched parts against the read.
+- `check-states.mjs`: every state and variant loaded headless; errors and rect sanity.
 - `previews.mjs`: the variant previews from real renders, into the manifest.
-- `check-part.mjs`: one copied part checked against the page, its passes streamed.
+- `look.mjs`, `click.mjs`: render a state or variant, click a control and report what changed.
+- `verify-markers.mjs`: check a workspace's `data-proto-id` coverage.
+- `build-stream.mjs`: resumable questions on a brief, answered in the active conversation.
+- `sketch.mjs`, `reference-research.mjs`: references for a variant set (`docs/sketch.md`, `docs/variant-references.md`).
 
 Serving and publishing:
 
@@ -77,6 +76,7 @@ Serving and publishing:
 - `auto-publish.mjs`: at the end of each agent turn, build and publish every served prototype and library that changed.
 - `health.mjs`: the session-start check, one line per codebase.
 - `codebase-icon.mjs`: upload the product's favicon and set it as the codebase's icon.
+- `update-rig.mjs`: move a copied workspace onto the rig version the app advertises.
 - `repair-runs.mjs`: bring every run spec up to this version of the kit.
 - `migrate-rig.mjs`: move prototypes scaffolded before the rig was on npm onto `@proto-labs-inc/*`.
 
@@ -100,7 +100,7 @@ Talking to the app, and the harness hooks:
 - `chrome.mjs`: start or find the visible Proto window, unfocused.
 - `headless.mjs`: the headless Chrome that replicas and diffs render in.
 - `attach.mjs`: reuse a product tab; otherwise navigate a blank tab, or open one when none exists.
-- `product-page.mjs`: prepare that tab for setup and print the page URL the import will read.
+- `product-page.mjs`: acquire an owned window on a product page.
 - `cdp.mjs`: minimal CDP client over Node's WebSocket, no dependencies.
 - `capture.mjs`: clip screenshots behind a stability gate.
 - `crop.mjs`: crop an element from the live page at 2x.
@@ -110,17 +110,14 @@ Talking to the app, and the harness hooks:
 
 ### template/
 
-- `library/`: the design-system library app the import fills.
-- `workspace-react/`, `workspace-vue/`: the prototype scaffolds, vite plus the rig adapter.
+- `library/`: the design-system library app existing imports render in.
+- `workspace-react/`, `workspace-vue/`: the scaffolds copied prototypes were made from, vite plus the rig adapter; the rig migrations are tested against them.
 
 ### agents/, codex-agents/, cursor-agents/
 
 The subagent roles, one file per harness format.
 
-- `importer.md`, `proto-importer.toml`, `proto-importer.md`: extract one design-system unit.
-- `builder.md`, `proto-builder.toml`, `proto-builder.md`: build inside one prototype workspace.
 - `verifier.md`, `proto-verifier.toml`, `proto-verifier.md`: read-only checks of markers, pixels, state URLs.
-- `part-fixer.md`, `proto-part-fixer.toml`, `proto-part-fixer.md`: fix one copied part of a prototype build.
 - `variant-builder.md`, `proto-variant-builder.toml`, `proto-variant-builder.md`: write one variant of a set.
 
 ### hooks/, codex-hooks/, cursor-hooks/
@@ -129,9 +126,11 @@ The subagent roles, one file per harness format.
 
 ### docs/
 
-- `library-contract.md`: the frozen contract import and library app share.
+- `library-contract.md`: the frozen format of an imported library, which the library app renders.
 - `harness-mechanics.md`: verified facts about Claude Code, Codex and Cursor.
-- `cdp-traps.md`: what bites when reading live pages over CDP.
+- `work-handoff.md`: website brief prompts, including rebuilding one section of a copied prototype.
+- `variant-*.md`, `sketch.md`: how variant work and its references are done.
+- `background-browser.md`: the headless source-browser policy.
 - `reviews/`: dated notes from reviewing a run.
 
 ### assets/
@@ -140,16 +139,13 @@ The subagent roles, one file per harness format.
 
 ## Install
 
-Sign in to Proto and copy the setup prompt from the gallery's setup
-steps or its New prototype dialog. Paste it into your coding agent, in
-Claude Code, Codex, or Cursor: one paste. The prompt contains your identity,
-the complete setup document and a one-time linking code. Your agent installs
-the plugin, whose setup helper exchanges the code for a per-laptop token
-without exposing that durable token in chat. The document carries the app's
-address, your codebase folder and your product page. The agent runs
-the Proto plugin and runs its setup skill: your account, your codebase,
-your design system. The code works once and expires after 10 minutes;
-copy the prompt again for a fresh one.
+Sign in to Proto and copy the setup prompt from the site. Paste it into
+your coding agent, in Claude Code, Codex, or Cursor: one paste. The prompt
+contains your identity, the complete setup document and a one-time linking
+code. Your agent installs the plugin, whose setup helper exchanges the code
+for a per-laptop token without exposing that durable token in chat. The code
+works once and expires after 10 minutes; copy the prompt again for a fresh
+one. Codebases are connected in the Proto desktop app.
 
 Manual install, if you prefer the commands yourself. These are the
 words the setup document carries, copied verbatim from the site's
@@ -227,8 +223,8 @@ pull --ff-only`. Then **Developer: Reload Window**.
 
 **What Cursor gets.** The same skills, a session-start hook with the
 health line and a post-edit hook with the marker check
-(`cursor-hooks/hooks.json`), the `proto-importer`, `proto-builder`
-and `proto-verifier` subagents (`cursor-agents/`), and the `proto`
+(`cursor-hooks/hooks.json`), the `proto-variant-builder` and
+`proto-verifier` subagents (`cursor-agents/`), and the `proto`
 MCP server as a stdio bridge (`tools/mcp-stdio.mjs`) to the app's
 MCP endpoint. On a laptop with no `~/.proto/config.json` yet the
 bridge starts with no tools and announces them once setup has written
@@ -243,24 +239,9 @@ and on in Customize.
 ├─ traces/<session>/        one per agent session that used Proto: its transcripts, transcript.html and transcript.md, report.md, flags.json (tools/trace.mjs)
 └─ <codebase>/               one per codebase being prototyped
    ├─ codebase.json          the team that owns it and source pointers (repo path, remote, live URL)
-   ├─ library/              the design-system library app; the import fills its public/
-   ├─ prototypes/<slug>/    prototype workspaces (vite + rig + prototype.json)
-   ├─ imports/<run>/        import working artifacts (wireframes, verify stages)
+   ├─ library/              an earlier import's design-system library app
+   ├─ prototypes/<slug>/    copied prototype workspaces (vite + rig + prototype.json)
    └─ run/<slug>/           serving state per prototype (spec, pids, logs), owned by supervise.mjs
-```
-
-## Demo: watch a design system populate
-
-```sh
-# scaffold a library and serve it
-cp -r template/library /tmp/demo-library
-cd /tmp/demo-library && pnpm install --frozen-lockfile && pnpm dev
-
-# in another terminal: play the fake import into it
-node tools/fake-import/run.mjs /tmp/demo-library
-
-# open the URL Vite prints and watch it fill in; press "Queue it" on
-# the skipped card and the driver extracts it
 ```
 
 ## License
