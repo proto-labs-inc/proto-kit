@@ -5,10 +5,6 @@ description: Create a new variant set in an existing Proto prototype. Use when t
 
 # Create a variant set
 
-For an application-backed prototype, follow
-[`application-prototype`](../application-prototype/SKILL.md). Its stable call
-site key gets or creates the set; do not use this copied-workspace writer.
-
 First follow [Choose how to iterate](../../docs/variant-iteration.md).
 
 Resolve whether the user wants a new set before registering one. Iteration on
@@ -22,7 +18,7 @@ and those replace step 3's own search. Report `started` when work begins
 and `done` only after publishing.
 
 Work only in the existing prototype workspace named by the request. This is
-an incremental edit: do not scaffold a prototype, run create-prototype or the
+an incremental edit: do not scaffold a prototype, run the
 full serve workflow, or register the prototype.
 
 ## Implementation and delivery order
