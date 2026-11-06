@@ -5,10 +5,6 @@ description: Edit one or more existing variants in a Proto prototype in place. F
 
 # Edit a variant
 
-For an application-backed prototype, follow
-[`application-prototype`](../application-prototype/SKILL.md). Save the edit as
-another immutable source revision in the same targeted set.
-
 First follow [Choose how to iterate](../../docs/variant-iteration.md).
 
 Alternates are mutable. Refine each targeted alternate in place with the same

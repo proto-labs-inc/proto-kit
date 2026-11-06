@@ -5,10 +5,6 @@ description: Build a new prototype from your product's own code in a single dire
 
 # Create a prototype
 
-For a route in the customer's connected React application, follow
-[`application-prototype`](../application-prototype/SKILL.md) instead of the
-standalone copy workflow below.
-
 Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
 
 

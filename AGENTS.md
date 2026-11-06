@@ -4,15 +4,6 @@ The Proto plugin for Claude Code, Codex and Cursor. Skills live in
 `skills/`, the tools they run in `tools/`, the library and workspace
 templates in `template/`.
 
-## Application-backed prototypes
-
-For a route in a connected customer React application, use
-`skills/application-prototype/SKILL.md`. Its tools create one customer
-prototype worktree from local main, save alternate source outside the
-checkout, and guard PR preparation against the shared selected revisions.
-This applies to direct agent-chat requests for PRs as well as Proto plans.
-The copied standalone prototype skills remain for existing copied workspaces.
-
 ## Wireframe authoring
 
 Draw wireframes edge to edge on a white or transparent canvas. Do not add gray backgrounds, gray insets, outer mats, or decorative page frames. This applies to PR-plan assets, sketch bases, directions, refinements, and detail options.
