@@ -1,13 +1,17 @@
 {
   "name": "proto",
-  "version": "0.1.0+codex.20261007213044",
+  "version": "0.1.0+codex.20261106080126",
   "description": "Proto on your laptop: link your account, then edit, serve and publish your existing copied Proto prototypes, driven by your coding agent. New prototypes are forks of your own app, made from the Proto desktop app.",
   "author": {
     "name": "Proto Labs"
   },
   "homepage": "https://github.com/proto-labs-inc/proto-kit",
   "repository": "https://github.com/proto-labs-inc/proto-kit",
-  "keywords": ["prototyping", "design-systems", "frontend"],
+  "keywords": [
+    "prototyping",
+    "design-systems",
+    "frontend"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Proto",
@@ -15,9 +19,15 @@
     "longDescription": "Proto makes prototypes from your product's own code. New prototypes are forks of your running app, made from the Proto desktop app. This plugin runs on your laptop and is driven by your coding agent: it links your account and keeps your existing copied prototypes editable, served and published from your active conversation.",
     "developerName": "Proto Labs",
     "category": "Engineering",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://github.com/proto-labs-inc/proto-kit",
-    "defaultPrompt": ["Set up Proto for my codebase"],
+    "defaultPrompt": [
+      "Set up Proto for my codebase"
+    ],
     "brandColor": "#FC388C",
     "logo": "./assets/proto-logo.png",
     "composerIcon": "./assets/proto-logo.png",
