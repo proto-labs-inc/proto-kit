@@ -23,8 +23,7 @@ follow "References for variants" in `docs/sketch.md` first. When its
 instead of this skill.
 
 Work only in the existing prototype workspace and variant set named by the
-request. This is an incremental edit: do not scaffold a prototype, run
-create-prototype or the full serve workflow, register the prototype, or change unrelated states or variant sets.
+request. This is an incremental edit: do not scaffold a prototype, run the full serve workflow, register the prototype, or change unrelated states or variant sets.
 
 ## Implementation and delivery order
 

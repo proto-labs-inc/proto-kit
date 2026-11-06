@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { answeredInTerminal, ask, CHAT_PROGRESS_TIMEOUT_MS, waitForAnswer } from "./ask.mjs";
 import { keepChatQuestion, readChatQuestion } from "./chat-questions.mjs";
-import { passGate } from "./copy-gate.mjs";
 
 const fields = {
   form: "generic", text: "Which layout should I build?",
@@ -138,62 +137,4 @@ test("offline question history is acknowledged before the separately submitted a
   await answeredInTerminal(live, id, { option: "wide" });
   await answeredInTerminal(live, id, { option: "wide" });
   assert.deepEqual(saved.map((event) => event.kind), ["question", "answered"]);
-});
-
-const tree = { nodes: [{ id: "n1", raw: "main", rect: { w: 100, h: 100 } }], curation: [{ id: "n1", name: "Main", role: "leaf" }] };
-const incomplete = { parts: [{ id: "n1", slug: "main", status: "differs" }], gate: { proceed: false, line: "Still differs" } };
-
-test("copy gate resumes pending and answered checkpoints without repeating capture or replication", async () => {
-  const { build } = fixture();
-  let checkpoint;
-  let copies = 0;
-  let settles = 0;
-  const deps = {
-    replicated: incomplete, tree,
-    copy: async () => { copies += 1; return incomplete; },
-    settle: async () => { settles += 1; },
-    ask: (question, questionKey) => ask({ ...build, questionKey }, question),
-    wait: (id) => waitForAnswer(build, id),
-    save: (record) => { checkpoint = structuredClone(record); },
-  };
-  const first = await passGate(deps);
-  assert.equal(first.outcome, "needs-input");
-  assert.equal(first.pending.question.copied, 0);
-  assert.deepEqual(first.pending.question.missing, ["n1"]);
-  assert.equal(copies, 1);
-  assert.equal(settles, 1);
-  const again = await passGate({ ...deps, checkpoint });
-  assert.equal(again.pending.questionId, first.pending.questionId);
-  assert.equal(copies, 1);
-  assert.equal(settles, 1);
-  await answeredInTerminal(build, first.pending.questionId, { option: "build" });
-  const answered = await passGate({ ...deps, checkpoint });
-  assert.equal(answered.outcome, "build");
-  assert.equal(copies, 1);
-  assert.equal(settles, 1);
-  assert.deepEqual(await passGate({ ...deps, checkpoint }), answered);
-});
-
-test("finish creates one further pass and a new stable question, then a free-text instruction resumes", async () => {
-  const { build } = fixture();
-  let checkpoint;
-  let copies = 0;
-  const deps = {
-    replicated: incomplete, tree, copy: async () => { copies += 1; return incomplete; }, settle: async () => {},
-    ask: (question, questionKey) => ask({ ...build, questionKey }, question), wait: (id) => waitForAnswer(build, id),
-    save: (record) => { checkpoint = structuredClone(record); },
-  };
-  const first = await passGate(deps);
-  await answeredInTerminal(build, first.pending.questionId, { option: "finish" });
-  const second = await passGate({ ...deps, checkpoint });
-  assert.equal(copies, 2);
-  assert.notEqual(first.pending.questionId, second.pending.questionId);
-  const retry = await passGate({ ...deps, checkpoint });
-  assert.equal(copies, 2);
-  assert.equal(retry.pending.questionId, second.pending.questionId);
-  await answeredInTerminal(build, second.pending.questionId, { text: "Skip the footer and continue" });
-  const result = await passGate({ ...deps, checkpoint });
-  assert.equal(result.outcome, "reply");
-  assert.equal(result.answer.text, "Skip the footer and continue");
-  assert.equal(copies, 2);
 });

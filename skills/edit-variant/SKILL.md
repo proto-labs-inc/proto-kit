@@ -12,8 +12,7 @@ ID; update its source and preview without adding a replacement alternate or
 set. Keep the variant count unchanged unless the user also requests new options.
 
 Work only in the existing prototype workspace, variant set, and variants targeted
-by the request. This is an incremental edit: do not scaffold a prototype, run
-create-prototype or the full serve workflow, gather references, or register
+by the request. This is an incremental edit: do not scaffold a prototype, run the full serve workflow, gather references, or register
 the prototype.
 
 ## Implementation and delivery order

@@ -18,13 +18,13 @@ it lives now.
    carries a copy of `public/`, where the import's data lives, so
    `dist/` is the whole library), then uploads `dist/`. It refuses
    politely when the library's `manifest.json` names no codebase: a
-   library with nothing imported has nothing to publish; run
-   import-design-system first. If another publish is running it waits
+   library with nothing imported has nothing to publish. Proto no longer
+   imports design systems, so only a library imported earlier can be
+   published. If another publish is running it waits
    for it, then builds, so it carries everything on disk by then.
 3. Tell the user in one line: the library is published at the printed
    URL and stays viewable after this laptop closes.
 
-The import-design-system skill runs this command after every component
-lands and again when the import finishes, and the end of every agent
-turn publishes what it changed; this command publishes now. Each publish uploads to a fresh
+The end of every agent turn publishes what it changed; this command
+publishes now. Each publish uploads to a fresh
 path, so links to earlier publishes keep working.

@@ -18,7 +18,7 @@ and those replace step 3's own search. Report `started` when work begins
 and `done` only after publishing.
 
 Work only in the existing prototype workspace named by the request. This is
-an incremental edit: do not scaffold a prototype, run create-prototype or the
+an incremental edit: do not scaffold a prototype, run the
 full serve workflow, or register the prototype.
 
 ## Implementation and delivery order
