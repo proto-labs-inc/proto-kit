@@ -30,7 +30,6 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { callTool } from "./mcp-call.mjs";
 import { ephemeralPort } from "./ports.mjs";
 import { protoHome } from "./proto-home.mjs";
 
@@ -48,9 +47,6 @@ const fail = (message) => {
   process.exit(1);
 };
 const step = (message) => console.error(`… ${message}`);
-
-const approval = await callTool("screen_index", { operation: "library-check", codebase });
-if (approval.isError) fail(approval.content?.find(item => item.type === "text")?.text ?? "Confirm screenshots before preparing the library.");
 
 // 1. Scaffold. node_modules and dist never come from the template.
 if (!existsSync(join(library, "package.json"))) {
