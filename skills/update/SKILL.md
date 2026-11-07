@@ -4,13 +4,20 @@ description: >-
   Check the installed Proto kit against the release version in a copied
   Proto prompt. Install the current GitHub release if an update is needed,
   then continue the original request. Use when a copied prompt asks for
-  the Proto update skill.
+  the Proto update skill. Not needed for a request that carries Proto's
+  islands brief, which uses nothing from the kit.
 ---
 
 # Check Proto before continuing a copied prompt
 
 Follow one flow: read the prompt's required version, check the installed kit
 locally, update if needed, then carry out the original request.
+
+A request that says "Build this request as Proto islands" is for a prototype
+forked from the maker's own app. That work uses the islands package in the
+maker's app and the brief that came with the message, and nothing from this
+kit. Skip the version check and any install, even when the request asks for
+this skill, and carry out the request.
 
 ## 1. Check the installed version
 

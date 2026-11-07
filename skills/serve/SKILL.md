@@ -1,6 +1,6 @@
 ---
 name: serve
-description: Put a prototype online. Registers it in your gallery, starts its dev server under supervision on this laptop, publishes a permanent snapshot, and recovers when something is down. Use for an existing copied prototype when the user wants to share or see it online, or when it stopped showing.
+description: Put a prototype online. Registers it in your gallery, starts its dev server under supervision on this laptop, publishes a permanent snapshot, and recovers when something is down. Use for an existing copied prototype when the user wants to share or see it online, or when it stopped showing. A prototype forked from the maker's own app runs on their own dev server and is not served or published by this skill.
 ---
 
 # Serve
