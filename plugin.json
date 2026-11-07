@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schema/1.0.0/plugin.json",
   "name": "proto",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20261107100958",
   "description": "Proto on your laptop: link your account, then edit, serve and publish your existing copied Proto prototypes, driven by your coding agent. New prototypes are forks of your own app, made from the Proto desktop app.",
   "extensions": {
     "com.openai": {
