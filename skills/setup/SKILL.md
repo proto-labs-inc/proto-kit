@@ -1,19 +1,15 @@
 ---
 name: setup
 description: >-
-  Link this computer to Proto: install or update the plugin, link the laptop
-  from a setup prompt copied from the Proto site, connect the proto MCP server,
-  and reopen an existing copied prototype from its Edit prompt. Starts from
-  "Set up Proto for" and continues in the active agent conversation. Also use
-  when installing Proto or recovering its local connection records.
-  Codebases are connected in the Proto desktop app, not here.
+  Install or update the Proto plugin, connect the proto MCP server, and recover
+  this laptop's local Proto records. Laptops are linked and codebases connected
+  by the Proto desktop app when the maker signs in and chooses a folder, not here.
 ---
 
 # Setup
 
-Setup links this laptop to Proto and, from an Edit prompt, reopens an
-existing copied prototype. Connecting a codebase happens in the Proto
-desktop app, which writes `~/.proto/<codebase>/codebase.json` itself; new
+Setup installs and repairs the plugin and this laptop's local Proto records.
+Linking the laptop and connecting a codebase happen in the Proto desktop app, which writes `~/.proto/<codebase>/codebase.json` itself; new
 prototypes are built there as islands in the maker's own app, following
 the brief Proto sends with each message.
 It never starts a listener, binds a conversation, or waits for website commands.
@@ -28,31 +24,14 @@ output, stack traces, or anything that reads as an error wall; and
 **never send the user to tokens, SSH keys, or GitHub developer
 settings**.
 
-## Two ways in
+## When it runs
 
-**As a command**: with the proto plugin installed, the user runs
-`/proto:setup` on Claude Code, `$setup` on Codex, or picks the Proto
-setup skill from the chat's `/` menu on Cursor (or just asks to set
-up Proto, in the terminal, the Claude Code desktop app, the Codex
-app, or Cursor's chat). Nothing was pasted, so ask for the one thing
-setup can't derive: the setup prompt, copied from the Proto site (it carries the identity
-and everything else below). One question, then proceed
-exactly as below once they paste it.
-
-**As the prompt**: pasted from the Proto site. Its first line is the sentence
-the recognizer keys on; its last line is the complete JSON setup document:
-
-```
-Set up Proto for <name> (<id>) at <team>.
-Follow the Proto setup data below.
-{"instructions":"...","account":{"id":"...","name":"...","team":"..."},...}
-```
-
-A `, codebase <id>, prototype <slug>` suffix
-is the **Edit prompt**, copied from a prototype's Frame by its creator
-for their coding agent: see "Editing a prototype" at the
-end. Everything else comes from the embedded document. Run the whole flow
-without re-asking for anything the document already says.
+The user runs `/proto:setup` on Claude Code, `$setup` on Codex, or picks the
+Proto setup skill from the chat's `/` menu on Cursor, or asks to set up or
+repair Proto. Nothing needs pasting: the desktop app has already linked this
+laptop and written its codebase records when the maker signed in and chose a
+folder. Setup installs or updates the plugin, makes sure the proto MCP server
+is registered, and repairs the local records below.
 
 ### Published kit version
 
@@ -66,58 +45,13 @@ unless the resulting manifest meets the requested version. A missing release
 record uses the update skill's normal marketplace check. Do not restart an
 active host automatically; explain any required reload and preserve the request.
 
-### The setup document
+### Linking a laptop
 
-Run `node <kit>/tools/link-laptop.mjs <app> <linkingCode> <account.id>`
-exactly once, substituting those three values from the document. The helper
-exchanges `linkingCode` for this laptop's token when needed, adds the token to
-`~/.proto/config.json`, and prints the linked identity and what linking
-changed. The code expires at `expiresAt`.
-If it says the code expired or was already used, tell the user to copy the
-setup prompt from the Proto site again and wait for the new prompt. The
-embedded setup document is JSON:
-
-```jsonc
-{
-  "instructions": "...",                       // what to do with the document, one paragraph
-  "account": { "id": "<id>", "name": "<name>", "team": "<team>" },
-  "codebase": "<id>",                          // Edit prompts only
-  "app": "https://...",                        // the Proto app's origin
-  "linkingCode": "...",                        // one use, until expiresAt
-  "expiresAt": "2026-09-30T12:34:56.000Z",
-  "install": {                                 // the plugin command per harness
-    "claude": { "install": "...", "update": "..." },
-    "codex":  { "install": "...", "update": "..." },
-    "cursor": { "install": "...", "update": "..." }
-  },
-  "prototype": { "slug": "...", "title": "..." }  // Edit prompts only
-}
-```
-
-The helper's JSON answer is separate from the document:
-
-```jsonc
-{
-  "summary": "Linked as ada@example.com in Acme; still linked as ada@acme.dev in Acme Labs.",
-  "added":   { "user", "team", "laptop", "linkedAt" },  // null when the token it held still works
-  "replaced": { … },                           // the same team's previous credential, when there was one
-  "kept":    [ { … } ]                         // the other teams this laptop works in, untouched
-}
-```
-
-The helper keeps a token that already works for this member and team (it
-asks `whoami` first), so an Edit prompt on a laptop that is set up does not
-spend the code. The setup document carries no durable credential.
-Never print or read back a credential's `secret` from config.json.
-
-**Say what linking did**, in the helper's own words: relay `summary`.
-It names what this laptop can now do and what it could already do and
-still can, which is what tells the user their other team survived. Do
-not improve on it by promising that linking is behind them: a person
-links once per team, and what the set buys them is that doing so costs
-them nothing they already had.
-
-## Machine
+The Proto desktop app links this laptop when the maker signs in and writes
+its credential to `~/.proto/config.json` itself; it also writes each
+connected codebase's `~/.proto/<codebase>/codebase.json`. There are no setup
+documents or linking codes any more. If `whoami` says this laptop is not
+linked, ask the maker to open the Proto app and sign in, then check again.
 
 ### Keep the plugin current
 
@@ -125,8 +59,8 @@ Use GitHub's generated `release` branch for normal installs and updates.
 Local files require an explicit user request for this operation; an existing
 local registration does not make local the default. Follow the source
 selection and migration steps in `../update/SKILL.md` before updating.
-An older setup document that names main or an unpinned GitHub source must
-use release instead. Never fall back to main when release is unavailable.
+A registration that names main or an unpinned GitHub source must use
+release instead. Never fall back to main when release is unavailable.
 
 For a fresh install:
 
@@ -169,7 +103,7 @@ teams holds two, side by side.
 }
 ```
 
-The link helper writes this file with mode 600. It adds the new
+The Proto desktop app writes this file with mode 600 when the maker signs in. It adds the new
 credential beside the ones already there, replacing only a credential
 for the same team, so linking a second team never costs the first.
 A file written by an older kit (`schemaVersion: 2`, one credential
@@ -196,7 +130,7 @@ the most recently linked one, saying so on stderr.
 The `proto` MCP server is how every kit skill talks to Proto
 (registration, publishing, source registry, comments). In Claude Code and
 Cursor it ships as the kit's stdio bridge (`tools/mcp-stdio.mjs`), which
-reads config.json, so once the link helper has written the file the server
+reads config.json, so once the desktop app has written the file the server
 works with nothing else to add. The bridge announces its tools when
 config.json appears; if they still do not show, the user toggles the
 Proto MCP server off and on in Customize. Its tools may appear under a host-specific scoped name; this and the
@@ -264,36 +198,17 @@ without stopping anything.
 
 ## Verify
 
-- `config.json` parses. For an Edit prompt, `codebase.json` parses,
-  names the team it was set up in, and its `source.path` exists.
-- The `whoami` MCP tool answers with the expected team and grants.
+- `config.json` parses, and each `~/.proto/<codebase>/codebase.json` parses
+  and names an existing `source.path`.
+- The `whoami` MCP tool answers with the expected team and grants. When it
+  says this laptop isn't linked, ask the maker to sign in to the Proto app.
 
-Report what you set up, leading with the link `summary`: which member
-and team this laptop now works as, and which teams it already worked in
-and still does. Then anything you skipped because it already existed.
-
-## Editing a prototype
-
-The Edit prompt (`prototype` in the document) means: the creator of
-that prototype wants their agent on it again, and the site assumed no
-session was open. Only the creator's account can edit a
-prototype; the site refuses every other laptop's writes to it in one
-sentence, so a document naming a prototype is always the creator's.
-Do the machine steps above (the link helper keeps a working token; the
-plugin update still applies). If `~/.proto/<codebase>/codebase.json`
-does not exist, ask the user to connect the codebase's folder in the
-Proto desktop app first. Then:
-
-1. Open the workspace `~/.proto/<codebase>/prototypes/<slug>/`. If it
-   does not exist on this laptop, say so in one sentence: the
-   prototype was built on another laptop of theirs, and a copy of the
-   workspace is needed here before editing.
-2. Tell the user, in one line, that you are on "<title>" and ask what
-   to change. Wait. Every change follows the edit-variant,
-   add-variants, create-variant-set and serve skills as usual (the
-   serve run, registration, publish at checkpoints). Finish when the requested change is complete.
+Report what you installed or repaired in plain sentences, then anything you
+skipped because it already existed.
 
 ## Handoff
 
-Setup ends once the laptop is linked and verified. Existing Edit prompts
-use Editing a prototype. No open listening session is needed.
+Setup ends once the plugin is current and `whoami` answers. Copied prototypes
+are edited from their chats in the Proto app with the edit-variant,
+add-variants, create-variant-set and serve skills; new prototypes are forked
+in the maker's own app and need nothing from setup.

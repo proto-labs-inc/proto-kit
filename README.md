@@ -38,8 +38,8 @@ Cursor; the core stays harness-neutral.
 
 ### skills/
 
-- `setup/`: install or update the plugin, link the laptop, connect the MCP
-  server, and reopen a copied prototype from its Edit prompt.
+- `setup/`: install or update the plugin, connect the MCP server, and repair
+  this laptop's local Proto records.
 - `create-variant-set/`: add a new variant set to an existing prototype.
 - `add-variants/`: add variants to a set that already exists.
 - `edit-variant/`: change one existing variant.
@@ -90,7 +90,6 @@ Talking to the app, and the harness hooks:
 
 - `mcp-call.mjs`: MCP-over-HTTP client, the one reader of `~/.proto/config.json`.
 - `mcp-stdio.mjs`: that same transport as a stdio MCP server, choosing the credential per call.
-- `link-laptop.mjs`: redeem the setup document's code and save this laptop's token.
 - `hooks/post-edit-markers.mjs`: re-run the marker check on an edited workspace file.
 - `hooks/cursor-session-start.mjs`, `hooks/cursor-post-tool-use.mjs`: those two checks, Cursor's shape.
 - `trace.mjs`, `trace-read.mjs`, `trace-transcript.mjs`: debug traces of every Proto session in `~/.proto/traces/`: the transcript as a page and as markdown, the time, and flags an agent or a person puts on steps; `hooks/trace-hook.mjs` keeps them current after each turn, for all three harnesses.
@@ -139,19 +138,12 @@ The subagent roles, one file per harness format.
 
 ## Install
 
-Sign in to Proto and copy the setup prompt from the site. Paste it into
-your coding agent, in Claude Code, Codex, or Cursor: one paste. The prompt
-contains your identity, the complete setup document and a one-time linking
-code. Your agent installs the plugin, whose setup helper exchanges the code
-for a per-laptop token without exposing that durable token in chat. The code
-works once and expires after 10 minutes; copy the prompt again for a fresh
-one. Codebases are connected in the Proto desktop app.
+Install the Proto app for Mac and sign in. The app installs and updates this
+plugin for Claude Code, links the laptop (its credential goes to
+`~/.proto/config.json`), and connects codebases when you choose their folder.
 
-Manual install, if you prefer the commands yourself. These are the
-words the setup document carries, copied verbatim from the site's
-`web/src/lib/setup-snippet.ts` (`installCommands`), which is the source:
-change them there first. The plugin takes no credential at install time;
-the setup code mints the laptop token afterward.
+Manual install, if you prefer the commands yourself. The plugin takes no
+credential at install time; signing in to the Proto app links the laptop.
 
 ```sh
 # Claude Code
