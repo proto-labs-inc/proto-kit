@@ -1,6 +1,6 @@
 ---
 name: implement-pr-plan
-description: Implement one or more entries from an existing Proto PR plan as focused pull requests and link them back to Proto. Use when the user asks to create or continue implementation PRs; use create-pr-plan to decompose work.
+description: Implement one or more entries from an existing Proto PR plan as focused pull requests and link them back to Proto. Use when the user asks to create or continue implementation PRs; use create-pr-plan to decompose work. Only for a copied prototype, a workspace under ~/.proto/<codebase>/prototypes/<slug>/ with public/prototype.json. A prototype forked from the maker's own app follows the islands brief Proto sends with the message instead.
 ---
 
 # Implement PR plan entries

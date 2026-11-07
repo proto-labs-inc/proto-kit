@@ -2,6 +2,9 @@
 import { useBuildSession, browserSessionPath } from "./cdp/session-context.mjs";
 import { stopSessionRenderer } from "./cdp/headless.mjs";
 /**
+ * Copied workspaces only (public/prototype.json); a prototype forked
+ * from the maker's own app is seen in their running dev server instead.
+ *
  * Every view of a prototype loaded and measured, so the agent learns
  * what broke from numbers, not from reading screenshots: each preview
  * state (?state=<id>) and each variant of each set (?v.<component>=<id>)

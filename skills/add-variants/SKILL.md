@@ -1,6 +1,6 @@
 ---
 name: add-variants
-description: Add new options to an existing variant set only when the user wants additional alternatives. For refinements to existing alternates, including a whole set, use edit-variant in place instead. Do not treat alternates as immutable.
+description: Add new options to an existing variant set only when the user wants additional alternatives. For refinements to existing alternates, including a whole set, use edit-variant in place instead. Do not treat alternates as immutable. Only for a copied prototype, a workspace under ~/.proto/<codebase>/prototypes/<slug>/ with public/prototype.json. A prototype forked from the maker's own app follows the islands brief Proto sends with the message instead.
 ---
 
 # Add variants

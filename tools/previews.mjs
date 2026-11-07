@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * Copied workspaces only (public/prototype.json); a prototype forked
+ * from the maker's own app is seen in their running dev server instead.
+ *
  * The variant previews the manifest expects, from real renders: every
  * variant of every set is opened in the headless Chrome, its part
  * (the elements carrying the set's component marker) is cut out with a

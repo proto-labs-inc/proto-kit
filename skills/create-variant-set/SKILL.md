@@ -1,6 +1,6 @@
 ---
 name: create-variant-set
-description: Create a new variant set in an existing Proto prototype. Use when the prototype already exists and the user wants to compare multiple new directions for a component. Do not use for adding options to an existing set or editing an existing variant.
+description: Create a new variant set in an existing Proto prototype. Use when the prototype already exists and the user wants to compare multiple new directions for a component. Do not use for adding options to an existing set or editing an existing variant. Only for a copied prototype, a workspace under ~/.proto/<codebase>/prototypes/<slug>/ with public/prototype.json. A prototype forked from the maker's own app follows the islands brief Proto sends with the message instead.
 ---
 
 # Create a variant set
