@@ -1,6 +1,6 @@
 ---
 name: edit-variant
-description: Edit one or more existing variants in a Proto prototype in place. For iteration on an alternate or set of alternates, use judgment to choose in-place edits or new options based on user intent. Do not use to create a set or add a new variant.
+description: Edit one or more existing variants in a Proto prototype in place. For iteration on an alternate or set of alternates, use judgment to choose in-place edits or new options based on user intent. Do not use to create a set or add a new variant. Only for a copied prototype, a workspace under ~/.proto/<codebase>/prototypes/<slug>/ with public/prototype.json. A prototype forked from the maker's own app follows the islands brief Proto sends with the message instead.
 ---
 
 # Edit a variant
@@ -12,8 +12,7 @@ ID; update its source and preview without adding a replacement alternate or
 set. Keep the variant count unchanged unless the user also requests new options.
 
 Work only in the existing prototype workspace, variant set, and variants targeted
-by the request. This is an incremental edit: do not scaffold a prototype, run
-create-prototype or the full serve workflow, gather references, or register
+by the request. This is an incremental edit: do not scaffold a prototype, run the full serve workflow, gather references, or register
 the prototype.
 
 ## Implementation and delivery order

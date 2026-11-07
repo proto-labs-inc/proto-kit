@@ -3,12 +3,13 @@
  * Read-only health check across the Proto folder (~/.proto, or PROTO_HOME) — the proto plugin's
  * session-start hook. First, which kit this session runs and which site
  * it talks to; then one line per codebase with serving health and its
- * recovery command when
- * something's down. Never restarts anything, never errors: a machine
+ * recovery command when something's down. It covers copied prototypes
+ * and libraries only: a prototype forked from the maker's own app runs
+ * on their dev server, not the kit's. Never restarts anything, never errors: a machine
  * with no ~/.proto prints nothing and exits 0.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConfig } from "./mcp-call.mjs";
@@ -31,6 +32,13 @@ const readJson = (path) => {
     return null;
   }
 };
+
+// A run folder the kit serves: the codebase's library, or a copied
+// prototype's workspace.
+const copiedRun = (codebase, name) =>
+  name === "library"
+    ? existsSync(join(root, codebase, "library"))
+    : existsSync(join(root, codebase, "prototypes", name, "public", "prototype.json"));
 
 let codebases;
 try {
@@ -73,25 +81,22 @@ for (const codebase of codebases) {
   for (const dir of runDirs) {
     if (isLegacyCourierRun(join(runRoot, dir.name))) continue;
     const state = readJson(join(runRoot, dir.name, "state.json"));
+    // The desktop app also makes run folders for tabs of prototypes forked
+    // from the maker's own app; those have no copied workspace and are
+    // never served by the kit, so they say nothing here.
+    if (state === null && !copiedRun(codebase.name, dir.name)) continue;
     const up =
       state !== null &&
       alive(state.pid) &&
-      Object.values(state.processes).every((p) => alive(p.pid));
+      Object.values(state.processes ?? {}).every((p) => alive(p.pid));
     servingTotal += 1;
-    if (up) servingUp += 1; else {
-      servingTotal += 1;
-      if (up) servingUp += 1;
-    }
+    if (up) servingUp += 1;
   }
 
-  const parts = [];
-  if (servingTotal > 0) {
-    if (servingUp === servingTotal) parts.push("serving");
-    else parts.push(`${servingUp}/${servingTotal} serving`);
-  }
-  const allGood =
-    servingTotal === 0 || servingUp === servingTotal;
-  let line = `${codebase.name}: ${parts.join(", ")}`;
+  if (servingTotal === 0) continue; // only forked or retired runs: nothing to say
+
+  const allGood = servingUp === servingTotal;
+  let line = `${codebase.name}: ${allGood ? "serving" : `${servingUp}/${servingTotal} serving`}`;
   if (!allGood) line += ": run /proto:serve to bring it back";
   console.log(line);
 }

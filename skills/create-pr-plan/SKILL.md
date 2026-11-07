@@ -1,6 +1,6 @@
 ---
 name: create-pr-plan
-description: Decompose a prototype's implementation into focused, ordered pull-request slices and record the plan in Proto. Use when the user asks to split prototype work into PRs; use implement-pr-plan to build them.
+description: Decompose a prototype's implementation into focused, ordered pull-request slices and record the plan in Proto. Use when the user asks to split prototype work into PRs; use implement-pr-plan to build them. Only for a copied prototype, a workspace under ~/.proto/<codebase>/prototypes/<slug>/ with public/prototype.json. A prototype forked from the maker's own app follows the islands brief Proto sends with the message instead.
 ---
 
 # Create a PR plan

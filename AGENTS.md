@@ -4,9 +4,16 @@ The Proto plugin for Claude Code, Codex and Cursor. Skills live in
 `skills/`, the tools they run in `tools/`, the library and workspace
 templates in `template/`.
 
-## Wireframe authoring
+## Copied prototypes only
 
-Draw wireframes edge to edge on a white or transparent canvas. Do not add gray backgrounds, gray insets, outer mats, or decorative page frames. This applies to PR-plan assets, sketch bases, directions, refinements, and detail options.
+The kit serves prototypes that were copied into standalone workspaces under
+`~/.proto/<codebase>/prototypes/`. New prototypes are forked: the agent writes
+alternates as islands in the maker's own app, following the islands brief the
+`proto` repo sends with each message (`web/src/lib/islands-brief.ts`), with the
+`@proto-labs-inc/islands` package (`packages/islands`). That flow uses no kit
+skill, tool or hook. Change the brief or the package for forked prototypes, not
+the kit, and keep skill descriptions scoped to copied workspaces so they do not
+pull a forked request into the copy flow.
 
 ## GitHub owns release versions
 

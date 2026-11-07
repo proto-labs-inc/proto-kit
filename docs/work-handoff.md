@@ -7,13 +7,10 @@ the user for a current work prompt instead.
 
 For a prompt with a brief ID:
 
-1. For create-prototype, follow `docs/build-progress.md` immediately: enter
-   Connect with an active verification activity before whoami and get_brief
-   finish, using the existing credential. Do not report a verified connection
-   until those checks succeed. If authentication fails, reconnect through setup.
-   Use the configured app and authenticated `get_brief { briefId }`. Match the
+1. Use the configured app and authenticated `get_brief { briefId }`. Match the
    returned codebase and scoped target to the prompt. Do not switch teams to
-   get around a refusal or treat the ID as a bearer credential.
+   get around a refusal or treat the ID as a bearer credential. If
+   authentication fails, reconnect through setup.
 2. Read request content exclusively from `brief.inputs`: `description`,
    `documentUrl`, `referenceUrl`, `referenceImage`, `referenceHtml`, and
    `useRealData`. The retired top-level input columns may remain in responses
@@ -21,15 +18,15 @@ For a prompt with a brief ID:
    section rebuilds, and resume. Identity, action, status, and target remain
    top-level. If `inputs` is absent or malformed, report a contract blocker in
    the active conversation instead of reconstructing it from retired columns.
-   Read the persisted `action`: `create-prototype`, `add-variants`, or
-   `rebuild-section`. Route to the matching skill (section changes use the
-   create-prototype skill's section-only procedure). Do not infer action from
-   a prototype slug: creation briefs also gain a slug when built.
+   Read the persisted `action`. An `add-variants` brief routes to the
+   add-variants or create-variant-set skill; a `rebuild-section` brief
+   follows "Rebuilding one section" below. New prototypes are no longer
+   copied: a `create-prototype` brief cannot be built by this kit; tell the
+   user so in one sentence. Do not infer action from a prototype slug.
 3. If a historical brief has no action, ask the user to choose its action in
    the website's resume flow. Never guess or create a replacement brief.
 4. Preserve `briefId`, `prototype_slug`, `section`, and `parent_brief_id`.
-   For a new prototype, pass the existing ID to `begin_prototype_build`; for
-   edits use the existing target workspace. Report `started` when work begins,
+   Use the existing target workspace. Report `started` when work begins,
    then phase progress, `needs-input`, failure, or completion as appropriate.
 5. An explicit resume keeps the same workspace and saved checkpoint after
    matching ownership, codebase, and target. Do not rerun completed captures or
@@ -45,4 +42,19 @@ ordinary work prompts contain no new linking code or durable credential. Only
 an actual missing/invalid account link uses the setup flow. The website remains
 a place to prepare work and review outward progress and published results.
 
-For create-prototype progress, follow `docs/build-progress.md`: report on the saved brief before context access, keep its ID, and preserve questions and checkpoints. Registration is not completion: the publish at the skill's end reports it done.
+## Rebuilding one section
+
+A brief whose run is `rebuild-section` is a change asked from the
+Frame's element picker on an existing copied prototype: `get_brief` gives
+the prototype (`prototype_slug`), the component (`section`, its
+`data-proto-id`) and the change (`description`, the Frame's full edit
+prompt, scoped to that component and its variant). Report `started` when
+work begins; only then may the Frame mark the component as rebuilding.
+Then make the change in the prototype's workspace
+(`~/.proto/<codebase>/prototypes/<slug>/`; the running dev server shows it
+as you save), run `node <kit>/tools/check-states.mjs <workspace>` and, for
+a variant, `node <kit>/tools/previews.mjs <workspace>`, then
+`report_progress done`. When the prototype came from a streamed build
+(`parent_brief_id` is set), run those two with `--brief <parent> --codebase <id>`
+so the build's stream shows the change: the node is the one whose `marker`
+is the section.
