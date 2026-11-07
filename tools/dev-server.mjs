@@ -1,4 +1,7 @@
 /**
+ * Copied workspaces only (public/prototype.json); a prototype forked
+ * from the maker's own app is seen in their running dev server instead.
+ *
  * The workspace's dev server, for the build's tools: replicate.mjs
  * renders parts in it, check-states.mjs and previews.mjs load the
  * prototype's views from it. One of them starts it when it is not up
