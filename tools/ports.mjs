@@ -8,6 +8,9 @@ import { withProcessLock } from "./process-lock.mjs";
  * port another prototype was serving on looked free and the new
  * build's every check hit the other app; and a build looked at its
  * own codebase's workspaces only, while ~/.proto holds several.
+ * The records are those of copied workspaces and libraries; a prototype
+ * forked from the maker's own app runs on their dev server, whose port
+ * is theirs and never claimed here.
  *
  *   await portIsFree(port)      nothing bound on either loopback address
  *   claimedPorts()              every port a record under ~/.proto names

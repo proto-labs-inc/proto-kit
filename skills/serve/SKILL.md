@@ -1,6 +1,6 @@
 ---
 name: serve
-description: Put a prototype online. Registers it in your gallery, starts its dev server under supervision on this laptop, publishes a permanent snapshot, and recovers when something is down. Use when the user wants to share or see a prototype online, when a prototype stopped showing, or after create-prototype finishes.
+description: Put a prototype online. Registers it in your gallery, starts its dev server under supervision on this laptop, publishes a permanent snapshot, and recovers when something is down. Use for an existing copied prototype when the user wants to share or see it online, or when it stopped showing. A prototype forked from the maker's own app runs on their own dev server and is not served or published by this skill.
 ---
 
 # Serve
@@ -29,8 +29,8 @@ checkout root.
 
 ## Authorization
 
-Invoking this skill from an explicit request to put a prototype online, or
-from the create-prototype runbook, already authorizes registration,
+Invoking this skill from an explicit request to put a prototype online
+already authorizes registration,
 starting the supervised dev server, and uploading the permanent snapshot.
 Do not ask for a second permission for those expected steps. A host- or
 tool-enforced confirmation still applies and must be presented when the
@@ -167,11 +167,3 @@ the run dir:
 `node tools/supervise.mjs stop <run-dir>` stops serving; the published
 copy stays. Full teardown, only when the user asks to remove the
 prototype: stop the run, then delete the run dir.
-
-## Rig compatibility when copying starters
-
-Cloning preserves the verified starter artifacts. If the independent copy pins
-an older rig than the connected cloud app advertises, `screen-bundle.mjs` updates its rig dependencies,
-installs them and rebuilds that copy before its normal smoke check. This is the
-exception to the unchanged-copy no-install/no-build fast path. Copies already
-on the current rig keep the prepared build fast path.

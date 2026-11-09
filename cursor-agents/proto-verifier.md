@@ -1,6 +1,6 @@
 ---
 name: proto-verifier
-description: Read-only checker for Proto work: marker coverage, rect and pixel parity against the live page, state URL round-trips. Dispatch to verify an importer's or builder's claims; it runs tools and reads everything but edits nothing.
+description: Read-only checker for Proto work: marker coverage, rect and pixel parity against the live page, state URL round-trips. Dispatch to verify a variant builder's claims in a copied prototype; it runs tools and reads everything but edits nothing.
 model: inherit
 readonly: true
 ---

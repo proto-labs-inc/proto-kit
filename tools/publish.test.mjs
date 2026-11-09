@@ -7,7 +7,6 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { withoutLegacySources } from "./snapshot.mjs";
 
 const publish = fileURLToPath(new URL("./publish.mjs", import.meta.url));
 
@@ -42,14 +41,6 @@ test("a path the host refuses is named with the host's own rule", () => {
   const res = spawnSync(process.execPath, [publish, "--kind", "prototype", workspace, "--codebase", "cb", "--slug", "book-detail", "--dry-run"], { encoding: "utf8" });
   assert.equal(res.status, 1);
   assert.match(res.stderr, /assets\/_private\.js .*must start with a letter or digit/);
-});
-
-test("captured font faces drop Internet Explorer's .eot sources and keep the rest", () => {
-  const bootstrap = `font-family:"Glyphicons Halflings";src:url(../fonts/g.eot);src:url(../fonts/g.eot?#iefix) format("embedded-opentype"),url(../fonts/g.woff2) format("woff2"),url(data:font/woff;base64,AA;BB,CC) format("woff")`;
-  assert.equal(withoutLegacySources(bootstrap), `font-family:"Glyphicons Halflings"; src: url(../fonts/g.woff2) format("woff2"), url(data:font/woff;base64,AA;BB,CC) format("woff");`);
-  assert.equal(withoutLegacySources("font-family:X;src:url(x.EOT)"), null);
-  const modern = `font-family:Y;src:url(y.woff2) format("woff2");font-weight:400`;
-  assert.equal(withoutLegacySources(modern), modern);
 });
 
 /** A fake Proto app: answers begin_publish with an upload for index.html

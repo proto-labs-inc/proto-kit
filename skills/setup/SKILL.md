@@ -1,71 +1,37 @@
 ---
 name: setup
 description: >-
-  Connect a customer's computer and codebase, or prepare a customer's design
-  system and starter screens from a live site as Proto staff. The setup document
-  explicitly selects connect, prepare, prepare-self or edit. Customer connection imports a design system when no staff assets are assigned, without reviewing screens; staff preparation needs no customer repository. Starts
-  from "Set up Proto for" and continues in the active agent conversation.
-  Also use when installing Proto or recovering its local connection records.
+  Install or update the Proto plugin, connect the proto MCP server, and recover
+  this laptop's local Proto records. Laptops are linked and codebases connected
+  by the Proto desktop app when the maker signs in and chooses a folder, not here.
 ---
 
 # Setup
 
-Read and follow [background-browser.md](../../docs/background-browser.md) before browser work. Source captures run headlessly by default; foreground commands are blocked. Never override that guard during routine work. Visible sign-in requires explicit user authorization.
-
-
-Setup has two explicit purposes: customer connection and staff preparation.
-For a customer, link the laptop, connect the repository and attach existing assets
-from the staff preparation codebase assigned to their email.
-For staff, link the staff laptop and prepare from the live site with no repository.
-Ordinary self-service connection (`connect`) imports only the design system. The explicit `prepare-self` purpose instead prepares the one customer-approved page and its design system without a repository.
-Staff preparation pauses for website coverage confirmation before preparing the library
-and reusable screens.
+Setup installs and repairs the plugin and this laptop's local Proto records.
+Linking the laptop and connecting a codebase happen in the Proto desktop app, which writes `~/.proto/<codebase>/codebase.json` itself; new
+prototypes are built there as islands in the maker's own app, following
+the brief Proto sends with each message.
 It never starts a listener, binds a conversation, or waits for website commands.
 Reject old courier-delivery envelopes rather than treating them as new user requests.
 
-Two scopes, both idempotent: the **machine** (once: config.json,
-prerequisites) and a **codebase** (once per codebase being prototyped:
-source link, prepared-asset attachment or staff design-system import). Re-running setup repairs; it never
-clobbers working state. **Setup is resumable**: every step below
-leaves its result in a file, so if it parks mid-way (waiting on an
-engineer, a login, anything), a later "continue setting up Proto"
-picks up right where it stopped: say so when you park.
+The **machine** scope is idempotent (config.json, prerequisites, the MCP
+server). Re-running setup repairs; it never clobbers working state.
 
 The user is often not an engineer. Two standing rules for the whole
 flow: **failures are plain sentences**, never surface raw command
 output, stack traces, or anything that reads as an error wall; and
 **never send the user to tokens, SSH keys, or GitHub developer
-settings**: if access is missing, produce the forwardable message
-(below) and park instead.
+settings**.
 
-## Two ways in
+## When it runs
 
-**As a command**: with the proto plugin installed, the user runs
-`/proto:setup` on Claude Code, `$setup` on Codex, or picks the Proto
-setup skill from the chat's `/` menu on Cursor (or just asks to set
-up Proto, in the terminal, the Claude Code desktop app, the Codex
-app, or Cursor's chat). Nothing was pasted, so ask for the one thing
-setup can't derive: the setup prompt, copied from the Proto site's
-setup steps or its New prototype dialog (it carries the identity and
-everything else below). One question, then proceed
-exactly as below once they paste it.
-
-**As the prompt**: pasted from the Proto site. Its first line is the sentence
-the recognizer keys on; its last line is the complete JSON setup document:
-
-```
-Set up Proto for <name> (<id>) at <team>.
-Follow the Proto setup data below.
-{"instructions":"...","account":{"id":"...","name":"...","team":"..."},...}
-```
-
-A `, codebase <id>` suffix on the first line appears when resuming an
-unfinished setup; a new setup has none, and creating the codebase is
-this skill's job (below). A `, codebase <id>, prototype <slug>` suffix
-is the **Edit prompt**, copied from a prototype's Frame by its creator
-for their coding agent: see "Editing a prototype" at the
-end. Everything else comes from the embedded document. Run the whole flow
-without re-asking for anything the document already says.
+The user runs `/proto:setup` on Claude Code, `$setup` on Codex, or picks the
+Proto setup skill from the chat's `/` menu on Cursor, or asks to set up or
+repair Proto. Nothing needs pasting: the desktop app has already linked this
+laptop and written its codebase records when the maker signed in and chose a
+folder. Setup installs or updates the plugin, makes sure the proto MCP server
+is registered, and repairs the local records below.
 
 ### Published kit version
 
@@ -79,62 +45,13 @@ unless the resulting manifest meets the requested version. A missing release
 record uses the update skill's normal marketplace check. Do not restart an
 active host automatically; explain any required reload and preserve the request.
 
-### The setup document
+### Linking a laptop
 
-Run `node <kit>/tools/link-laptop.mjs <app> <linkingCode> <account.id>`
-exactly once, substituting those three values from the document. The helper
-exchanges `linkingCode` for this laptop's token when needed, adds the token to
-`~/.proto/config.json`, and prints the linked identity and what linking
-changed. The code expires at `expiresAt`.
-If it says the code expired or was already used, tell the user to copy the
-setup prompt from the Proto site again and wait for the new prompt. The
-embedded setup document is JSON:
-
-```jsonc
-{
-  "instructions": "...",                       // what to do with the document, one paragraph
-  "account": { "id": "<id>", "name": "<name>", "team": "<team>" },
-  "codebase": "<id>",                          // only when resuming
-  "app": "https://...",                        // the Proto app's origin
-  "linkingCode": "...",                        // one use, until expiresAt
-  "expiresAt": "2026-09-30T12:34:56.000Z",
-  "install": {                                 // the plugin command per harness
-    "claude": { "install": "...", "update": "..." },
-    "codex":  { "install": "...", "update": "..." },
-    "cursor": { "install": "...", "update": "..." }
-  },
-  "source": { "folderPath": "..." },           // or { "fingerprint": { "name", "tree": [...] } }, or absent
-  "productUrl": "https://...",                 // the product page to parse, or absent
-  "brief": { "title", "description", "documentUrl", "referenceHtml", "useRealData" },  // New prototype prompts only
-  "prototype": { "slug": "...", "title": "..." }  // Edit prompts only
-}
-```
-
-The helper's JSON answer is separate from the document:
-
-```jsonc
-{
-  "summary": "Linked as ada@example.com in Acme; still linked as ada@acme.dev in Acme Labs.",
-  "added":   { "user", "team", "laptop", "linkedAt" },  // null when the token it held still works
-  "replaced": { … },                           // the same team's previous credential, when there was one
-  "kept":    [ { … } ]                         // the other teams this laptop works in, untouched
-}
-```
-
-The helper keeps a token that already works for this member and team (it
-asks `whoami` first), so an Edit prompt on a laptop that is set up does not
-spend the code. The setup document carries no durable credential.
-Never print or read back a credential's `secret` from config.json. Hold
-the brief for the handoff.
-
-**Say what linking did**, in the helper's own words: relay `summary`.
-It names what this laptop can now do and what it could already do and
-still can, which is what tells the user their other team survived. Do
-not improve on it by promising that linking is behind them: a person
-links once per team, and what the set buys them is that doing so costs
-them nothing they already had.
-
-## Machine
+The Proto desktop app links this laptop when the maker signs in and writes
+its credential to `~/.proto/config.json` itself; it also writes each
+connected codebase's `~/.proto/<codebase>/codebase.json`. There are no setup
+documents or linking codes any more. If `whoami` says this laptop is not
+linked, ask the maker to open the Proto app and sign in, then check again.
 
 ### Keep the plugin current
 
@@ -142,8 +59,8 @@ Use GitHub's generated `release` branch for normal installs and updates.
 Local files require an explicit user request for this operation; an existing
 local registration does not make local the default. Follow the source
 selection and migration steps in `../update/SKILL.md` before updating.
-An older setup document that names main or an unpinned GitHub source must
-use release instead. Never fall back to main when release is unavailable.
+A registration that names main or an unpinned GitHub source must use
+release instead. Never fall back to main when release is unavailable.
 
 For a fresh install:
 
@@ -186,7 +103,7 @@ teams holds two, side by side.
 }
 ```
 
-The link helper writes this file with mode 600. It adds the new
+The Proto desktop app writes this file with mode 600 when the maker signs in. It adds the new
 credential beside the ones already there, replacing only a credential
 for the same team, so linking a second team never costs the first.
 A file written by an older kit (`schemaVersion: 2`, one credential
@@ -213,7 +130,7 @@ the most recently linked one, saying so on stderr.
 The `proto` MCP server is how every kit skill talks to Proto
 (registration, publishing, source registry, comments). In Claude Code and
 Cursor it ships as the kit's stdio bridge (`tools/mcp-stdio.mjs`), which
-reads config.json, so once the link helper has written the file the server
+reads config.json, so once the desktop app has written the file the server
 works with nothing else to add. The bridge announces its tools when
 config.json appears; if they still do not show, the user toggles the
 Proto MCP server off and on in Customize. Its tools may appear under a host-specific scoped name; this and the
@@ -244,134 +161,13 @@ Either way, confirm with the `whoami` tool: it reports the auth
 mode, team, and grants. A connected server whose `whoami` fails means
 the credential is stale: redo the auth step above.
 
-## Choose the purpose
-
-After the Machine steps, read `document.purpose`.
-- `prepare`: staff only. Call `get_site_preparation {codebase}` to validate access.
-  Run `node <kit>/tools/setup-codebase.mjs --codebase <id> --team <team-id> --site <productUrl>`.
-  This saves `source: {kind: "site", liveUrl}` without a customer checkout or fake path.
-  Skip Find their code. Open the reference site in the staff browser, sign in if needed,
-  then follow index-screens. Stop for staff confirmation of the exact inventory.
-  On confirmed continuation import the design system and use prepare-screen for
-  every included screen: visually inspect the source at different widths, reproduce
-  its observed responsive layouts and mobile-only controls, repair small overflow
-  defects, then visually inspect and verify the copy at matching widths.
-  Mark the index complete; the cloud attaches it to the customer when they connect.
-- `prepare-self`: URL-only preparation, including an isolated guest workspace.
-  The preparation email is contact metadata, not account identity. Never look up
-  or connect an existing account by this email, and do not require website sign-in.
-  Use the account, team and linking code supplied in this document. Verify the connection and team
-  with `whoami`, linking with the setup document's one-time code if needed. Call
-  `get_site_preparation {codebase}` and require the returned indexId and product URL
-  to match `document.preparation`. Run `setup-codebase.mjs --codebase <id> --team
-  <team-id> --site <productUrl>`. Skip repository discovery and asset attachment.
-  Read the exact approved index and version from the document. Never discover other
-  pages, create another index, or ask for inventory review: the customer approved
-  this one URL on the website. Report the library phase on this index, import its
-  design system and finish through `finish-import`. Report the replicating phase
-  before copying the page. Capture the reference and fill only its missing screenshotKey
-  on the same inventory, preserving its approval. Use prepare-screen to copy and
-  verify this entry, including responsive layouts and interactions. Report real
-  screen build events and actual blockers through report_setup_action; clear blockers
-  when resolved. Upload immutable source, compiled build and verification evidence,
-  then mark this index complete. Resume the same index after interruption. A completed
-  index is verified and reported, never rebuilt automatically. Stop with the starter
-  ready: do not create, reserve, register, or publish a prototype.
-- `connect` (also the default for older documents): follow Codebase below, then
-  Connection completion, which selects staff attachment or self-service import.
-- `edit` or a document naming `prototype`: follow Editing a prototype, preserving
-  the existing workspace and catalog. Do not claim a new preparation or refresh screens.
-
-## Codebase
-
-A codebase is one codebase being prototyped, keyed everywhere by a
-cloud-minted id: `~/.proto/<id>/` on the laptop, and the id in every
-later call. Its display name is separate and renamable; never derive
-a path or slug from it. The codebase is the team's.
-
-**Branch on `codebase` before looking for code.** A `codebase` in the
-setup document is the cloud-minted id of an existing codebase. It is
-never a folder name, display name, repo hint, or evidence for a local
-filesystem match.
-
-- When the document carries `codebase`, first read
-  `~/.proto/<codebase>/codebase.json`. If it parses and its
-  `source.path` exists, this codebase is already imported on this laptop:
-  run `node <kit>/tools/setup-codebase.mjs --codebase <id>` to validate and
-  reuse its source path, remote and live URL without asking for confirmation. Skip all of **Find their code**, including its
-  scan, confirmation question and `set_codebase_source` call.
-- When the document carries `codebase` but that usable local record does
-  not exist, resume with that id and run **Find their code** to recover
-  the missing source pointers. Do not use the id itself to search for or
-  score folders.
-- With no `codebase` in the document, this is a new setup. Run **Find
-  their code**, then run `setup-codebase.mjs` with the confirmed source
-  and linked team, without `--codebase`; it creates the codebase, names it
-  after the source folder and returns the id. Keep that id for everything that follows.
-
-### Find their code
-
-You need the codebase's repo on this machine. Before anything else,
-give the one reassurance that matters, in exactly this plain shape:
-**"Your code stays on your laptop; Proto receives only the design
-system it extracts."**
-
-0. **The fingerprint, when the document carries one.** The
-   document's `source.fingerprint` names the folder and lists a
-   shallow tree of its entry names (`▸` folders, `•` files, two
-   levels). Search the likely roots,
-   the current working directory first, then the home folder and
-   common project folders (`~/Projects`, `~/code`, `~/src`, `~/dev`,
-   `~/work`, `~/Documents`), two or three levels deep, and score
-   each candidate: exact folder-name match, then how many of the
-   listed entries exist inside. One clear winner: confirm it in one
-   line ("Using `~/Projects/inbox`. The tree matches.") and
-   continue. More than one plausible match: ask which one, listing
-   the paths. None: fall to the ask below. A `source.folderPath`
-   skips all of this; no `source` at all starts at step 1.
-1. **Silent scan first, the engineer fast path.** Quietly look for
-   checkouts in the obvious places (`~/Projects`, `~/code`, `~/src`,
-   `~/dev`, `~/work`, one or two levels deep for `.git`), matching
-   directory names, `package.json` names, and git remotes against an
-   explicit source fingerprint, folder hint, repo hint, or other source
-   evidence from the conversation. Never match against the document's
-   cloud `codebase` id. On a hit, ask ONE
-   confirmation question with the evidence in it ("Is it
-   `~/Projects/cobble-web`?"). **Fail soft**: if the scan finds
-   nothing, just move to the ask: never announce "no repositories
-   found".
-2. **Ask without jargon, either/or.** "Is your codebase on this
-   laptop, or on GitHub?" No "checked out", no "clone", no assuming
-   one repo.
-3. **Scraps are a full answer.** A PR link, a repo link, "we're
-   acme, it's on GitHub": derive the repo yourself (a PR/issue URL
-   names its repo; `gh pr view <url>` does too; a live URL's domain
-   often names the team). Don't ask for a path when a scrap will do.
-4. **Never ask two unanswerable questions in a row.** Every question
-   must be answerable from what the user obviously knows, and must
-   carry your best guess so a "yes" is enough.
-5. **Get it locally with the auth that already exists** (`gh repo
-   clone`, or plain `git clone` of a URL that works). **Never** route
-   the user to tokens, SSH keys, or GitHub developer settings. If
-   cloning fails for access reasons, say so in one plain sentence,
-   hand them this to forward: "Could you run: `git clone
-   <repo url>` into a folder on my laptop, or send me an invite so
-   `git clone` works? It's for Proto, which reads the design system
-   locally.", and **park**: tell them setup will pick up right here
-   once the repo exists, and mean it (re-running setup resumes from
-   files, not memory).
-6. **Create or record the codebase** with the confirmed folder:
-   `node <kit>/tools/setup-codebase.mjs --source <absolute-folder> --team <linked-team-id>`.
-   Add `--codebase <id>` when recovering an existing codebase and `--remote <url>`
-   only when the folder has no Git origin. The script selects that team's
-   credential, registers the source, and atomically saves the local record.
-   Keep the returned `codebase` for everything that follows. Outcomes are
-   `created`, `recovered`, or `reused`; failures exit nonzero with an actionable
-   message. Never assemble or overwrite codebase.json yourself.
-   If new creation has an uncertain outcome, reconcile the codebase in Proto
-   and resume with its ID; do not blindly retry a create without an ID.
+## Codebase records
 
 ### `~/.proto/<codebase>/codebase.json`
+
+The Proto desktop app writes this record when the codebase is connected;
+kit tools read it to pick the codebase's team credential. Never assemble
+or overwrite it yourself.
 
 ```jsonc
 {
@@ -383,149 +179,11 @@ system it extracts."**
     "kind": "repository",
     "path": "/abs/path/to/acme-web",   // the checkout
     "remote": "git@github.com:acme/acme-web.git",
-    "liveUrl": "https://…"             // where the codebase runs, if known:
-  },                                   //  the import skill wants it
+    "liveUrl": "https://…"             // where the codebase runs, if known
+  },
   "createdAt": "2026-09-19T…"
 }
 ```
-
-### Connection completion
-
-After connecting or recovering the customer source, verify whoami and the repository
-record, then call `attach_onboarding_preparation {codebase}`.
-
-- `attached` or `existing`: report the actual result and clear resolved blockers.
-- `self-service`: follow the design-system-only workflow below in this conversation.
-- Pending or failed staff results: report the actual message, preserve the assignment,
-  and stop setup. A tool error never authorizes self-service fallback.
-
-### Self-service design system
-
-Follow The reference page and The product's icon below. Reuse productUrl from the
-setup document or source.liveUrl from codebase.json; ask in this conversation if
-neither exists. Handle sign-in with report_setup_action and clear resolved blockers.
-
-Follow import-design-system, resuming existing local checkpoints. Do not run
-index-screens, discover screens, review an inventory or prepare starter screens.
-Finish with `node <kit>/tools/finish-import.mjs <codebase>`: its existing verification
-and publication gates write completedAt into the published library manifest.
-Partial publications do not complete setup. The website reads that manifest;
-no extra completion-report tool is needed.
-On failure, preserve local work, report the actual error and resume the same import.
-Use report_setup_action only for actual user decisions, sign-in or access blockers.
-After completion, clear resolved blockers and return to Proto to create the first
-prototype from a URL. Continue a saved brief only when explicitly supplied.
-
-### Report blockers to the setup surface
-
-Use kind `product-url` only when asking for a missing live app URL, `sign-in` for product authentication, `approval` for permission, and `other` for any other blocker. The URL form handles product-url requests; other blockers stay visible. Include the kind when using the helper: `node <kit>/tools/setup-action.mjs <codebase> "<message>" <kind>`. Never classify sign-in as a missing URL.
-
-
-**Before stopping for any reason while setup or the design-system import is
-incomplete, report the blocker to Proto.** This applies throughout setup and
-its handoff to **import-design-system**, not only to sign-in: questions,
-missing access or files, required approvals, failed tools, unavailable
-services, exhausted recovery attempts, and user-requested pauses all count.
-Do not end the turn with unfinished work and only a chat explanation.
-Routine tool execution and bounded retries while actively working are not stops.
-
-Once the codebase id is known, call
-`report_setup_action { codebase, action: { kind, message } }` before pausing.
-The website places the blocker under the current step using actual setup
-progress. Report kind and message; never choose or send a step.
-The message must explain why work stopped and the concrete next step to
-resume; when user input is needed, ask them to reply in this conversation.
-The site displays **Action needed** under the current step; a chat message alone
-cannot update it. If the host has not discovered the tool yet, use
-`node <kit>/tools/setup-action.mjs <codebase> '<message>' <kind>`.
-If reporting fails, retry once for a transient failure, then tell the user
-that the blocker could not be shown on the site. Never claim it was reported
-without a successful response.
-
-Before a codebase id exists, this API cannot report a blocker. Explain the
-blocker in chat, preserve progress, and report it as soon as an id is available
-if it remains unresolved. Never invent an id or create a placeholder codebase
-just to report a blocker.
-
-After verifying the blocker is resolved, clear it with
-`report_setup_action { codebase, action: null }` (or
-`node <kit>/tools/setup-action.mjs <codebase> clear`) before continuing.
-An answer alone is not proof of resolution. Do not clear a blocker merely
-because a published library exists. Apply this lifecycle again
-for every later stop, until the import's completion gate or a successful
-prepared-asset attachment completes customer setup.
-Never invent a prototype brief to report a setup blocker.
-
-### The reference page (the Proto window)
-
-Prototypes and imports read the user's live product through their own
-browser. Set that up once per machine, here:
-
-1. Start the dedicated Proto Chrome window: `node
-   tools/cdp/chrome.mjs` (resolve kit tools from the installed host's
-   `PLUGIN_ROOT`, `CLAUDE_PLUGIN_ROOT`, or `CURSOR_PLUGIN_ROOT`;
-   otherwise use the root above this skill's `skills/` directory). Its profile lives at
-   `~/.proto/chrome`, so logins persist across sessions and reboots;
-   the login is one-time.
-2. The document's `productUrl`, or saved `source.liveUrl`, is the product page to parse; with
-   neither, ask the user for the URL of a page in their product. Run
-   `node tools/cdp/product-page.mjs '<productUrl>' --codebase <codebase>
-   --run setup-library` after starting Proto Chrome. It acquires a window owned by
-   this setup run in the shared signed-in profile. Keep its `browserSession` path;
-   pass `--browser-session <browserSession>` to each independent source tool and
-   propagate `PROTO_BROWSER_SESSION` to child processes. Reuse only this owned
-   target on resume, never another build's same-origin page. The requested URL
-   must match before capture. Read the owned page (`evaluate`) for a
-   signed-in marker: the user's name in a greeting or menu, an account
-   control, no sign-in form. Use the debug port to inspect and interact
-   with the product's page controls; do not drive Chrome's address bar
-   or other browser chrome. If
-   the page shows no signed-in
-   marker, bring the Proto window to the front on that tab
-   (`node tools/cdp/raise.mjs <url-substring>`: the one time the kit
-   raises it, because the user must act in it), tell the user to sign
-   in there and wait until they say they have; then read again. A
-   password field on a signed-in page (a form asking for a new
-   database password) is not a sign-in form: look for the account
-   control. Once sign-in is verified, discover the product yourself:
-   click through existing projects, navigation, tabs and menus to find
-   a representative page. Do not ask the user to navigate or confirm
-   routine exploration. Stay within the product and the requested task;
-   do not create, edit or delete product data to populate an empty view.
-   Ask only if sign-in, missing access, no usable existing content or a
-   genuine ambiguity prevents further progress. Finish exploration before
-   capturing the reference page; keep it stable while checks or repair
-   agents run. Read the chosen page's current URL and save it with
-   `node <kit>/tools/setup-codebase.mjs --codebase <id> --live-url <actual-url>`
-   (this reuses the record without cloud registration): the import-design-system
-   skill takes it from there instead of asking again.
-3. From then on, skills find the page by looking at the open tabs
-   over CDP (prefer the active tab; offer a pick when several
-   match). Pasting a URL into the chat is always an accepted
-   fallback: never a required step. A pasted URL identifies the
-   preferred starting page. Once signed in, follow the product's links
-   and controls to discover relevant existing views without asking the
-   user to do the clicking. Preserve the reference page while checks or
-   repair agents are running.
-
-### The product's icon
-
-Codebases carry a favicon the agent sets itself, right after the
-Proto window step, while the product's live page is open there:
-
-1. Prefer the live page's own icon: read its `<link rel="icon">`
-   candidates over CDP and take the largest png/svg.
-2. Else scan the repo: `public/favicon.*`, `app/icon.*`,
-   `src/app/icon.*`.
-3. Run `node <kit>/tools/codebase-icon.mjs <codebase> <file or icon
-   url>`. It uploads the bytes straight to Proto's storage and sets
-   the codebase's icon; the laptop token supplies the member and team.
-   It takes png, svg or ico up to 256 KB. When it refuses the format or
-   the size, convert once (`sips -s format png -Z 128 <in> --out
-   <tmp>.png`) and run it again with that file.
-4. **Fail soft.** Nothing usable found → skip silently and move on;
-   the site shows a letter fallback. No icon is ever worth a
-   question or an error sentence.
 
 ### Migration: pre-rename homes
 
@@ -540,43 +198,17 @@ without stopping anything.
 
 ## Verify
 
-- `config.json` and `codebase.json` parse; `codebase.json` names the
-  team it was set up in; a repository `source.path` exists and its
-  `package.json`/remote match the codebase (they can legitimately
-  disagree with each other, a fork or renamed checkout, which is
-  why confirmation beat validation above).
-- The `whoami` MCP tool answers with the expected team and grants.
+- `config.json` parses, and each `~/.proto/<codebase>/codebase.json` parses
+  and names an existing `source.path`.
+- The `whoami` MCP tool answers with the expected team and grants. When it
+  says this laptop isn't linked, ask the maker to sign in to the Proto app.
 
-Report what you set up, leading with the link `summary`: which member
-and team this laptop now works as, and which teams it already worked in
-and still does. Then what you found vs. were told, and anything you
+Report what you installed or repaired in plain sentences, then anything you
 skipped because it already existed.
-
-## Editing a prototype
-
-The Edit prompt (`prototype` in the document) means: the creator of
-that prototype wants their agent on it again, and the site assumed no
-session was open. Only the creator's account can edit a
-prototype; the site refuses every other laptop's writes to it in one
-sentence, so a document naming a prototype is always the creator's.
-Do the machine steps above (the link helper keeps a working token; the
-plugin update still applies), skip the codebase steps when
-`~/.proto/<codebase>/codebase.json` exists (else do them: the
-codebase id is in the document), then:
-
-1. Open the workspace `~/.proto/<codebase>/prototypes/<slug>/`. If it
-   does not exist on this laptop, say so in one sentence: the
-   prototype was built on another laptop of theirs, and a copy of the
-   workspace is needed here before editing.
-2. Tell the user, in one line, that you are on "<title>" and ask what
-   to change. Wait. Every change follows the create-prototype and
-   serve skills as usual (the serve run, registration, publish at
-   checkpoints). Finish when the requested change is complete.
 
 ## Handoff
 
-Customer connection ends at Connection completion. Staff preparation follows
-index-screens and its confirmed continuation. A saved prototype brief continues
-through create-prototype only when explicitly supplied and its required assets
-are ready. Existing Edit prompts use Editing a prototype. No open listening
-session is needed.
+Setup ends once the plugin is current and `whoami` answers. Copied prototypes
+are edited from their chats in the Proto app with the edit-variant,
+add-variants, create-variant-set and serve skills; new prototypes are forked
+in the maker's own app and need nothing from setup.

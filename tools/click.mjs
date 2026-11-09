@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * Copied workspaces only (public/prototype.json); a prototype forked
+ * from the maker's own app is seen in their running dev server instead.
+ *
  * Clicks one control in a variant and says what changed, so the unit that
  * wrote it can check a control does what the direction says (Resume starts
  * the restore in every region, the chevron opens the menu) without a

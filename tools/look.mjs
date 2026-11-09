@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * Copied workspaces only (public/prototype.json); a prototype forked
+ * from the maker's own app is seen in their running dev server instead.
+ *
  * A picture of the prototype as it renders, for the agent to look at:
  * any preview state, any variant, one marked part or the whole page. The
  * one way to see the prototype; never a browser or a screenshot of your

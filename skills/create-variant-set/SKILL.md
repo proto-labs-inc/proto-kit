@@ -1,6 +1,6 @@
 ---
 name: create-variant-set
-description: Create a new variant set in an existing Proto prototype. Use when the prototype already exists and the user wants to compare multiple new directions for a component. Do not use for adding options to an existing set or editing an existing variant.
+description: Create a new variant set in an existing Proto prototype. Use when the prototype already exists and the user wants to compare multiple new directions for a component. Do not use for adding options to an existing set or editing an existing variant. Only for a copied prototype, a workspace under ~/.proto/<codebase>/prototypes/<slug>/ with public/prototype.json. A prototype forked from the maker's own app follows the islands brief Proto sends with the message instead.
 ---
 
 # Create a variant set
@@ -18,7 +18,7 @@ and those replace step 3's own search. Report `started` when work begins
 and `done` only after publishing.
 
 Work only in the existing prototype workspace named by the request. This is
-an incremental edit: do not scaffold a prototype, run create-prototype or the
+an incremental edit: do not scaffold a prototype, run the
 full serve workflow, or register the prototype.
 
 ## Implementation and delivery order
