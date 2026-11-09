@@ -57,7 +57,12 @@ This order applies before writing preview metadata or delivering chat images.
    `node <kit>/tools/variant-set.mjs <workspace> <component> --expected <revision> ...`.
    The scaffolder updates that same empty building entry and returns a new
    revision; it never creates another set. Keep that revision for finishing.
-   Now read the selected component and current view. Preserve existing states,
+   Now see the selected component as it renders, in one call:
+   `node <kit>/tools/look.mjs <workspace> --part <marker> --markup` (add
+   `--state <id>` for the current view). Read its picture and its markup
+   file: that is the element to design from. Open source files only to wire
+   the set in, starting from the request's known source files; do not search
+   page snapshots or the rig for the element. Preserve existing states,
    variants, markers, dependencies, and shared styles.
 3. Gather or present references only when explicitly requested by the user,
    including `inputs.references: true`. In that case, follow
@@ -66,7 +71,8 @@ This order applies before writing preview metadata or delivering chat images.
    Preserve existing references without adding unsolicited reference deliverables.
 4. Design the requested directions using the brief and available design context. Keep each variant in
    its own module with scoped styles under
-   `src/variants/<component>/<variant-id>.*`. Shared files may contain only
+   `src/variants/<component>/<variant-id>.*`. Write every variant's files in
+   one message, as parallel writes, rather than one file per turn. Shared files may contain only
    invariant structure, design-system imports, and tokens. If delegating, give
    each builder its relevant local screenshots, source links, and notes before
    it starts. Inspect the screenshots before implementing, and preserve the
@@ -100,8 +106,25 @@ variants composer requests the first variants later in this same set.
 
 This section applies to passes that create variants.
 
-- Run `pnpm typecheck`. Verify the requested view and one unaffected existing
-  view through the already-running Vite server; let HMR carry source changes.
+- Run `pnpm typecheck`. Let HMR carry source changes to the already-running
+  Vite server.
+- Check that every new variant renders and switches with the kit's look tool,
+  which selects a variant the way the Frame does:
+  `node <kit>/tools/look.mjs <workspace> --variant <component>=<variant-id>`
+  (one call per variant; add `--state <id>` for another preview state, and
+  `--page` for one unaffected view). Look at each picture. This is the
+  switching check in `docs/variant-delivery.md`: never write your own
+  browser, screenshot or switching scripts, and never read the rig's source
+  to drive it.
+- The selected element's marker is the `data-proto-id` in the request's
+  selector; `begin` accepts the selector as it is. For `look --part`, use a
+  marker name; when a part is reported missing, pick from the `marked` list
+  the tool prints.
+- After finishing the entry (with its showcase `state`, if any), run
+  `node <kit>/tools/previews.mjs <workspace> --set <component>` once: it
+  pictures this set's variants from real renders, in the default state and
+  the set's showcase state, and records each `preview` in the manifest.
+  Without `--set` it pictures every set in every state, which takes minutes.
 - Check the affected set's SVG previews together. They must be current,
   component-only, consistently framed and padded, and rendered on the page
   background.

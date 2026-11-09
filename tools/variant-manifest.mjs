@@ -196,6 +196,12 @@ export function recordVariantPreviews(workspace, manifest, previews) {
         });
     }
 }
+/** The element marker a selection names: the marker itself, or the innermost
+ *  `[data-proto-id="…"]` in the CSS selector the Frame sends for a selection. */
+export function markerOf(selection) {
+    const markers = [...String(selection).matchAll(/data-proto-id=["']?([^"'\]\s]+)/g)].map(match => match[1]);
+    return markers.at(-1) ?? selection;
+}
 export function validatePublishedManifest(workspace, assets) {
     const built = JSON.parse(readFileSync(join(assets, 'prototype.json'), 'utf8'));
     validateVariantSets(built, { mode: 'publish', workspace, assets });
@@ -205,7 +211,8 @@ export function validatePublishedManifest(workspace, assets) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
     try {
-        const [operation, workspace, component, ...args] = process.argv.slice(2);
+        const [operation, workspace, named, ...args] = process.argv.slice(2);
+        const component = operation === 'begin' ? markerOf(named) : named;
         check(workspace && component, 'usage: variant-manifest.mjs begin|read|finish|update <workspace> <component> [--title <title>] [--entry <file>] [--expected <revision>]');
         const options = {};
         for (let i = 0; i < args.length; i += 2) {
